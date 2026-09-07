@@ -1,0 +1,11 @@
+# Build output
+/deploy-witness
+/bin/
+
+# Local configuration
+.env
+
+# Audit reports — they name accounts, open ports and unpatched packages, and
+# must never be committed.
+/audit-*/
+*.csv

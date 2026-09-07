@@ -1,0 +1,14 @@
+github.com/BloodHeavenDevelop/contracts v0.8.0 h1:rtmV0lQH644o3I0x/ogHVEr/pNkOww7ehSIZznKk3Zc=
+github.com/BloodHeavenDevelop/contracts v0.8.0/go.mod h1:2gE8FNu+beoaNoM9HlLz6K569ac929hRm3GEyeWBHYY=
+github.com/BloodHeavenDevelop/contracts v0.9.0 h1:7pVmGt7F+YmQsilKSPJjknzwruP+Y0PqkQrlB8Rg5lg=
+github.com/BloodHeavenDevelop/contracts v0.9.0/go.mod h1:2gE8FNu+beoaNoM9HlLz6K569ac929hRm3GEyeWBHYY=
+github.com/BloodHeavenDevelop/utils v0.9.0 h1:iSN8QvcZFWJf2RLQ2+eD+l/V26//4g63FUFDsXcaGp8=
+github.com/BloodHeavenDevelop/utils v0.9.0/go.mod h1:OcmnD2JYHxPhSUo3dUgt2/7CpdsggvPC1gTYkykUuyk=
+github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
+github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
+google.golang.org/protobuf v1.36.11 h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
+google.golang.org/protobuf v1.36.11/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
