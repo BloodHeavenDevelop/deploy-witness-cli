@@ -39,9 +39,18 @@ make build-linux-arm64    # ./bin/deploy-witness-linux-arm64
 ```
 
 The binaries are static (`CGO_ENABLED=0`) and depend on nothing at runtime, so a
-cross-compiled binary runs on any Linux host of that architecture. Building needs
-access to two private modules of the organisation — `utils` and `contracts` — so
-set `GOPRIVATE=github.com/BloodHeavenDevelop/*`.
+cross-compiled binary runs on any Linux host of that architecture.
+
+**Building needs nothing private.** Go 1.25 and the two public modules
+`google.golang.org/protobuf` and `gopkg.in/yaml.v3`, from the module proxy like any
+other — no credentials, no `GOPRIVATE`, no organisation membership. Somebody who is
+about to run this as root on their own production server can read the source and
+build the binary themselves, which they could not do if the build asked them for a
+token first. The two pieces of shared code it uses — the CSV renderer and the
+generated Go for the `bloodheaven.audit.v1` upload contract — are copied into the
+tree at [`app/csv`](app/csv) and
+[`app/contract/auditv1`](app/contract/auditv1), each with a note saying which
+release it came from and how it is refreshed.
 
 ## Run
 
@@ -112,8 +121,15 @@ sudo ./deploy-witness --compose /srv/app/docker-compose.yml --format json
 
 # Send it. One request, no retries, no telemetry.
 sudo ./deploy-witness --compose /srv/app/docker-compose.yml \
-  --upload https://deploywitness.example.com --upload-token "$TOKEN"
+  --upload https://deploywitness.io --upload-token "$TOKEN"
 ```
+
+`--upload` takes the **base URL** of the service, not an endpoint: the tool appends
+the path itself and POSTs to `<base>/api/public/audit/upload`, with the token in an
+`X-Upload-Token` header rather than in the URL, where it would land in proxy logs
+and shell history. So `https://deploywitness.io` reaches
+`https://deploywitness.io/api/public/audit/upload` — passing `.../api` yourself
+gets you `/api/api/...` and a 404.
 
 `report.json` has an `upload` half — the shared `bloodheaven.audit.v1` contract,
 exactly the bytes `--upload` sends — and an `audit` half that stays local: the host

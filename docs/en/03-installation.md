@@ -5,19 +5,29 @@
 - Go 1.25 or newer, to build.
 - Nothing at all, to run. The binary is static (`CGO_ENABLED=0`) and calls the
   distribution's own tooling only when it is present.
-- Access to **two** private modules of the organisation:
-  `github.com/BloodHeavenDevelop/utils` (for `utils/csv`) and
-  `github.com/BloodHeavenDevelop/contracts` (for the generated Go of the
-  `bloodheaven.audit.v1` report contract that `--upload` sends). Either have them
-  in the module cache, or configure Git credentials for the organisation:
+- **Nothing private.** The two dependencies — `google.golang.org/protobuf` and
+  `gopkg.in/yaml.v3` — come from the public module proxy like any other. No
+  credentials, no `GOPRIVATE`, no organisation membership, and no `protoc` or
+  `buf`. A clean checkout on a machine that has never heard of this organisation
+  builds with `make build`.
 
-  ```bash
-  export GOPRIVATE=github.com/BloodHeavenDevelop/*
-  ```
+  That is deliberate. The tool asks to be run as root on somebody's production
+  server, and the answer to "why should I trust this binary?" is "read the source
+  and build it yourself" — which is not an answer if the build first demands a
+  token for a repository the reader cannot see. So the two pieces of shared code it
+  needs are copied into the tree instead of imported:
 
-  The generated Go is committed in `contracts`, so no `protoc` or `buf` is
-  needed here. The two public dependencies — `google.golang.org/protobuf` and
-  `gopkg.in/yaml.v3` — come from the module proxy like any other.
+  | Copy | From | Why it is needed |
+  |---|---|---|
+  | `app/csv` | `utils/csv` v0.9.0 | The CSV generator that renders every table. |
+  | `app/contract/auditv1` | `contracts` v0.9.0, `gen/go/bloodheaven/audit/v1` | The generated Go for `bloodheaven.audit.v1`, the report contract `--upload` sends. |
+
+  Both are byte-for-byte copies, each with a `doc.go` recording the release it
+  came from. A maintainer with checkouts of the two repositories refreshes them in
+  one step — `make sync-shared UTILS=../utils CONTRACTS=../contracts` — and the
+  diff is the whole record of what the shared code did. The contract stays
+  generated from its `.proto`; nobody restates the shape here by hand, which is
+  what would make a divergence show up only on the first upload.
 
 Nothing about the run-time requirements changed: the binary is still static, still
 has no runtime dependencies, and still needs nothing installed on the audited host.

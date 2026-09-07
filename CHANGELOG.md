@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-07
+
+### Changed
+
+- **The build no longer needs access to a private repository** ([go.mod](go.mod),
+  [app/csv/](app/csv/), [app/contract/auditv1/](app/contract/auditv1/),
+  [Makefile](Makefile)). `github.com/BloodHeavenDevelop/utils` and
+  `github.com/BloodHeavenDevelop/contracts` are gone from `go.mod`; what the tool
+  actually used from them is carried in the tree as byte-for-byte copies —
+  `app/csv` (from `utils/csv` v0.9.0) and `app/contract/auditv1` (from
+  `contracts` v0.9.0, `gen/go/bloodheaven/audit/v1`), each with a `doc.go` naming
+  its source release. The two remaining dependencies, `google.golang.org/protobuf`
+  and `gopkg.in/yaml.v3`, come from the public module proxy, so a clean checkout
+  builds with no credentials, no `GOPRIVATE` and no organisation membership.
+
+  This is the point of the tool, not a packaging detail: it asks to be run as root
+  on somebody's production server, and its answer to "why should I trust this
+  binary?" is "read the source and build it yourself" — which is not an answer if
+  the build first demands a token for a repository the reader cannot see. Copying
+  *generated* code is not the same as restating the contract by hand: the `.proto`
+  in `contracts` stays the single source of truth, the wire format and the
+  descriptor's file name are unchanged, and a divergence now shows up in a diff
+  instead of on the first upload.
+- **`make sync-shared`** ([Makefile](Makefile)) — refreshes both copies from local
+  checkouts (`UTILS`, `CONTRACTS`, defaulting to `../utils` and `../contracts`),
+  then builds and runs the affected tests. Maintainers only; building never needs
+  those repositories. The releases the copies came from are recorded as
+  `UTILS_VERSION` / `CONTRACTS_VERSION`.
+
+### Fixed
+
+- **`--upload` in the README took an endpoint that would have 404'd**
+  ([README.md](README.md)). The example passed `https://deploywitness.io/api`,
+  but the flag takes the service's *base* URL and the tool appends
+  `/api/public/audit/upload` itself — so that URL resolved to `/api/api/…`. The
+  example is the origin again, and the README now states the endpoint and the
+  `X-Upload-Token` header, which only the CLI reference carried before.
+
 ## [1.0.0] - 2026-09-07
 
 ### Changed

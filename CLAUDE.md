@@ -25,16 +25,31 @@ queue and no default endpoint. Consequences for anyone extending it:
   is set, which would make an offline audit tool open an outbound connection. It
   also pulls a web framework and a database driver into a binary whose value is
   being small enough to read before running it on a production host.
-  `app/logging` replaces it. `utils/csv` **is** used — it is pure stdlib and it
-  is exactly the shared helper this deliverable needs.
-- **Four dependencies, and each one has to earn its place.** `utils` (for
-  `utils/csv`), `contracts` (the generated Go for `bloodheaven.audit.v1`, so the
-  upload shape cannot diverge from what `DeployWitness` accepts),
+  `app/logging` replaces it. The CSV generator from `utils/csv` **is** used — it
+  is pure stdlib and exactly the helper this deliverable needs — but as a copy in
+  `app/csv`, for the reason below.
+- **The build must never need a private repository, and that outranks the
+  platform's "consume shared modules as tagged versions" rule.** The tool asks to
+  be run as root on somebody else's production server; its answer to "why trust
+  this binary?" is "read the source and build it yourself", which stops being an
+  answer the moment the build demands a token for a repo the reader cannot see. So
+  the two pieces of shared code are **copied in verbatim**, each with a `doc.go`
+  naming the release it came from: `app/csv` (from `utils/csv`) and
+  `app/contract/auditv1` (from `contracts/gen/go/bloodheaven/audit/v1`). Never
+  edit either in place — fix it upstream and run
+  `make sync-shared UTILS=../utils CONTRACTS=../contracts`, then bump
+  `UTILS_VERSION`/`CONTRACTS_VERSION` in the `Makefile` in the same change.
+  Copying *generated* code is not the same as restating the contract by hand: the
+  `.proto` stays the single source of truth, so a divergence shows up in a diff
+  rather than on the first upload. Adding an import of `github.com/BloodHeavenDevelop/*`
+  to `go.mod` undoes this and is a regression, not a simplification.
+- **Two dependencies, both public, and each one has to earn its place.**
   `google.golang.org/protobuf` (protojson, so the contract's enums go out as
   names) and `gopkg.in/yaml.v3` (the compose file, read as a `yaml.Node` tree).
-  `protobuf` is confined to `app/report/contract.go`; nothing else in the tool
-  knows protobuf exists. Adding a fifth dependency needs an argument about the
-  binary somebody has to read before running it as root.
+  `protobuf` is confined to `app/report/contract.go` and `app/contract/auditv1`;
+  nothing else in the tool knows protobuf exists. Adding a third dependency needs
+  an argument about the binary somebody has to read before running it as root —
+  and it has to be a module anyone can fetch without credentials.
 
 ## The two promises
 
@@ -69,6 +84,8 @@ applies, say so in a note.
 main.go                     flags → audit → CSV/JSON, upload, and the exit code
 app/config/                 flag and AUDIT_* environment parsing
 app/logging/                stderr-only leveled logger
+app/csv/                    copy of utils/csv — the CSV generator (do not edit)
+app/contract/auditv1/       copy of the generated bloodheaven.audit.v1 Go (do not edit)
 app/model/                  record types, severity vocabulary, CVSS, os-release
                             witness.go: manifest / capabilities / finding types
 app/run/                    external command execution (timeout, exit allowlist)
@@ -122,7 +139,8 @@ app/audit/                  section orchestration (audit.go, witness.go)
 - **Time is UTC.** Timestamps are stored and rendered as `YYYY-MM-DD HH:MM:SS`
   followed by `UTC`, per the platform rule. Nothing here converts to a local
   timezone; the reader does that.
-- **Never use `replace` in `go.mod`.** `utils` is consumed as a tagged version.
+- **`go.mod` names public modules only, and never a `replace`.** Shared code
+  arrives through `make sync-shared`, not through a dependency.
 - **`LC_ALL=C` on every external command.** `app/run` sets it. Parsers depend on
   English column headers; a Russian or German locale rewrites all of them.
 - **Non-zero exit is not automatically failure.** `dnf check-update` exits 100

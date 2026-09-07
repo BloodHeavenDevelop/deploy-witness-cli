@@ -8,17 +8,19 @@ import (
 	"strings"
 	"time"
 
-	auditv1 "github.com/BloodHeavenDevelop/contracts/gen/go/bloodheaven/audit/v1"
+	auditv1 "github.com/BloodHeavenDevelop/deploy-witness-cli/app/contract/auditv1"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
 )
 
 // This file is the one place deploy-witness speaks the platform's audit contract.
 //
-// The contract lives in the `contracts` repository and is shared with witness,
-// which produces levels 0 and 1 of the same product. Duplicating the shape here
-// instead would mean the divergence is discovered in production, on the first
-// upload — so the generated types are imported, and the conversion is confined to
-// this file. Nothing else in the tool knows protobuf exists.
+// The contract lives in the `contracts` repository and is shared with
+// deploy-witness, which produces levels 0 and 1 of the same product. Restating the
+// shape here by hand would mean the divergence is discovered in production, on the
+// first upload — so the *generated* types are used as generated, copied in whole
+// under app/contract/auditv1 (see the note there: this binary must build without
+// access to a private repository), and the conversion is confined to this file.
+// Nothing else in the tool knows protobuf exists.
 
 // SchemaVersion is what this build produces and what a receiver checks first. An
 // agent built months ago and run today must be told its report is not understood,

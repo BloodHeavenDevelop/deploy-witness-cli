@@ -97,5 +97,6 @@ deployed onto a host, and does one job there.
 The `witness` section is level 2 of the `witness` product: the on-server
 check. Levels 0 and 1 — the external, domain-side checks — live in the
 `witness` repository and are not this binary's business. Both speak the same
-`bloodheaven.audit.v1` contract from the shared `contracts` module, which is what
-`--upload` sends when it is asked to.
+`bloodheaven.audit.v1` contract, generated from the `contracts` repository and
+carried here as a copy in `app/contract/auditv1` so that building this binary needs
+nothing private. That contract is what `--upload` sends when it is asked to.

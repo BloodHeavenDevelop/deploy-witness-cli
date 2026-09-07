@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/csv"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
-	"github.com/BloodHeavenDevelop/utils/csv"
 )
 
 // table is one CSV file: a name, the column headers, the field paths behind them

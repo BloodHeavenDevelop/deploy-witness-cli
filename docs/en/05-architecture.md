@@ -53,6 +53,8 @@ process command line, a proxy directive — and this report may be uploaded.
 |---|---|
 | `app/config` | Flag and `AUDIT_*` environment parsing. Every input is validated here, so a bad argument fails before a single command runs. |
 | `app/logging` | A stderr-only leveled logger. |
+| `app/csv` | The CSV generator, copied verbatim from `utils/csv` so the build needs no private repository. Do not edit in place — see `app/csv/doc.go`. |
+| `app/contract/auditv1` | The generated Go for `bloodheaven.audit.v1`, copied verbatim from `contracts` for the same reason. Do not edit — see `app/contract/auditv1/doc.go`. |
 | `app/model` | Record types, the severity vocabulary, the CVSS base-score calculator, `/etc/os-release` parsing, and the three witness vocabularies (manifest, capabilities, findings). Depends on nothing else in the tree. |
 | `app/run` | External command execution: shared timeout, `LC_ALL=C`, the exit-code allowlist — and the **command allowlist** (`allowlist.go`) with the list itself (`commands.go`) plus the journal of every execution. |
 | `app/redact` | The credential sweep over a finished report. |
@@ -70,7 +72,7 @@ process command line, a proxy directive — and this report may be uploaded.
 | `app/collect/scheduler` | Scheduled work: cron in every form, plus systemd timers. |
 | `app/collect/backup` | Backup tools, backup jobs, and the date of the newest file in each backup directory. |
 | `app/witness` | The 24 rules, the change list and the rollback plan. Pure functions of manifest + capabilities; observes nothing. |
-| `app/report` | CSV rendering through the shared `utils/csv` helper, the JSON document, the shared audit contract and the upload. |
+| `app/report` | CSV rendering through `app/csv`, the JSON document, the shared audit contract and the upload. |
 | `app/audit` | Section orchestration and the shared inventory cache. |
 
 Dependencies point one way: `audit` → collectors → `pkgmgr`/`run` → `model`.
@@ -133,17 +135,20 @@ container list from an unreachable daemon reads as "this host runs nothing".
 
 ## Dependencies
 
-Four modules, all of them either the standard library's neighbours or the
-platform's own:
+Two modules, both public, both neighbours of the standard library:
 
 | Module | Used for |
 |---|---|
-| `github.com/BloodHeavenDevelop/utils` | `utils/csv`, the shared CSV generator. |
-| `github.com/BloodHeavenDevelop/contracts` | The generated Go for `bloodheaven.audit.v1`, the report contract shared with the `witness` service. Duplicating the shape here would mean discovering the divergence on the first upload. |
-| `google.golang.org/protobuf` | `protojson`, to render that contract with its enum *names* (`SEVERITY_BLOCKER`) rather than integers. |
+| `google.golang.org/protobuf` | `protojson`, to render the audit contract with its enum *names* (`SEVERITY_BLOCKER`) rather than integers. |
 | `gopkg.in/yaml.v3` | Reading the compose file as a `yaml.Node` tree, which keeps key order, line numbers and merge keys — all three of which a struct decode throws away. |
 
 Everything else is the standard library. The platform's shared `utils/logger` is
 deliberately not used — see [CLAUDE.md](../../CLAUDE.md) for why. `protobuf`
 appears in exactly one file (`app/report/contract.go`); nothing else in the tool
 knows protobuf exists.
+
+**No module of the organisation is imported.** The two pieces of shared code the
+tool needs live in the tree as verbatim copies (`app/csv` from `utils/csv`,
+`app/contract/auditv1` from `contracts`), refreshed with `make sync-shared`, so a
+build never asks for credentials to a repository the reader cannot see — see
+[03 — Installation](03-installation.md).
