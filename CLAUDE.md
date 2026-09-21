@@ -212,3 +212,9 @@ replace `## [Unreleased]` with `## [X.Y.Z] - YYYY-MM-DD` and add a fresh empty
 `## [Unreleased]` above it. The `Makefile` reads the version from the first
 numbered heading and stamps it into the binary, so an unreleased tree builds with
 an empty version string — that is expected, not a bug.
+
+## Git Worktrees — FORBIDDEN
+
+- **Never use git worktrees.** Do not run `git worktree add` / `list` / `remove` / `prune`, do not create or work inside a separate worktree directory, and never suggest a worktree as a way to isolate work.
+- Do not use any tool or agent "worktree" isolation mode (e.g. the `EnterWorktree` / `ExitWorktree` tools, or `isolation: "worktree"` when spawning an agent).
+- Work directly in the existing repository clone. If another branch is needed, verify the tree is clean and switch in place with `git switch`.
