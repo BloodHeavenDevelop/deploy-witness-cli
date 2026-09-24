@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-24
+
+### Fixed
+
+- **`witness.port_conflict` compares bindings, not port numbers**
+  ([app/witness/portmatch.go](app/witness/portmatch.go),
+  [app/witness/conflicts.rules.go](app/witness/conflicts.rules.go)). The rule
+  indexed listening sockets and publishing containers by the port *number* alone,
+  discarding the protocol and the host address that `app/collect/ports` and the
+  compose parser had already gathered correctly. `53:53/udp` beside a TCP-53
+  resolver was a blocker; so was `127.0.0.1:8080` beside a listener on
+  `192.168.1.10:8080`. Both sides are now reduced to a protocol + host address +
+  port binding and compared per address family, and neither of those is a finding
+  any more.
+
+  The answer is three-valued, because two of the cases genuinely cannot be
+  decided from what an offline tool reads: an IPv6 wildcard `[::]` also answers
+  IPv4 unless `net.ipv6.bindv6only` says otherwise, and a publish naming no
+  `host_ip` gets an IPv6 binding only when the daemon has IPv6 enabled. Those,
+  and a `host_ip` left as an unresolved `${VARIABLE}`, are **warnings** whose
+  `WhatToDo` names the two commands that settle them — not blockers, and not
+  silence. A publish over a protocol the kernel has no socket table for (anything
+  but TCP and UDP) gets its own `warning` saying the port was *not checked*.
+
+  `Subject` is now the whole binding (`127.0.0.1:8080/tcp`,
+  `[fd00::1]:8080/tcp`); a publish that names no address keeps the previous
+  `8080/tcp` form. Each published host port yields at most one finding, so a
+  container of this deployment that is also visible as its own `docker-proxy`
+  socket is stated once.
+
+- **`witness.proxy_conflict` states a collision only against a TCP publish**
+  ([app/witness/frontend.rules.go](app/witness/frontend.rules.go)). The same
+  class of error: a QUIC publish on `443/udp` was a blocker against nginx.
+  `Proxy.ListenPorts` and `Panel.OwnsPorts` are collected as bare port numbers
+  with no protocol and no address, so a non-TCP publish on 80 or 443 is now a
+  `warning` that says the front end's listen protocol was not recorded. The
+  missing addresses remain a documented limitation of the proxy collector.
+
+### Changed
+
+- [docs/en/10-witness-rules.md](docs/en/10-witness-rules.md),
+  [docs/ru/10-witness-rules.md](docs/ru/10-witness-rules.md): both rules' severity
+  tables, the three undecidable cases and the new `Subject` format.
+
 ## [1.1.0] - 2026-09-07
 
 ### Changed
