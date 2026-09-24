@@ -15,85 +15,304 @@ import (
 // holds all of them, and saying so is not a conflict.
 
 // 1. witness.port_conflict
+//
+// The comparison is between bindings, not port numbers — see portmatch.go. Each
+// published host port produces at most one finding, so a container of this
+// deployment that is also visible as a raw socket (its own docker-proxy) is
+// stated once, not twice.
 func portConflicts(in Input) []model.Finding {
 	var out []model.Finding
-
-	// Index the host's listening sockets once.
-	listeners := map[int][]model.Port{}
-	for _, p := range in.Caps.Ports {
-		listeners[p.Port] = append(listeners[p.Port], p)
-	}
-	// And the containers holding published ports, which carry the project label the
-	// raw socket does not.
-	holders := map[int]model.Container{}
-	for _, c := range in.Caps.Containers {
-		for _, mapping := range c.Ports {
-			for _, port := range mapping.HostPorts() {
-				holders[port] = c
-			}
-		}
-	}
 
 	for _, svc := range in.Manifest.Services {
 		for _, mapping := range svc.Ports {
 			for _, port := range mapping.HostPorts() {
-				sockets := listeners[port]
-				container, byContainer := holders[port]
-				if len(sockets) == 0 && !byContainer {
+				want := claimFromMapping(mapping, port)
+				if !observableProtocol(want.protocol) {
+					out = append(out, unobservableProtocol(in, svc, mapping, want))
 					continue
 				}
-
-				subject := fmt.Sprintf("%d/%s", port, protocolOf(mapping))
-				own := byContainer && sameProject(in, container.Project)
-
-				finding := model.Finding{
-					Code:       "witness.port_conflict",
-					Category:   model.CategoryConflict,
-					Subject:    subject,
-					Confidence: model.ConfidenceHigh,
-					SortOrder:  port,
-					Evidence: []model.Evidence{
-						manifestEvidence(in, svc.Name, fmt.Sprintf(
-							"ports: publishes host port %d → container port %d", port, mapping.ContainerPort)),
-					},
+				holders := portHolders(in, want)
+				if len(holders) == 0 {
+					continue
 				}
-
-				switch {
-				case own:
-					// The deployment's own previous container. Compose stops it before
-					// starting the new one, so this is not an obstacle — but it is
-					// worth stating, because "the port is in use" is what the reader
-					// would otherwise see in the engine's error.
-					finding.Severity = model.FindingInfo
-					finding.Title = fmt.Sprintf("Port %d is held by this deployment's own container", port)
-					finding.Description = fmt.Sprintf(
-						"Host port %d is currently published by container %q, which belongs to the same Compose "+
-							"project (%s). Deploying replaces it.", port, container.Name, container.Project)
-					finding.WhyItMatters = "Nothing is blocked. This line exists so that the engine's " +
-						"\"port is already allocated\" message, if it appears, is not mistaken for a conflict with an " +
-						"unrelated service."
-					finding.WhatToDo = "No action needed."
-					finding.Evidence = append(finding.Evidence, evidence(in,
-						"docker ps -a --format {{json .}}",
-						fmt.Sprintf("container %s (project %s, service %s) publishes %d, state %s",
-							container.Name, container.Project, container.Service, port, container.State)))
-				default:
-					finding.Severity = model.FindingBlocker
-					finding.Title = fmt.Sprintf("Port %d is already in use", port)
-					finding.Description = fmt.Sprintf(
-						"Service %q publishes host port %d, and that port is already bound on this host by %s.",
-						svc.Name, port, describeHolder(sockets, container, byContainer))
-					finding.WhyItMatters = "The container will fail to start: the engine cannot bind a port another " +
-						"process already holds. On a deployment that stops the old stack first, the failure lands after " +
-						"the old one is already down."
-					finding.WhatToDo = fmt.Sprintf(
-						"Publish a different host port for %q, or stop whatever currently holds %d before deploying.",
-						svc.Name, port)
-					finding.Evidence = append(finding.Evidence, holderEvidence(in, sockets, container, byContainer))
-				}
-				out = append(out, finding)
+				out = append(out, portConflictFinding(in, svc, mapping, want, holders))
 			}
 		}
+	}
+	return out
+}
+
+// portHolder is one thing already bound to the binding a service asks for.
+type portHolder struct {
+	overlap   overlap
+	why       string // why the overlap is unknown; empty when it is certain
+	claim     portClaim
+	container model.Container
+	socket    model.Port
+	isSocket  bool
+}
+
+// portHolders collects everything that overlaps the wanted binding. Containers
+// come first: they carry the project label a raw socket does not, and the raw
+// socket behind a published port is the container's own proxy.
+func portHolders(in Input, want portClaim) []portHolder {
+	var out []portHolder
+
+	for _, container := range in.Caps.Containers {
+		best := portHolder{container: container}
+		for _, mapping := range container.Ports {
+			for _, port := range mapping.HostPorts() {
+				held := claimFromMapping(mapping, port)
+				result, why := collides(want, held)
+				if result > best.overlap {
+					best.overlap, best.why, best.claim = result, why, held
+				}
+			}
+		}
+		if best.overlap != overlapNone {
+			out = append(out, best)
+		}
+	}
+
+	for _, socket := range in.Caps.Ports {
+		held := claimFromSocket(socket)
+		result, why := collides(want, held)
+		if result == overlapNone {
+			continue
+		}
+		out = append(out, portHolder{
+			overlap: result, why: why, claim: held, socket: socket, isSocket: true,
+		})
+	}
+	return out
+}
+
+func portConflictFinding(
+	in Input, svc model.ManifestService, mapping model.PortMapping, want portClaim, holders []portHolder,
+) model.Finding {
+	finding := model.Finding{
+		Code:       "witness.port_conflict",
+		Category:   model.CategoryConflict,
+		Subject:    want.subject(),
+		Confidence: model.ConfidenceHigh,
+		SortOrder:  want.port,
+		Evidence: []model.Evidence{
+			manifestEvidence(in, svc.Name, fmt.Sprintf(
+				"ports: publishes host %s → container port %d", want.describe(), mapping.ContainerPort)),
+		},
+	}
+
+	own := ownHolder(in, holders)
+	certain := certainHolders(holders)
+	// A container belonging to somebody else outranks "our own container": both
+	// cannot hold the binding at once, so the other one is stopped and the new
+	// deployment still cannot have it.
+	blocked := len(certain) > 0 && (own == nil || foreignContainer(in, certain))
+
+	switch {
+	case blocked:
+		// Something unrelated holds the binding, and the tool is sure of it.
+		finding.Severity = model.FindingBlocker
+		finding.Title = fmt.Sprintf("Port %d is already in use", want.port)
+		finding.Description = fmt.Sprintf(
+			"Service %q publishes %s, and that binding is already held on this host by %s.",
+			svc.Name, want.describe(), describeHolders(certain))
+		finding.WhyItMatters = "The container will fail to start: the engine cannot bind a port another " +
+			"process already holds. On a deployment that stops the old stack first, the failure lands after " +
+			"the old one is already down."
+		finding.WhatToDo = fmt.Sprintf(
+			"Publish a different host port for %q, or stop whatever currently holds %d before deploying.",
+			svc.Name, want.port)
+		finding.Evidence = append(finding.Evidence, holderEvidence(in, certain)...)
+
+	case own != nil:
+		// The deployment's own previous container. Compose stops it before
+		// starting the new one, so this is not an obstacle — but it is worth
+		// stating, because "the port is in use" is what the reader would
+		// otherwise see in the engine's error.
+		container := own.container
+		holds := "is currently published by"
+		if own.overlap == overlapUnknown {
+			holds = "may be published by"
+		}
+		finding.Severity = model.FindingInfo
+		finding.Title = fmt.Sprintf("Port %d is held by this deployment's own container", want.port)
+		finding.Description = fmt.Sprintf(
+			"Host %s %s container %q, which belongs to the same Compose "+
+				"project (%s). Deploying replaces it.", want.describe(), holds, container.Name, container.Project)
+		finding.WhyItMatters = "Nothing is blocked. This line exists so that the engine's " +
+			"\"port is already allocated\" message, if it appears, is not mistaken for a conflict with an " +
+			"unrelated service."
+		finding.WhatToDo = "No action needed."
+		finding.Evidence = append(finding.Evidence, holderEvidence(in, []portHolder{*own})...)
+
+	default:
+		// Only unknown holders. The binding may or may not be taken, and which one
+		// it is depends on host configuration this tool deliberately does not read.
+		// A warning that names the command settling it is the honest answer; a
+		// blocker here is the false blocker, and silence is the dishonest one.
+		finding.Severity = model.FindingWarning
+		finding.Confidence = model.ConfidenceMedium
+		finding.Title = fmt.Sprintf("Port %d may already be in use — this could not be established", want.port)
+		finding.Description = fmt.Sprintf(
+			"Service %q publishes %s. Something is bound to that port on this host — %s — and whether the two "+
+				"bindings actually overlap could not be decided offline. %s",
+			svc.Name, want.describe(), describeHolders(holders), unknownReasons(holders))
+		finding.WhyItMatters = "If they do overlap the container will not start, and the failure lands during " +
+			"the deployment rather than before it. This is reported as an open question rather than a blocker " +
+			"because stopping a deployment that would have worked is the more expensive mistake of the two."
+		finding.WhatToDo = fmt.Sprintf(
+			"Settle it before deploying: `ss -lntup | grep ':%d '` shows the protocol and address of everything "+
+				"on that port, and `cat /proc/sys/net/ipv6/bindv6only` says whether an IPv6 wildcard also answers "+
+				"IPv4 (0 means it does). If the binding is taken, publish a different host port for %q.",
+			want.port, svc.Name)
+		finding.Evidence = append(finding.Evidence, holderEvidence(in, holders)...)
+	}
+	return finding
+}
+
+// unobservableProtocol is the finding for a publish this tool cannot check at
+// all. It is never silence: an unchecked port reported as clean is exactly the
+// result the second promise forbids.
+func unobservableProtocol(in Input, svc model.ManifestService, mapping model.PortMapping, want portClaim) model.Finding {
+	return model.Finding{
+		Code:       "witness.port_conflict",
+		Category:   model.CategoryConflict,
+		Subject:    want.subject(),
+		Severity:   model.FindingWarning,
+		Confidence: model.ConfidenceLow,
+		SortOrder:  want.port,
+		Title:      fmt.Sprintf("Port %d/%s was not checked for conflicts", want.port, want.protocol),
+		Description: fmt.Sprintf(
+			"Service %q publishes %s. This tool reads listening sockets from /proc/net/tcp, /proc/net/tcp6, "+
+				"/proc/net/udp and /proc/net/udp6, and the kernel publishes no such table for %s, so whether "+
+				"anything already holds that binding is unknown.",
+			svc.Name, want.describe(), want.protocol),
+		WhyItMatters: "A port that was not looked at is not a port that is free. Reporting it as clean would " +
+			"hide the one case this section exists to catch.",
+		WhatToDo: fmt.Sprintf(
+			"Check by hand before deploying — `ss -lna | grep ':%d '` covers protocols /proc/net does not.",
+			want.port),
+		Evidence: []model.Evidence{
+			manifestEvidence(in, svc.Name, fmt.Sprintf(
+				"ports: publishes host %s → container port %d", want.describe(), mapping.ContainerPort)),
+			evidence(in, "/proc/net/tcp, /proc/net/tcp6, /proc/net/udp, /proc/net/udp6", fmt.Sprintf(
+				"%d listening sockets read, none of them %s: the kernel has no %s socket table here",
+				len(in.Caps.Ports), want.protocol, want.protocol)),
+		},
+	}
+}
+
+// ownHolder returns the holder that is this deployment's own container, if any.
+// It is consulted before the certain holders because a published port's raw
+// socket belongs to that same container's proxy and carries no project label.
+func ownHolder(in Input, holders []portHolder) *portHolder {
+	for i, h := range holders {
+		if !h.isSocket && sameProject(in, h.container.Project) {
+			return &holders[i]
+		}
+	}
+	return nil
+}
+
+func certainHolders(holders []portHolder) []portHolder {
+	var out []portHolder
+	for _, h := range holders {
+		if h.overlap == overlapYes {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// foreignContainer reports whether one of the holders is a container belonging to
+// something other than this deployment — the case where a blocker outranks the
+// "our own container" reading.
+func foreignContainer(in Input, holders []portHolder) bool {
+	for _, h := range holders {
+		if !h.isSocket && !sameProject(in, h.container.Project) {
+			return true
+		}
+	}
+	return false
+}
+
+func unknownReasons(holders []portHolder) string {
+	var out []string
+	for _, h := range holders {
+		if h.overlap != overlapUnknown || h.why == "" {
+			continue
+		}
+		if !contains(out, h.why) {
+			out = append(out, h.why)
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+func contains(values []string, want string) bool {
+	for _, v := range values {
+		if v == want {
+			return true
+		}
+	}
+	return false
+}
+
+func describeHolders(holders []portHolder) string {
+	var parts []string
+	for _, h := range holders {
+		parts = append(parts, describeHolder(h))
+	}
+	if len(parts) == 0 {
+		return "another process"
+	}
+	return strings.Join(parts, "; ")
+}
+
+func describeHolder(h portHolder) string {
+	if !h.isSocket {
+		return fmt.Sprintf("container %q (project %s), publishing %s",
+			h.container.Name, h.container.Project, h.claim.describe())
+	}
+	s := h.socket
+	switch {
+	case s.Process != "" && s.Pid > 0:
+		return fmt.Sprintf("%s (pid %d), listening on %s", s.Process, s.Pid, h.claim.describe())
+	case s.Process != "":
+		return fmt.Sprintf("%s, listening on %s", s.Process, h.claim.describe())
+	default:
+		// The socket exists but could not be attributed. Saying "an unidentified
+		// process" is the honest form: running unprivileged, /proc hides the owner
+		// of somebody else's socket, and naming a guess would be worse than naming
+		// nothing.
+		return fmt.Sprintf("an unidentified process listening on %s (the owner is only visible to root)",
+			h.claim.describe())
+	}
+}
+
+// holderEvidence returns at most two captures — one for the containers among the
+// holders and one for the sockets — because they come from two different
+// observations and a finding must not attribute one to the other.
+func holderEvidence(in Input, holders []portHolder) []model.Evidence {
+	var containers, sockets []string
+	for _, h := range holders {
+		if h.isSocket {
+			sockets = append(sockets, fmt.Sprintf("%s %s:%d %s pid=%d process=%s",
+				h.socket.Protocol, h.socket.Address, h.socket.Port, h.socket.State, h.socket.Pid, h.socket.Process))
+			continue
+		}
+		containers = append(containers, fmt.Sprintf("container %s (project %s, service %s) state %s, publishing %s",
+			h.container.Name, h.container.Project, h.container.Service, h.container.State,
+			renderPorts(h.container.Ports)))
+	}
+
+	var out []model.Evidence
+	if len(containers) > 0 {
+		out = append(out, evidence(in, "docker ps -a --format {{json .}}", strings.Join(containers, "\n")))
+	}
+	if len(sockets) > 0 {
+		out = append(out, evidence(in, "ss -lntupH", strings.Join(sockets, "\n")))
 	}
 	return out
 }
@@ -105,46 +324,14 @@ func protocolOf(mapping model.PortMapping) string {
 	return mapping.Protocol
 }
 
-func describeHolder(sockets []model.Port, container model.Container, byContainer bool) string {
-	if byContainer {
-		return fmt.Sprintf("container %q (project %s)", container.Name, container.Project)
-	}
-	if len(sockets) == 0 {
-		return "another process"
-	}
-	s := sockets[0]
-	switch {
-	case s.Process != "" && s.Pid > 0:
-		return fmt.Sprintf("%s (pid %d), listening on %s", s.Process, s.Pid, s.Address)
-	case s.Process != "":
-		return fmt.Sprintf("%s, listening on %s", s.Process, s.Address)
-	default:
-		// The socket exists but could not be attributed. Saying "an unidentified
-		// process" is the honest form: running unprivileged, /proc hides the owner
-		// of somebody else's socket, and naming a guess would be worse than naming
-		// nothing.
-		return fmt.Sprintf("an unidentified process listening on %s (the owner is only visible to root)", s.Address)
-	}
-}
-
-func holderEvidence(in Input, sockets []model.Port, container model.Container, byContainer bool) model.Evidence {
-	if byContainer {
-		return evidence(in, "docker ps -a --format {{json .}}",
-			fmt.Sprintf("container %s (project %s) state %s, publishing %s",
-				container.Name, container.Project, container.State, renderPorts(container.Ports)))
-	}
-	var lines []string
-	for _, s := range sockets {
-		lines = append(lines, fmt.Sprintf("%s %s:%d %s pid=%d process=%s",
-			s.Protocol, s.Address, s.Port, s.State, s.Pid, s.Process))
-	}
-	return evidence(in, "ss -lntupH", strings.Join(lines, "\n"))
-}
-
 func renderPorts(mappings []model.PortMapping) string {
 	var parts []string
 	for _, m := range mappings {
-		parts = append(parts, fmt.Sprintf("%d→%d/%s", m.HostPort, m.ContainerPort, protocolOf(m)))
+		host := fmt.Sprint(m.HostPort)
+		if m.HostIP != "" {
+			host = m.HostIP + ":" + host
+		}
+		parts = append(parts, fmt.Sprintf("%s→%d/%s", host, m.ContainerPort, protocolOf(m)))
 	}
 	return strings.Join(parts, ", ")
 }

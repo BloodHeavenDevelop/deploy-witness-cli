@@ -216,6 +216,297 @@ func TestPortConflict(t *testing.T) {
 			t.Errorf("an unattributed socket must be described as such: %q", findings[0].Description)
 		}
 	})
+
+	// DW-24: the comparison is between bindings, not port numbers. Each of these
+	// used to be a blocker that stopped a deployment which would have worked.
+
+	t.Run("udp and tcp on the same number are different sockets", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "dns",
+			Ports: []model.PortMapping{{HostPort: 53, ContainerPort: 53, Protocol: "udp"}},
+		}}
+		in.Caps.Ports = []model.Port{{
+			Protocol: "tcp", Address: "0.0.0.0", Port: 53, State: "LISTEN", Pid: 7, Process: "unbound",
+		}}
+
+		if findings := portConflicts(in); len(findings) != 0 {
+			t.Fatalf("a TCP listener must not block a UDP publish: %+v", findings)
+		}
+	})
+
+	t.Run("two different host addresses do not collide", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostIP: "127.0.0.1", HostPort: 8080, ContainerPort: 80, Protocol: "tcp"}},
+		}}
+		in.Caps.Ports = []model.Port{{
+			Protocol: "tcp", Address: "192.168.1.10", Port: 8080, State: "LISTEN", Process: "caddy",
+		}}
+
+		if findings := portConflicts(in); len(findings) != 0 {
+			t.Fatalf("distinct addresses must not conflict: %+v", findings)
+		}
+	})
+
+	t.Run("a wildcard listener holds every address of its family", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostIP: "127.0.0.1", HostPort: 8080, ContainerPort: 80}},
+		}}
+		in.Caps.Ports = []model.Port{{
+			Protocol: "tcp", Address: "0.0.0.0", Port: 8080, State: "LISTEN", Process: "caddy",
+		}}
+
+		findings := portConflicts(in)
+		if len(findings) != 1 || findings[0].Severity != model.FindingBlocker {
+			t.Fatalf("0.0.0.0 covers 127.0.0.1: %+v", findings)
+		}
+		if findings[0].Subject != "127.0.0.1:8080/tcp" {
+			t.Errorf("subject = %q, want the full binding", findings[0].Subject)
+		}
+	})
+
+	t.Run("a wildcard publish collides with a specific listener", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostIP: "0.0.0.0", HostPort: 8080, ContainerPort: 80}},
+		}}
+		in.Caps.Ports = []model.Port{{
+			Protocol: "tcp", Address: "192.168.1.10", Port: 8080, State: "LISTEN", Process: "caddy",
+		}}
+
+		findings := portConflicts(in)
+		if len(findings) != 1 || findings[0].Severity != model.FindingBlocker {
+			t.Fatalf("a wildcard publish takes every address: %+v", findings)
+		}
+	})
+
+	t.Run("the IPv6 wildcard against an IPv4 publish is a question, not a blocker", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostIP: "0.0.0.0", HostPort: 8080, ContainerPort: 80}},
+		}}
+		in.Caps.Ports = []model.Port{{
+			Protocol: "tcp6", Address: "::", Port: 8080, State: "LISTEN", Process: "caddy",
+		}}
+
+		findings := portConflicts(in)
+		if len(findings) != 1 {
+			t.Fatalf("got %d findings, want 1", len(findings))
+		}
+		f := findings[0]
+		if f.Severity != model.FindingWarning || f.Confidence != model.ConfidenceMedium {
+			t.Errorf("severity/confidence = %s/%s, want warning/medium", f.Severity, f.Confidence)
+		}
+		if !strings.Contains(f.Description, "bindv6only") {
+			t.Errorf("the description must name what decides it: %q", f.Description)
+		}
+		if !strings.Contains(f.WhatToDo, "bindv6only") || !strings.Contains(f.WhatToDo, "ss -lntup") {
+			t.Errorf("the reader must be told how to settle it: %q", f.WhatToDo)
+		}
+	})
+
+	t.Run("a specific IPv6 listener does not touch an IPv4 publish", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostIP: "0.0.0.0", HostPort: 8080, ContainerPort: 80}},
+		}}
+		in.Caps.Ports = []model.Port{{
+			Protocol: "tcp6", Address: "fd00::1", Port: 8080, State: "LISTEN", Process: "caddy",
+		}}
+
+		if findings := portConflicts(in); len(findings) != 0 {
+			t.Fatalf("different families, different sockets: %+v", findings)
+		}
+	})
+
+	t.Run("a publish naming no address is uncertain against a specific IPv6 listener", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostPort: 8080, ContainerPort: 80}},
+		}}
+		in.Caps.Ports = []model.Port{{
+			Protocol: "tcp6", Address: "fd00::1", Port: 8080, State: "LISTEN", Process: "caddy",
+		}}
+
+		findings := portConflicts(in)
+		if len(findings) != 1 || findings[0].Severity != model.FindingWarning {
+			t.Fatalf("whether the engine binds IPv6 is not knowable offline: %+v", findings)
+		}
+		// The old form of the subject survives when no address was named, because
+		// there is nothing more to say about it.
+		if findings[0].Subject != "8080/tcp" {
+			t.Errorf("subject = %q, want 8080/tcp", findings[0].Subject)
+		}
+	})
+
+	t.Run("an unresolved host_ip is a question, never silence", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostIP: "${HOST_IP}", HostPort: 8080, ContainerPort: 80}},
+		}}
+		in.Caps.Ports = []model.Port{{
+			Protocol: "tcp", Address: "10.0.0.5", Port: 8080, State: "LISTEN", Process: "caddy",
+		}}
+
+		findings := portConflicts(in)
+		if len(findings) != 1 || findings[0].Severity != model.FindingWarning {
+			t.Fatalf("an address the tool cannot read must be reported, not assumed: %+v", findings)
+		}
+		if !strings.Contains(findings[0].Description, "${HOST_IP}") {
+			t.Errorf("the description must quote what could not be read: %q", findings[0].Description)
+		}
+	})
+
+	t.Run("the * address ss prints is a wildcard, not an unreadable address", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostIP: "192.168.1.10", HostPort: 8080, ContainerPort: 80}},
+		}}
+		in.Caps.Ports = []model.Port{{
+			Protocol: "tcp", Address: "*", Port: 8080, State: "LISTEN", Process: "caddy",
+			Exposure: model.ExposureAll,
+		}}
+
+		findings := portConflicts(in)
+		if len(findings) != 1 || findings[0].Severity != model.FindingBlocker {
+			t.Fatalf("`ss` prints * for every interface: %+v", findings)
+		}
+	})
+
+	t.Run("an IPv4-mapped socket from the tcp6 table matches an IPv4 publish", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostIP: "127.0.0.1", HostPort: 8080, ContainerPort: 80}},
+		}}
+		// The collector normalises ::ffff:127.0.0.1 to dotted form, so the family
+		// has to be read off the address rather than off the table's name.
+		in.Caps.Ports = []model.Port{{
+			Protocol: "tcp6", Address: "127.0.0.1", Port: 8080, State: "LISTEN", Process: "caddy",
+		}}
+
+		findings := portConflicts(in)
+		if len(findings) != 1 || findings[0].Severity != model.FindingBlocker {
+			t.Fatalf("tcp6 names the table, not the collision: %+v", findings)
+		}
+	})
+
+	t.Run("a protocol with no socket table is reported as unchecked", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "sig",
+			Ports: []model.PortMapping{{HostPort: 2905, ContainerPort: 2905, Protocol: "sctp"}},
+		}}
+
+		findings := portConflicts(in)
+		if len(findings) != 1 {
+			t.Fatalf("a port that was not looked at must still be reported: %+v", findings)
+		}
+		f := findings[0]
+		if f.Severity != model.FindingWarning || f.Confidence != model.ConfidenceLow {
+			t.Errorf("severity/confidence = %s/%s, want warning/low", f.Severity, f.Confidence)
+		}
+		if !strings.Contains(f.Title, "not checked") {
+			t.Errorf("the title must say the port was not checked: %q", f.Title)
+		}
+		if len(f.Evidence) == 0 {
+			t.Error("a finding without evidence is dropped by the engine")
+		}
+	})
+
+	t.Run("an unrelated container holding the binding names the container", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostPort: 8080, ContainerPort: 80}},
+		}}
+		in.Caps.Containers = []model.Container{{
+			Name: "other-web-1", Project: "other", Service: "web", State: "running",
+			Ports: []model.PortMapping{{HostPort: 8080, ContainerPort: 80}},
+		}}
+
+		findings := portConflicts(in)
+		if len(findings) != 1 || findings[0].Severity != model.FindingBlocker {
+			t.Fatalf("got %+v", findings)
+		}
+		if !strings.Contains(findings[0].Description, "other-web-1") {
+			t.Errorf("the holder must be named: %q", findings[0].Description)
+		}
+	})
+
+	t.Run("a container of another project on another address does not collide", func(t *testing.T) {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostIP: "127.0.0.1", HostPort: 8080, ContainerPort: 80}},
+		}}
+		in.Caps.Containers = []model.Container{{
+			Name: "other-web-1", Project: "other", Service: "web", State: "running",
+			Ports: []model.PortMapping{{HostIP: "10.0.0.5", HostPort: 8080, ContainerPort: 80}},
+		}}
+
+		if findings := portConflicts(in); len(findings) != 0 {
+			t.Fatalf("distinct addresses must not conflict: %+v", findings)
+		}
+	})
+}
+
+// The same class of error in the rule about the front of the machine: a QUIC
+// publish on 443/udp does not take 443/tcp away from nginx.
+func TestProxyPortConflictProtocol(t *testing.T) {
+	withPublish := func(protocol string) Input {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{{
+			Name:  "web",
+			Ports: []model.PortMapping{{HostPort: 443, ContainerPort: 443, Protocol: protocol}},
+		}}
+		in.Caps.Proxy = &model.Proxy{
+			Kind: "nginx", Version: "1.24.0", ConfigRoot: "/etc/nginx", ListenPorts: []int{80, 443},
+		}
+		return in
+	}
+
+	t.Run("a TCP publish is still a blocker", func(t *testing.T) {
+		findings := proxyPortConflict(withPublish("tcp"))
+		if len(findings) != 1 || findings[0].Severity != model.FindingBlocker {
+			t.Fatalf("got %+v", findings)
+		}
+	})
+
+	t.Run("a QUIC publish is a warning, because the listen protocol was not recorded", func(t *testing.T) {
+		findings := proxyPortConflict(withPublish("udp"))
+		if len(findings) != 1 {
+			t.Fatalf("got %d findings, want 1", len(findings))
+		}
+		f := findings[0]
+		if f.Severity != model.FindingWarning || f.Confidence != model.ConfidenceLow {
+			t.Errorf("severity/confidence = %s/%s, want warning/low", f.Severity, f.Confidence)
+		}
+		if !strings.Contains(f.Description, "not over TCP") {
+			t.Errorf("the caveat must be stated: %q", f.Description)
+		}
+	})
+
+	t.Run("publishing both protocols states the TCP collision once", func(t *testing.T) {
+		in := withPublish("tcp")
+		in.Manifest.Services[0].Ports = append(in.Manifest.Services[0].Ports,
+			model.PortMapping{HostPort: 443, ContainerPort: 443, Protocol: "udp"})
+
+		findings := proxyPortConflict(in)
+		if len(findings) != 1 || findings[0].Severity != model.FindingBlocker {
+			t.Fatalf("got %+v", findings)
+		}
+	})
 }
 
 func TestExternalResourcesMustExist(t *testing.T) {

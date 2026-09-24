@@ -77,11 +77,47 @@ or address range this deployment wants?
 
 ### `witness.port_conflict`
 
-| | |
-|---|---|
-| Severity | **blocker**, or `info` when the holder is this deployment's own container |
-| Fires when | A host port the manifest publishes (ranges expanded to individual ports) is already bound — either by a listening socket in `ports.csv`, or by an existing container that publishes it |
-| Evidence | The manifest line, plus `ss -lntupH` output or the `docker ps` row |
+| Case | Severity | Confidence | Fires when |
+|---|---|---|---|
+| Own container | `info` | `high` | The binding is held by a container carrying this deployment's project label |
+| Taken | **blocker** | `high` | The binding is certainly held — by a listening socket from `ports.csv`, or by a container of another project |
+| Undecidable | **warning** | `medium` | Something is on that port and whether the two bindings overlap cannot be established offline |
+| Not checked | **warning** | `low` | The publish uses a protocol the kernel has no socket table for (anything other than TCP or UDP) |
+| Evidence | | | The manifest line, plus `ss -lntupH` output and/or the `docker ps` row |
+
+**The comparison is between bindings, not port numbers.** A binding is a
+protocol, a host address and a port, and two of them collide only when all three
+overlap. `53/tcp` and `53/udp` are two different sockets on one number;
+`127.0.0.1:8080` and `192.168.1.10:8080` are two different sockets on one number
+as well. Comparing the number alone produced a blocker for both, which stops a
+deployment that would have worked.
+
+The address family is read off the address, not off the protocol: `tcp6` is the
+name of the `/proc/net` table the socket came from, and the collector normalises
+an IPv4-mapped address such as `::ffff:127.0.0.1` into dotted form, so it is
+matched as IPv4. The `*` that `ss` prints means every interface, both families.
+
+Three things cannot be decided from what this tool reads offline, and each one
+produces the **warning** rather than a blocker or silence:
+
+- a listener on the IPv6 wildcard `[::]` against an IPv4 publish — whether it
+  also answers IPv4 is `net.ipv6.bindv6only`, which is not read;
+- a publish that names no `host_ip` against a specific IPv6 listener — the engine
+  adds an IPv6 binding only when the daemon has IPv6 enabled;
+- a `host_ip` that is not an address, such as an unresolved `${HOST_IP}`.
+
+The finding names the two commands that settle it: `ss -lntup | grep ':<port> '`
+and `cat /proc/sys/net/ipv6/bindv6only`. Reporting them as blockers would be the
+false blocker this rule exists to avoid; reporting them as clean would break the
+second promise.
+
+`Subject` is the whole binding — `127.0.0.1:8080/tcp`, `[fd00::1]:8080/tcp`. A
+publish that names no address keeps the shorter `8080/tcp` form, because there is
+nothing more to say about it.
+
+Each published host port produces **at most one finding**, so a container of this
+deployment that is also visible as a raw socket — its own `docker-proxy` — is
+stated once rather than twice.
 
 The `info` case is stated rather than dropped: Compose stops its own container
 before starting the new one, so nothing is blocked, but the engine's "port is
@@ -266,13 +302,22 @@ reversible. Neither is something to discover during a deployment.
 
 | Case | Severity | Confidence | Fires when |
 |---|---|---|---|
-| Panel | **blocker** | `medium` | The manifest publishes port 80 or 443 and a detected control panel holds that port |
-| Web server | **blocker** | `high` | The manifest publishes 80 or 443 and nginx or Apache is configured to listen on it |
+| Panel | **blocker** | `medium` | The manifest publishes 80 or 443 **over TCP** and a detected control panel holds that port |
+| Web server | **blocker** | `high` | The manifest publishes 80 or 443 **over TCP** and nginx or Apache is configured to listen on it |
+| Another protocol | **warning** | `low` | The same, but the publish is not TCP — a QUIC publish on `443/udp`, for instance |
 
 The panel case is reported first and separately because a panel does not merely
 occupy the port: it owns the web server configuration and rewrites it on its own
 schedule, so a hand-made vhost placed alongside it survives only until the panel
 next regenerates.
+
+A front end's listen ports are collected as bare port numbers: `Proxy.ListenPorts`
+and `Panel.OwnsPorts` record neither the protocol nor the address behind them. So
+the only collision this rule can *state* is against a TCP publish, which is what a
+web server listens on; `443:443/udp` beside nginx is a question and is reported as
+one. The address half cannot be narrowed at all — that is a limitation of what the
+proxy collector records, not something the rule can decide, and it is the reason
+this rule's confidence is lower than `witness.port_conflict`'s.
 
 ### `witness.domain_conflict`
 
