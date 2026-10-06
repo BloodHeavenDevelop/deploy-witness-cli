@@ -34,7 +34,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
@@ -786,11 +785,10 @@ func fileOwner(path string) string {
 	if err != nil {
 		return "unknown"
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
+	uid, ok := ownerUID(info)
 	if !ok {
 		return "unknown"
 	}
-	uid := fmt.Sprintf("%d", stat.Uid)
 	if account, err := user.LookupId(uid); err == nil {
 		return account.Username
 	}

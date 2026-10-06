@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-06
+
+### Added
+
+- **Prebuilt binaries in `dist/`** for Linux, macOS and Windows on amd64 and arm64,
+  with a sha256 manifest `dist/checksums.txt`, produced by the new `make dist`
+  ([Makefile](Makefile)) and committed with the release they were built from.
+- **`install.sh`** ([install.sh](install.sh)): downloads the binary for this Linux or
+  macOS machine from `dist/` on GitHub, refuses it on a checksum mismatch, installs it
+  to `/usr/local/bin` and runs it with the flags it was given — the one command
+  DeployWitness hands out with an upload token. `--no-run` installs only;
+  `DEPLOY_WITNESS_REF` picks the ref.
+
+### Changed
+
+- **The tool builds for macOS and Windows.** `statfs` and file ownership moved behind
+  build tags (`statfs_unix.go`/`statfs_windows.go` in
+  [app/collect/system](app/collect/system) and [app/collect/host](app/collect/host),
+  `owner_unix.go`/`owner_windows.go` in [app/collect/scheduler](app/collect/scheduler)).
+  Nothing changes on Linux. On Windows filesystems are reported unmeasurable and `at`
+  job owners `unknown`; the collectors still read Linux paths, so most sections on
+  those systems come back `partial` or `skipped`, with the reason.
+
 ## [1.1.1] - 2026-09-24
 
 ### Fixed

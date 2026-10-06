@@ -16,7 +16,7 @@ UTILS             ?= ../utils
 CONTRACTS         ?= ../contracts
 
 .PHONY: development build run clean lint test vet fmt sync-shared \
-        build-linux-amd64 build-linux-arm64 build-all install
+        build-linux-amd64 build-linux-arm64 build-all install dist
 
 # Run the audit straight from source. Pass flags with ARGS, e.g.
 #   make development ARGS="--sections ports,services --stdout"
@@ -41,6 +41,23 @@ build-linux-arm64:
 		-o bin/$(BINARY)-linux-arm64 .
 
 build-all: build-linux-amd64 build-linux-arm64
+
+# The committed downloads in dist/: every supported OS and architecture, plus the
+# sha256 manifest install.sh verifies against. Rebuilt from a released tree (the
+# version is stamped from CHANGELOG.md) and committed with that release, so the
+# links on GitHub always serve the binaries of the source next to them.
+DIST_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
+
+dist:
+	rm -rf dist && mkdir -p dist
+	@for target in $(DIST_TARGETS); do \
+		os=$${target%/*}; arch=$${target#*/}; ext=; \
+		[ "$$os" = windows ] && ext=.exe; \
+		echo "dist/$(BINARY)-$$os-$$arch$$ext"; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" \
+			-o dist/$(BINARY)-$$os-$$arch$$ext . || exit 1; \
+	done
+	cd dist && sha256sum $(BINARY)-* > checksums.txt
 
 install: build
 	install -m 0755 $(BINARY) /usr/local/bin/$(BINARY)

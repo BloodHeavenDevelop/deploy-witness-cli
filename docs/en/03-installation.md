@@ -77,6 +77,44 @@ scp bin/deploy-witness-linux-amd64 server:/usr/local/bin/deploy-witness
 ssh server 'sudo deploy-witness --out /var/log/deploy-witness'
 ```
 
+## Prebuilt binaries
+
+`dist/` holds a binary for every supported target, built with `make dist` from the
+release they are committed with, plus `dist/checksums.txt` (sha256):
+
+| File | Target |
+|---|---|
+| `deploy-witness-linux-amd64`, `deploy-witness-linux-arm64` | Linux — what the tool is written for |
+| `deploy-witness-darwin-amd64`, `deploy-witness-darwin-arm64` | macOS |
+| `deploy-witness-windows-amd64.exe`, `deploy-witness-windows-arm64.exe` | Windows |
+
+On Linux and macOS, `install.sh` picks the right one, verifies it against the
+manifest, installs it to `/usr/local/bin` and runs it with the flags it was given
+(none: install only; `--no-run`: the same with flags present; `DEPLOY_WITNESS_REF`:
+the branch, tag or commit to download from, default `main`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BloodHeavenDevelop/deploy-witness-cli/main/install.sh \
+  | sudo bash -s -- --upload https://<deployment> --upload-token <token>
+```
+
+On Windows, download the `.exe` and run it:
+
+```powershell
+curl.exe -fsSLo deploy-witness.exe https://raw.githubusercontent.com/BloodHeavenDevelop/deploy-witness-cli/main/dist/deploy-witness-windows-amd64.exe
+.\deploy-witness.exe --upload https://<deployment> --upload-token <token>
+```
+
+**Every collector reads Linux** — `/proc`, `/etc`, the distribution's package
+manager, systemd. The macOS and Windows builds run and upload, but most sections
+come back `partial` or `skipped` with the reason, never as a clean result. The only
+platform-specific code is `statfs`/file ownership (`*_unix.go` / `*_windows.go` in
+`app/collect/system`, `app/collect/host`, `app/collect/scheduler`); on Windows a
+filesystem is unmeasurable and an `at` job's owner is `unknown`.
+
+Building from source remains the answer to "why trust this binary": the binaries in
+`dist/` are what `make dist` produces from the tree beside them.
+
 ## Privileges
 
 The tool runs unprivileged and reports what it could not reach. Running it as

@@ -76,6 +76,44 @@ scp bin/deploy-witness-linux-amd64 server:/usr/local/bin/deploy-witness
 ssh server 'sudo deploy-witness --out /var/log/deploy-witness'
 ```
 
+## Готовые бинарники
+
+В `dist/` лежит бинарник под каждую поддерживаемую цель, собранный `make dist` из
+того релиза, вместе с которым он закоммичен, и `dist/checksums.txt` (sha256):
+
+| Файл | Цель |
+|---|---|
+| `deploy-witness-linux-amd64`, `deploy-witness-linux-arm64` | Linux — то, под что инструмент написан |
+| `deploy-witness-darwin-amd64`, `deploy-witness-darwin-arm64` | macOS |
+| `deploy-witness-windows-amd64.exe`, `deploy-witness-windows-arm64.exe` | Windows |
+
+На Linux и macOS `install.sh` выбирает нужный, сверяет его с манифестом, ставит в
+`/usr/local/bin` и запускает с переданными флагами (без флагов — только установка;
+`--no-run` — то же при наличии флагов; `DEPLOY_WITNESS_REF` — ветка, тег или коммит,
+откуда качать, по умолчанию `main`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BloodHeavenDevelop/deploy-witness-cli/main/install.sh \
+  | sudo bash -s -- --upload https://<deployment> --upload-token <token>
+```
+
+На Windows — скачать `.exe` и запустить:
+
+```powershell
+curl.exe -fsSLo deploy-witness.exe https://raw.githubusercontent.com/BloodHeavenDevelop/deploy-witness-cli/main/dist/deploy-witness-windows-amd64.exe
+.\deploy-witness.exe --upload https://<deployment> --upload-token <token>
+```
+
+**Все коллекторы читают Linux** — `/proc`, `/etc`, пакетный менеджер дистрибутива,
+systemd. Сборки для macOS и Windows запускаются и загружают отчёт, но большинство
+секций возвращаются `partial` или `skipped` с причиной, а не чистым результатом.
+Платформенный код — только `statfs` и владелец файла (`*_unix.go` / `*_windows.go` в
+`app/collect/system`, `app/collect/host`, `app/collect/scheduler`); на Windows файловую
+систему измерить нельзя, а владелец задания `at` — `unknown`.
+
+Ответом на «почему этому бинарнику можно доверять» остаётся сборка из исходников:
+бинарники в `dist/` — это то, что `make dist` собирает из дерева рядом с ними.
+
 ## Привилегии
 
 Инструмент работает без root и сообщает, до чего не смог добраться. Запуск от

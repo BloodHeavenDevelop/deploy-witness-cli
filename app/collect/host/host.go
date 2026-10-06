@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/run"
@@ -119,12 +118,12 @@ func Filesystems(mountsPath string) (out []model.Filesystem, notes []string) {
 		}
 		seen[mount] = true
 
-		var stat syscall.Statfs_t
-		if err := syscall.Statfs(mount, &stat); err != nil {
+		stat, err := statFilesystem(mount)
+		if err != nil {
 			unreadable++
 			continue
 		}
-		total := stat.Blocks * uint64(stat.Bsize)
+		total := stat.blocks * stat.blockSize
 		if total == 0 {
 			continue
 		}
@@ -137,13 +136,13 @@ func Filesystems(mountsPath string) (out []model.Filesystem, notes []string) {
 			// capacity a container can write into, and counting them makes a full
 			// disk look like it has room.
 			TotalBytes:     total,
-			UsedBytes:      total - stat.Bfree*uint64(stat.Bsize),
-			AvailableBytes: stat.Bavail * uint64(stat.Bsize),
+			UsedBytes:      total - stat.free*stat.blockSize,
+			AvailableBytes: stat.available * stat.blockSize,
 			// Files/Ffree are the inode counts. A btrfs or an XFS with dynamic
 			// inodes reports zero here, which means "no fixed limit" and must not
 			// be read as "no inodes left".
-			InodesTotal: stat.Files,
-			InodesFree:  stat.Ffree,
+			InodesTotal: stat.files,
+			InodesFree:  stat.filesFree,
 			ReadOnly:    hasMountOption(options, "ro"),
 		})
 	}

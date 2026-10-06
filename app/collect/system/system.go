@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
@@ -320,18 +319,18 @@ func (c *collector) storage() {
 		}
 		seen[mount] = true
 
-		var stat syscall.Statfs_t
-		if err := syscall.Statfs(mount, &stat); err != nil {
+		blocks, free, avail, blockSize, err := statFilesystem(mount)
+		if err != nil {
 			continue
 		}
-		total := stat.Blocks * uint64(stat.Bsize)
+		total := blocks * blockSize
 		if total == 0 {
 			continue
 		}
 		// Available, not Free: the reserved blocks root keeps are not capacity a
 		// service can use, and reporting them makes a full disk look healthy.
-		available := stat.Bavail * uint64(stat.Bsize)
-		used := total - stat.Bfree*uint64(stat.Bsize)
+		available := avail * blockSize
+		used := total - free*blockSize
 
 		c.add("storage", mount, fmt.Sprintf("%s used of %s (%.1f%%), %s available, %s on %s",
 			humanBytes(used), humanBytes(total),
