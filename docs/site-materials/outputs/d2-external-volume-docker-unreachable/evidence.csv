@@ -1,0 +1,11 @@
+Code,Subject,Command,Output,Truncated,Captured at
+witness.volume_name_conflict,aliased,<WORKDIR>/shop/docker-compose.yml,volumes: aliased declared external,false,2026-10-10T19:17:22Z
+witness.volume_name_conflict,aliased,docker volume ls --format {{json .}},no volume named aliased among the 0 volumes on this host,false,2026-10-10T19:17:22Z
+witness.volume_name_conflict,dwkit-data,<WORKDIR>/shop/docker-compose.yml,volumes: dwkit-data declared external,false,2026-10-10T19:17:22Z
+witness.volume_name_conflict,dwkit-data,docker volume ls --format {{json .}},no volume named dwkit-data among the 0 volumes on this host,false,2026-10-10T19:17:22Z
+witness.no_rollback_plan,3 of 4,the rollback section of this report,"volume-backup: the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone
+proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one
+snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",false,2026-10-10T19:17:22Z
+witness.runtime_missing_or_old,docker,docker info --format {{json .}},"docker is installed but its daemon could not be queried (docker exited 1: failed to connect to the docker API at unix:///nonexistent/docker.sock; check if the path is correct and if the daemon is running: dial unix /nonexistent/docker.sock: connect: no such…); the container, network, volume and image lists are unknown rather than empty. The usual cause is an unprivileged audit: /var/run/docker.sock is readable by root and the docker group only — re-run as root, or as a member of that group, for the container checks",false,2026-10-10T19:17:22Z
+witness.floating_image_tag,nginx:1.27-alpine,<WORKDIR>/shop/docker-compose.yml (service shop-api),image: nginx:1.27-alpine,false,2026-10-10T19:17:22Z
+witness.registry_unreachable,,<WORKDIR>/shop/docker-compose.yml,registries referenced: docker.io,false,2026-10-10T19:17:22Z

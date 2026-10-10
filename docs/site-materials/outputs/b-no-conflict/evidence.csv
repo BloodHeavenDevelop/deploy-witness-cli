@@ -1,0 +1,5 @@
+Code,Subject,Command,Output,Truncated,Captured at
+witness.no_rollback_plan,2 of 4,the rollback section of this report,"proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one
+snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",false,2026-10-10T19:17:15Z
+witness.floating_image_tag,nginx:1.27-alpine,<WORKDIR>/orders/docker-compose.yml (service orders-api),image: nginx:1.27-alpine,false,2026-10-10T19:17:15Z
+witness.registry_unreachable,,<WORKDIR>/orders/docker-compose.yml,registries referenced: docker.io,false,2026-10-10T19:17:15Z

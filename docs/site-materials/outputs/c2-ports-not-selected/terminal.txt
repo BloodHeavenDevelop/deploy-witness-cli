@@ -1,0 +1,9 @@
+$ cd orders
+$ deploy-witness --sections witness --compose ./docker-compose.yml --out ./report
+2026-10-10 19:17:08 INFO  network: none — --online, --egress and --upload were not given: deploy-witness opens no network connection and runs none of the commands that fetch data over the network
+2026-10-10 19:17:08 INFO  mode: Compose preflight of <WORKDIR>/orders/docker-compose.yml
+2026-10-10 19:17:08 INFO  package manager: pacman
+2026-10-10 19:17:10 INFO  section witness: partial, 4 rows in 2.284s
+2026-10-10 19:17:10 INFO  masked credential-looking material in 1 field(s) before writing the report
+2026-10-10 19:17:10 INFO  wrote 12 CSV files to <WORKDIR>/raw/c2-ports-not-selected/csv
+exit 0

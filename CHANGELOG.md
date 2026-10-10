@@ -83,6 +83,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Documentation
 
+- **Site materials kit** in [docs/site-materials](docs/site-materials/README.md) (DW-73):
+  control Compose scenarios (conflict, no conflict, two "could not check" cases,
+  external volumes, manifest rules), the exact commands, the reports they produced
+  (CSV + `report.json`, sanitised with marked placeholders and trimmed of unrelated
+  host inventory), `run.sh` to recreate the host states, run and clean up, and a
+  [verification matrix](docs/site-materials/MATRIX.md) of every public claim —
+  verified on what, by which scenario, or not verified / not supported. Recorded with
+  the tree at `5ab9f51`, which `make build` stamps `1.2.0` because the version comes
+  from the first numbered CHANGELOG heading. `.gitignore` admits the sample CSVs;
+  both tables of contents link the kit.
 - `04-cli-reference.md`: a "Network behaviour" table per mode (who is contacted, what
   is sent, where it is recorded), how to verify an offline run, the token-through-the-
   environment recipe (`sudo --preserve-env`), what an upload contains (host name,
