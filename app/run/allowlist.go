@@ -32,6 +32,12 @@ import (
 // the audited host, so it is reported loudly rather than swallowed.
 var ErrNotAllowed = errors.New("command is not on the published allowlist")
 
+// ErrNetworkNotAllowed is returned when a command marked as reaching the network is
+// asked for on a run that was not given the flag enabling it. The collectors check
+// first, so seeing this is a defect too — but the Runner is what makes "offline by
+// default" hold for child processes even when a collector forgets.
+var ErrNetworkNotAllowed = errors.New("command reaches the network and this run was not given the flag for it")
+
 // ArgKind is the character class of one free-form argument. Kinds are deliberately
 // coarse — they are a bound on what an argument may look like, not a validator of
 // what it means.
@@ -96,6 +102,12 @@ type Spec struct {
 	Section string
 	// MaxRepeat bounds a trailing `<kind>...` argument. Zero means the default.
 	MaxRepeat int
+	// Network names the flag that permits this command, for a command that opens
+	// network connections of its own (debsecan and arch-audit download their
+	// advisory data on every call). Empty means the command works from local data
+	// only. A Runner refuses a Network command unless the run allowed the network,
+	// and --commands prints the flag next to it.
+	Network string
 }
 
 // defaultMaxRepeat bounds a repeated argument when a Spec does not say. It is the
@@ -118,6 +130,17 @@ func (s Spec) String() string {
 		args[i] = escapeControl(arg)
 	}
 	return s.Binary + " " + strings.Join(args, " ")
+}
+
+// NetworkCommands returns the specs that reach the network, sorted like Commands.
+func NetworkCommands() []Spec {
+	var out []Spec
+	for _, spec := range Commands() {
+		if spec.Network != "" {
+			out = append(out, spec)
+		}
+	}
+	return out
 }
 
 // escapeControl makes a whitespace-carrying argument printable without changing

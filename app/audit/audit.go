@@ -32,15 +32,24 @@ type Auditor struct {
 	// reading it twice is the single most expensive thing the tool would do.
 	packages     []pkgmgr.Package
 	packagesRead bool
+
+	// What the network paths actually did, for network.csv: requests sent to the
+	// OSV API, and the host:port of every registry --egress dialled.
+	osvRequests   int
+	egressTargets []string
 }
 
 // New prepares an audit.
 func New(cfg *config.Config, log *logging.Logger, version string) *Auditor {
+	runner := run.New(cfg.Timeout)
+	// The child programs that fetch advisory data themselves (debsecan,
+	// arch-audit) are part of the --online path, and only of it.
+	runner.AllowNetwork(cfg.Online)
 	return &Auditor{
 		cfg:     cfg,
 		log:     log,
 		version: version,
-		runner:  run.New(cfg.Timeout),
+		runner:  runner,
 	}
 }
 
@@ -106,6 +115,7 @@ func (a *Auditor) Run() *model.Report {
 	}
 
 	report.Commands = journal(a.runner)
+	report.Network = a.networkRecord(report.Commands)
 	if refused := refusedCommands(report.Commands); refused > 0 {
 		// A refusal means a collector asked for something the published allowlist
 		// does not cover: a defect in this tool. It is stated at error level and in
@@ -129,6 +139,7 @@ func journal(runner *run.Runner) []model.CommandRun {
 			Duration:  e.Duration,
 			ExitCode:  e.ExitCode,
 			Outcome:   e.Outcome,
+			Network:   e.Network,
 		})
 	}
 	return out
@@ -189,6 +200,7 @@ func (a *Auditor) vulnerabilities(result *model.SectionResult) []model.Vulnerabi
 		MinSeverity: a.cfg.MinSeverity,
 		Timeout:     a.cfg.Timeout,
 		UserAgent:   "deploy-witness/" + a.version,
+		Requests:    &a.osvRequests,
 	}, result)
 }
 

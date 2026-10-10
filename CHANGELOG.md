@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **A default run no longer reaches the network through child processes** (DW-53).
+  `debsecan` and `arch-audit` download their advisory data on every call; their
+  allowlist entries now carry `Network: "--online"` ([app/run/commands.go](app/run/commands.go)),
+  the collectors skip them without `--online` and say so in `summary.csv`
+  ([app/pkgmgr/apt.go](app/pkgmgr/apt.go), [app/pkgmgr/pacman.go](app/pkgmgr/pacman.go)),
+  and `run.Runner` refuses them on a run without that flag. Both `zypper` entries
+  gained `--no-refresh`, so an expired repository is never auto-refreshed.
+- **Network paths are enabled only by a typed flag** (DW-56). `AUDIT_ONLINE`,
+  `AUDIT_EGRESS`, `AUDIT_UPLOAD` and `AUDIT_OSV_URL` are no longer read; a run that
+  finds one set logs a warning naming it ([app/config/config.go](app/config/config.go)).
+  `AUDIT_UPLOAD_TOKEN` is still read, only together with a typed `--upload`, and is
+  now the recommended way to pass the token (it stays out of `/proc/<pid>/cmdline`).
+- **Upload: `https://` only, no redirects** (DW-57). `--upload` and `--osv-url` must be
+  `https://` (`http://` only for `localhost`, `127.0.0.0/8`, `::1`), with no
+  credentials, query or fragment — checked before the audit runs (exit `2`). Neither
+  the upload nor the OSV client follows a redirect: a `3xx` is a failure naming where
+  it pointed, and the token and report are not sent there (exit `3` for an upload)
+  ([app/netpath](app/netpath)).
+- `DOCKER_HOST`/`CONTAINER_HOST` pointing at anything but a `unix://` socket are
+  removed from the environment of every command the audit runs, with a warning, so
+  the docker/podman entries cannot be redirected to a remote engine by a variable.
+
+### Added
+
+- **`network.csv`** and a `network` row in `summary.csv`: one row per network path
+  (`osv-api`, `distro-feeds`, `registry-egress`, `upload`), enabled or not, with the
+  recipient, what is sent and how many contacts the run made — so an offline run says
+  so in the report ([app/audit/network.go](app/audit/network.go)). Also in the `audit`
+  half of `report.json` as `network`; never uploaded.
+- **Recipients are printed before anything is sent**: the network plan is logged
+  before the audit starts (`network: none …` on a default run), and the exact upload
+  endpoint, with any proxy, right before the request.
+- A `Network` column appended to `commands.csv`, and `network: yes — runs only with
+  --online` under the networked entries in `--commands`.
+- `app/netpath/static_test.go`: fails if a network API appears in any file other than
+  the three network paths.
+
+### Fixed
+
+- `--egress` evidence and the section note named port 443 for a registry with an
+  explicit port (`127.0.0.1:18444` became `127.0.0.1:18444:443`); they now name the
+  `host:port` actually dialled (DW-50).
+- The `main.go` package comment claimed the OSV API was the only network path (DW-62).
+
+### Documentation
+
+- `04-cli-reference.md`: a "Network behaviour" table per mode (who is contacted, what
+  is sent, where it is recorded), how to verify an offline run, the token-through-the-
+  environment recipe (`sudo --preserve-env`), what an upload contains (host name,
+  absolute compose path, journal arguments) and that the returned public link is
+  readable by anyone holding it (DW-62). `01`, `03`, `05`, `06`, `07`, `08`, `09` and
+  the README updated to match, in English and Russian.
+
 ## [1.2.0] - 2026-10-06
 
 ### Added

@@ -24,6 +24,8 @@ type Options struct {
 	MinSeverity model.Severity
 	Timeout     time.Duration
 	UserAgent   string
+	// Requests, when set, receives the number of HTTP requests sent to the OSV API.
+	Requests *int
 }
 
 // Collect merges the three feeds into one deduplicated, severity-sorted table.
@@ -99,6 +101,9 @@ func Collect(
 		defer cancel()
 
 		matches, notes, err := client.Query(ctx, packages, ecosystem)
+		if opts.Requests != nil {
+			*opts.Requests += client.Requests
+		}
 		for _, note := range notes {
 			result.Degrade(note)
 		}

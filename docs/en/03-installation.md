@@ -94,15 +94,22 @@ manifest, installs it to `/usr/local/bin` and runs it with the flags it was give
 the branch, tag or commit to download from, default `main`):
 
 ```bash
+read -rs AUDIT_UPLOAD_TOKEN && export AUDIT_UPLOAD_TOKEN
 curl -fsSL https://raw.githubusercontent.com/BloodHeavenDevelop/deploy-witness-cli/main/install.sh \
-  | sudo bash -s -- --upload https://<deployment> --upload-token <token>
+  | sudo --preserve-env=AUDIT_UPLOAD_TOKEN bash -s -- --upload https://<deployment>
 ```
+
+The token is passed through the environment rather than as `--upload-token`, so it
+stays out of the shell history and of the process list, which every local user can
+read; `--preserve-env` is needed because `sudo` drops the environment otherwise. See
+[04 — CLI reference](04-cli-reference.md#upload).
 
 On Windows, download the `.exe` and run it:
 
 ```powershell
 curl.exe -fsSLo deploy-witness.exe https://raw.githubusercontent.com/BloodHeavenDevelop/deploy-witness-cli/main/dist/deploy-witness-windows-amd64.exe
-.\deploy-witness.exe --upload https://<deployment> --upload-token <token>
+$env:AUDIT_UPLOAD_TOKEN = Read-Host -MaskInput "upload token"
+.\deploy-witness.exe --upload https://<deployment>
 ```
 
 **Every collector reads Linux** — `/proc`, `/etc`, the distribution's package

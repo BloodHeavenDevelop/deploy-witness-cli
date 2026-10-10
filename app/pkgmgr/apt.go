@@ -1,6 +1,7 @@
 package pkgmgr
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -108,7 +109,19 @@ var debsecanLine = regexp.MustCompile(`^(\S+)\s+(\S+)\s*(?:\(([^)]*)\))?\s*$`)
 // comes from a security archive — reported as an unrated finding rather than
 // dropped, because "we cannot grade it" and "it is not there" are different
 // answers.
+//
+// debsecan downloads the Debian security tracker data on every call, so it only
+// runs when the operator typed --online. Without it the origin signal is used, and
+// the section says that an installed debsecan was skipped rather than implying it
+// was consulted.
 func (m *aptManager) Advisories() ([]model.Vulnerability, error) {
+	if run.Available("debsecan") && !m.runner.NetworkAllowed() {
+		fallback, err := m.securityOriginFindings()
+		if err != nil {
+			return nil, err
+		}
+		return fallback, fmt.Errorf("debsecan %w", ErrFeedNeedsNetwork)
+	}
 	if run.Available("debsecan") {
 		vulns, err := m.debsecan()
 		if err == nil {

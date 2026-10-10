@@ -56,7 +56,7 @@ documented way to break the system.
 |---|---|---|
 | apt | `apt-get -s -q dist-upgrade` | Origin string contains `security` |
 | dnf / yum | `dnf -C -q check-update` | `dnf -C -q updateinfo list --security --with-cve` |
-| zypper | `zypper --non-interactive list-updates` | via `list-patches` in the vulnerability section |
+| zypper | `zypper --non-interactive --no-refresh list-updates` | via `list-patches` in the vulnerability section |
 | pacman | `pacman -Qu` | none published |
 | apk | `apk version -l '<'` | none published |
 

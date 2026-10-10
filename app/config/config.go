@@ -1,5 +1,11 @@
 // Package config turns the command line and the environment into the one struct
 // the audit reads. Flags win over environment; environment wins over defaults.
+//
+// The exception is the network. --online, --egress, --upload and --osv-url have no
+// environment fallback: a variable baked into an image, a CI runner or a login
+// profile must not be able to make an offline audit open a connection, or choose
+// where a report goes. Those paths are enabled by a flag typed on the command line
+// and nothing else; a matching AUDIT_* variable is ignored and the run says so.
 package config
 
 import (
@@ -14,6 +20,7 @@ import (
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/logging"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
+	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/netpath"
 )
 
 // Config is the resolved run configuration.
@@ -44,9 +51,14 @@ type Config struct {
 	Format string
 	// UploadURL and UploadToken send the report to a witness service. Both are
 	// required together, and neither has a default: nothing is ever uploaded
-	// unless the operator asked for it in the command line they typed.
+	// unless the operator typed --upload. The token may come from
+	// AUDIT_UPLOAD_TOKEN; the URL never comes from the environment.
 	UploadURL   string
 	UploadToken string
+	// IgnoredEnv names the network-enabling AUDIT_* variables that were set in the
+	// environment and ignored, so the run can say so instead of silently doing
+	// something other than what the operator may expect.
+	IgnoredEnv []string
 	// ShowCommands prints the allowlist and exits. It is meant to be the first
 	// thing somebody runs: the answer to "what will this do to my server?" should
 	// be available without running the audit itself.
@@ -90,10 +102,10 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		"comma-separated subset of: system,updates,vulnerabilities,ports,services,witness (default: all)")
 	fs.StringVar(&cfg.VulnDB, "vuln-db", env("AUDIT_VULN_DB", ""),
 		"path to an offline OSV dataset: a .json/.jsonl file, a .zip export, or a directory of OSV records")
-	fs.BoolVar(&cfg.Online, "online", envBool("AUDIT_ONLINE", false),
-		"additionally query the OSV API over the network (off by default: the tool is offline-only unless asked)")
-	fs.StringVar(&cfg.OSVEndpoint, "osv-url", env("AUDIT_OSV_URL", defaultOSVEndpoint),
-		"OSV API base URL, used only with --online")
+	fs.BoolVar(&cfg.Online, "online", false,
+		"additionally query the OSV API, and run debsecan/arch-audit, over the network (off by default; flag only, no AUDIT_ONLINE)")
+	fs.StringVar(&cfg.OSVEndpoint, "osv-url", defaultOSVEndpoint,
+		"OSV API base URL, used only with --online; https:// (http:// only for a loopback host)")
 	fs.StringVar(&cfg.Ecosystem, "ecosystem", env("AUDIT_ECOSYSTEM", ""),
 		`override the OSV ecosystem, e.g. "Debian:12" (needed on distributions OSV does not publish, such as Arch)`)
 	fs.StringVar(&minSeverity, "min-severity", env("AUDIT_MIN_SEVERITY", string(model.SeverityLow)),
@@ -110,14 +122,14 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		"log errors only")
 	fs.StringVar(&cfg.Compose, "compose", env("AUDIT_COMPOSE", ""),
 		"path to the docker-compose.yml the `witness` section checks this host against")
-	fs.BoolVar(&cfg.Egress, "egress", envBool("AUDIT_EGRESS", false),
-		"allow the witness section to test whether the manifest's registries are reachable (off by default)")
+	fs.BoolVar(&cfg.Egress, "egress", false,
+		"allow the witness section to test whether the manifest's registries are reachable (off by default; flag only, no AUDIT_EGRESS)")
 	fs.StringVar(&cfg.Format, "format", env("AUDIT_FORMAT", formatCSV),
 		"output format: csv (a directory of tables) or json (one document)")
-	fs.StringVar(&cfg.UploadURL, "upload", env("AUDIT_UPLOAD", ""),
-		"base URL of a witness service to send the report to (off unless given; requires --upload-token)")
-	fs.StringVar(&cfg.UploadToken, "upload-token", env("AUDIT_UPLOAD_TOKEN", ""),
-		"one-time token authorising the upload")
+	fs.StringVar(&cfg.UploadURL, "upload", "",
+		"https:// base URL of a witness service to send the report to (off unless given; flag only, no AUDIT_UPLOAD; needs a token)")
+	fs.StringVar(&cfg.UploadToken, "upload-token", "",
+		"one-time token authorising the upload; prefer AUDIT_UPLOAD_TOKEN, which keeps it out of the process list")
 	fs.BoolVar(&cfg.ShowVersion, "version", false, "print the version and exit")
 	fs.BoolVar(&cfg.ShowCommands, "commands", false,
 		"print every command this binary is able to run, and exit — the tool cannot execute anything outside that list")
@@ -126,11 +138,33 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		fmt.Fprintf(out, "deploy-witness %s — local server audit, CSV report.\n\n", version)
 		fmt.Fprintf(out, "Usage:\n  deploy-witness [flags]\n\nFlags:\n")
 		fs.PrintDefaults()
-		fmt.Fprintf(out, "\nEvery flag also reads an AUDIT_-prefixed environment variable.\n")
+		fmt.Fprintf(out, "\nEvery flag also reads an AUDIT_-prefixed environment variable, except the ones that\n"+
+			"open the network: --online, --egress, --upload and --osv-url are read from the command\n"+
+			"line only. AUDIT_UPLOAD_TOKEN is read, and only takes effect together with --upload.\n")
 	}
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
+	}
+
+	typed := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { typed[f.Name] = true })
+
+	// Network-enabling variables are ignored, and named, rather than honoured.
+	for _, name := range []string{"AUDIT_ONLINE", "AUDIT_EGRESS", "AUDIT_UPLOAD", "AUDIT_OSV_URL"} {
+		if v, ok := os.LookupEnv(name); ok && strings.TrimSpace(v) != "" {
+			cfg.IgnoredEnv = append(cfg.IgnoredEnv, name)
+		}
+	}
+
+	// The token is a secret, not a switch: reading it from the environment keeps
+	// it out of `ps` and /proc/<pid>/cmdline, and on its own it enables nothing —
+	// without --upload typed it is simply unused.
+	if !typed["upload-token"] {
+		cfg.UploadToken = ""
+		if typed["upload"] {
+			cfg.UploadToken = strings.TrimSpace(os.Getenv("AUDIT_UPLOAD_TOKEN"))
+		}
 	}
 	if cfg.ShowVersion || cfg.ShowCommands {
 		return cfg, nil
@@ -189,10 +223,25 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 	// The two upload flags are useless apart, and a partially configured upload that
 	// silently does nothing is worse than a refusal to start.
 	switch {
+	case typed["upload"] && strings.TrimSpace(cfg.UploadURL) == "":
+		return nil, fmt.Errorf("--upload needs a URL")
 	case cfg.UploadURL != "" && cfg.UploadToken == "":
-		return nil, fmt.Errorf("--upload needs --upload-token")
+		return nil, fmt.Errorf("--upload needs --upload-token or AUDIT_UPLOAD_TOKEN")
 	case cfg.UploadToken != "" && cfg.UploadURL == "":
 		return nil, fmt.Errorf("--upload-token needs --upload")
+	}
+
+	// Addresses are checked before the audit runs, so a refused address costs the
+	// operator a second, not a whole audit followed by a failed upload.
+	if cfg.UploadURL != "" {
+		if _, err := netpath.CheckEndpoint("--upload", cfg.UploadURL); err != nil {
+			return nil, err
+		}
+	}
+	if cfg.Online {
+		if _, err := netpath.CheckEndpoint("--osv-url", cfg.OSVEndpoint); err != nil {
+			return nil, err
+		}
 	}
 
 	if cfg.OutDir == "" {

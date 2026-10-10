@@ -679,6 +679,38 @@ func TestRegistryReachabilityIsHonestWhenNotChecked(t *testing.T) {
 	}
 }
 
+// DW-50: a registry with an explicit port is dialled on that port, and the
+// evidence names the port that was actually contacted rather than 443.
+func TestRegistryEvidenceNamesTheDialledPort(t *testing.T) {
+	if got := RegistryAddress("127.0.0.1:18444"); got != "127.0.0.1:18444" {
+		t.Errorf("RegistryAddress = %q, want the explicit port kept", got)
+	}
+	if got := RegistryAddress("ghcr.io"); got != "ghcr.io:443" {
+		t.Errorf("RegistryAddress = %q, want :443 by default", got)
+	}
+
+	in := baseInput()
+	in.Manifest.Services = []model.ManifestService{{
+		Name: "down", Image: model.ImageRef{Raw: "127.0.0.1:18444/team/down:1.0", Registry: "127.0.0.1:18444",
+			Repository: "team/down"},
+	}}
+	in.EgressChecked = true
+	in.RegistryResults = map[string]string{"127.0.0.1:18444": "connection refused"}
+
+	findings := registryReachability(in)
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	var commands []string
+	for _, e := range findings[0].Evidence {
+		commands = append(commands, e.Command)
+	}
+	joined := strings.Join(commands, " | ")
+	if !strings.Contains(joined, "TCP connect to 127.0.0.1:18444 (--egress)") || strings.Contains(joined, ":443") {
+		t.Errorf("evidence = %q, want the dialled port and no :443", joined)
+	}
+}
+
 func TestDatabaseVersionMismatch(t *testing.T) {
 	in := baseInput()
 	in.Caps.Databases = []model.Database{{

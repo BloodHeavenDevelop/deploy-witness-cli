@@ -51,12 +51,13 @@ process command line, a proxy directive — and this report may be uploaded.
 
 | Package | Responsibility |
 |---|---|
-| `app/config` | Flag and `AUDIT_*` environment parsing. Every input is validated here, so a bad argument fails before a single command runs. |
+| `app/config` | Flag and `AUDIT_*` environment parsing. Every input is validated here, so a bad argument fails before a single command runs. The network flags (`--online`, `--egress`, `--upload`, `--osv-url`) are read from the command line only. |
+| `app/netpath` | What the three network paths share: the `https://`-only address check (loopback excepted), the HTTP client that refuses redirects, the recipient description with its proxy. Its `static_test.go` fails if a network API appears in any file other than the three paths. |
 | `app/logging` | A stderr-only leveled logger. |
 | `app/csv` | The CSV generator, copied verbatim from `utils/csv` so the build needs no private repository. Do not edit in place — see `app/csv/doc.go`. |
 | `app/contract/auditv1` | The generated Go for `bloodheaven.audit.v1`, copied verbatim from `contracts` for the same reason. Do not edit — see `app/contract/auditv1/doc.go`. |
 | `app/model` | Record types, the severity vocabulary, the CVSS base-score calculator, `/etc/os-release` parsing, and the three witness vocabularies (manifest, capabilities, findings). Depends on nothing else in the tree. |
-| `app/run` | External command execution: shared timeout, `LC_ALL=C`, the exit-code allowlist — and the **command allowlist** (`allowlist.go`) with the list itself (`commands.go`) plus the journal of every execution. |
+| `app/run` | External command execution: shared timeout, `LC_ALL=C`, the exit-code allowlist — and the **command allowlist** (`allowlist.go`) with the list itself (`commands.go`) plus the journal of every execution. Entries that reach the network themselves (`debsecan`, `arch-audit`) are refused unless the run allowed it (`--online`), and `DOCKER_HOST`/`CONTAINER_HOST` pointing at a remote engine are removed from every child's environment. |
 | `app/redact` | The credential sweep over a finished report. |
 | `app/pkgmgr` | The `Manager` interface and its apt, dnf/yum, zypper, pacman and apk backends, plus the dpkg, rpm and generic version comparators. |
 | `app/vuln` | OSV record types and range evaluation, the offline dataset loader, the API client, and the merge that turns three feeds into one table. |
@@ -73,7 +74,7 @@ process command line, a proxy directive — and this report may be uploaded.
 | `app/collect/backup` | Backup tools, backup jobs, and the date of the newest file in each backup directory. |
 | `app/witness` | The 24 rules, the change list and the rollback plan. Pure functions of manifest + capabilities; observes nothing. |
 | `app/report` | CSV rendering through `app/csv`, the JSON document, the shared audit contract and the upload. |
-| `app/audit` | Section orchestration and the shared inventory cache. |
+| `app/audit` | Section orchestration, the shared inventory cache, and the network plan/record (`network.go`) printed before the run and written as `network.csv`. |
 
 Dependencies point one way: `audit` → collectors → `pkgmgr`/`run` → `model`.
 Nothing in `model` imports anything above it, which is why the comparators, the

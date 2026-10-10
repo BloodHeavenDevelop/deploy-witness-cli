@@ -1,8 +1,12 @@
 // Command deploy-witness audits the machine it runs on and writes a CSV report.
 //
 // It is offline by default: everything it reads comes from the kernel, /etc and
-// package metadata already on disk. The only code path that touches the network
-// is the OSV API lookup behind --online.
+// package metadata already on disk. Three network paths exist, each enabled only by
+// a flag typed on the command line: --online (the OSV API, plus debsecan or
+// arch-audit, which download their own advisory data), --egress (one TCP connect per
+// registry in --compose) and --upload (one POST of the report). Their recipients
+// are printed before the audit starts and recorded in network.csv; see
+// app/netpath and docs/<lang>/04-cli-reference.md.
 package main
 
 import (
@@ -18,6 +22,7 @@ import (
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/config"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/logging"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
+	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/netpath"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/redact"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/report"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/run"
@@ -70,6 +75,19 @@ func mainWithCode() int {
 	// consume unmodified.
 	log := logging.New(os.Stderr, cfg.LogLevel)
 
+	for _, name := range cfg.IgnoredEnv {
+		log.Warn(name + " is set in the environment and ignored: network paths are enabled only by a flag " +
+			"typed on the command line")
+	}
+	for _, name := range run.RemoteEngineEnv(os.Environ()) {
+		log.Warn(name + " points at a remote container engine and is removed from the environment of every " +
+			"command this audit runs: docker/podman are asked about this host's local engine only")
+	}
+	// Who will receive what is stated before anything is collected, let alone sent.
+	for _, line := range audit.PlanSummary(audit.NetworkPlan(cfg)) {
+		log.Info(line)
+	}
+
 	result := audit.New(cfg, log, version).Run()
 
 	// The last thing before anything is written: sweep the free-form text for
@@ -86,6 +104,10 @@ func mainWithCode() int {
 	}
 
 	if cfg.WantsUpload() {
+		if endpoint, err := report.UploadEndpoint(cfg.UploadURL); err == nil {
+			log.Infof("uploading %d bytes (the `upload` half of the report) and the one-time token to %s",
+				len(payload), netpath.Describe(endpoint))
+		}
 		url, err := report.Upload(context.Background(), cfg.UploadURL, cfg.UploadToken, payload,
 			"deploy-witness/"+version)
 		if err != nil {
@@ -94,7 +116,8 @@ func mainWithCode() int {
 			log.Error("the upload failed: ", err)
 			return exitUploadFail
 		}
-		log.Infof("uploaded %d bytes to %s", len(payload), cfg.UploadURL)
+		log.Infof("uploaded %d bytes to %s; anyone holding the report link in the answer below can read it",
+			len(payload), cfg.UploadURL)
 		if trimmed := strings.TrimSpace(url); trimmed != "" {
 			fmt.Println(trimmed)
 		}
@@ -154,6 +177,10 @@ func printCommands(w io.Writer) {
 	fmt.Fprintf(w, "Anything outside this list is refused before the binary is even looked up, and the\n")
 	fmt.Fprintf(w, "refusal is recorded in commands.csv. An argument shown as <kind> is filled in at\n")
 	fmt.Fprintf(w, "run time and constrained to a character class that admits no shell metacharacters.\n")
+	if networked := run.NetworkCommands(); len(networked) > 0 {
+		fmt.Fprintf(w, "%d of them reach the network themselves and are marked \"network\": the run refuses\n", len(networked))
+		fmt.Fprintf(w, "them unless the flag named next to them was typed. Every other command reads data on this host.\n")
+	}
 
 	section := ""
 	for _, spec := range specs {
@@ -162,6 +189,9 @@ func printCommands(w io.Writer) {
 			fmt.Fprintf(w, "\n[%s]\n", section)
 		}
 		fmt.Fprintf(w, "  %s\n      %s\n", spec, spec.Purpose)
+		if spec.Network != "" {
+			fmt.Fprintf(w, "      network: yes — runs only with %s\n", spec.Network)
+		}
 	}
 }
 

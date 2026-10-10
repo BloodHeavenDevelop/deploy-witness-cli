@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/netpath"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/pkgmgr"
 )
 
@@ -21,13 +22,19 @@ type OSVClient struct {
 	HTTP       *http.Client
 	MaxLookups int
 	UserAgent  string
+	// Requests counts the HTTP requests this client sent, successful or not. It is
+	// what network.csv reports for the osv-api path, so the claim "this run made N
+	// requests to the OSV API" is counted rather than estimated.
+	Requests int
 }
 
 // NewOSVClient builds a client with the run's timeout.
 func NewOSVClient(baseURL string, timeout time.Duration, maxLookups int, userAgent string) *OSVClient {
 	return &OSVClient{
-		BaseURL:    strings.TrimSuffix(baseURL, "/"),
-		HTTP:       &http.Client{Timeout: timeout},
+		BaseURL: strings.TrimSuffix(baseURL, "/"),
+		// Never follows a redirect: the request carries the host's package
+		// inventory, and only the address the operator chose may receive it.
+		HTTP:       netpath.NewHTTPClient(timeout),
 		MaxLookups: maxLookups,
 		UserAgent:  userAgent,
 	}
@@ -164,11 +171,16 @@ func (c *OSVClient) vuln(ctx context.Context, id string) (Entry, error) {
 }
 
 func (c *OSVClient) do(req *http.Request, out any) error {
+	c.Requests++
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if err := netpath.RedirectRefused(resp); err != nil {
+		return err
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		// Cap the excerpt: an error page is not a payload we want in a log line.

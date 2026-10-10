@@ -57,14 +57,21 @@ Every change must preserve both. They are the product.
 
 1. **Offline by default.** The tool reads the kernel, `/etc`, package metadata
    already on disk, and the compose file it was pointed at. On a default run it
-   must not refresh a repository, resolve a hostname or open a socket. There are
-   exactly three exceptions, all off by default and all requiring the flag to be
-   typed:
-   - `--online` — the OSV API, for advisory detail.
-   - `--egress` — one TCP connect to port 443 of each registry the manifest pulls
-     from. No TLS handshake, no HTTP request, no image fetched, nothing sent.
-   - `--upload` — one POST of the finished report, only with `--upload-token`
-     alongside it. No default endpoint, no retry, no telemetry.
+   must not refresh a repository, resolve a hostname or open a socket — and must
+   not run a command that does (`debsecan`/`arch-audit` carry `Network: "--online"`
+   in `commands.go`; the Runner refuses them otherwise). There are exactly three
+   exceptions, all off by default and all requiring the flag to be typed — no
+   `AUDIT_*` variable enables one or chooses its recipient:
+   - `--online` — the OSV API, for advisory detail, and the distribution feeds
+     that download their own data.
+   - `--egress` — one TCP connect to each registry the manifest pulls from (port
+     443 or the one the image names). No TLS handshake, no HTTP request, no image
+     fetched, nothing sent.
+   - `--upload` — one POST of the finished report, only with a token alongside it.
+     No default endpoint, no retry, no telemetry, `https://` only, no redirects.
+
+   Network code lives only in the files listed in `app/netpath/static_test.go`,
+   and every path has a row in `network.csv`.
 
    A new collector that needs the network does not belong here, and a fourth
    network path needs a better reason than the first three had.
@@ -82,7 +89,8 @@ applies, say so in a note.
 
 ```
 main.go                     flags → audit → CSV/JSON, upload, and the exit code
-app/config/                 flag and AUDIT_* environment parsing
+app/config/                 flag and AUDIT_* environment parsing (network flags: CLI only)
+app/netpath/                https-only check, no-redirect client, the network-file test
 app/logging/                stderr-only leveled logger
 app/csv/                    copy of utils/csv — the CSV generator (do not edit)
 app/contract/auditv1/       copy of the generated bloodheaven.audit.v1 Go (do not edit)

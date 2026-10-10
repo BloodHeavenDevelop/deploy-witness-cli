@@ -8,9 +8,12 @@ Two promises, and they are the product:
 
 **It is offline by default.** Everything it reports comes from the kernel, `/etc`,
 package metadata already on disk, or the compose file you pointed it at. Three
-flags touch the network, all off unless you type them: `--online` (the OSV
-advisory API), `--egress` (a TCP connect to each image registry, nothing sent) and
-`--upload` (one POST of the finished report). On top of that, the binary can
+flags touch the network, all off unless you type them — no environment variable
+turns them on: `--online` (the OSV advisory API, plus `debsecan`/`arch-audit`, which
+download their own advisory data), `--egress` (a TCP connect to each image
+registry, nothing sent) and `--upload` (one POST of the finished report, `https://`
+only, redirects refused). Every run logs who it will contact before it starts and
+writes `network.csv` saying what it did. On top of that, the binary can
 execute exactly one published list of commands — `deploy-witness --commands` prints
 it, and nothing outside it can run.
 
@@ -94,7 +97,7 @@ compose file is used for `${VARIABLE}` substitution only.
 Three feeds, used together and labelled per row in the `source` column:
 
 ```bash
-# 1. Distribution metadata — always on, nothing to configure.
+# 1. Distribution metadata — always on (debsecan/arch-audit only with --online).
 ./deploy-witness --sections vulnerabilities
 
 # 2. An offline OSV dataset you supply.
@@ -120,8 +123,10 @@ better.
 sudo ./deploy-witness --compose /srv/app/docker-compose.yml --format json
 
 # Send it. One request, no retries, no telemetry.
-sudo ./deploy-witness --compose /srv/app/docker-compose.yml \
-  --upload https://deploywitness.io --upload-token "$TOKEN"
+# The token from the environment stays out of the process list.
+read -rs AUDIT_UPLOAD_TOKEN && export AUDIT_UPLOAD_TOKEN
+sudo --preserve-env=AUDIT_UPLOAD_TOKEN ./deploy-witness --compose /srv/app/docker-compose.yml \
+  --upload https://deploywitness.io
 ```
 
 `--upload` takes the **base URL** of the service, not an endpoint: the tool appends

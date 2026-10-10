@@ -56,7 +56,7 @@
 |---|---|---|
 | apt | `apt-get -s -q dist-upgrade` | Строка origin содержит `security` |
 | dnf / yum | `dnf -C -q check-update` | `dnf -C -q updateinfo list --security --with-cve` |
-| zypper | `zypper --non-interactive list-updates` | через `list-patches` в разделе уязвимостей |
+| zypper | `zypper --non-interactive --no-refresh list-updates` | через `list-patches` в разделе уязвимостей |
 | pacman | `pacman -Qu` | не публикуется |
 | apk | `apk version -l '<'` | не публикуется |
 

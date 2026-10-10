@@ -38,16 +38,26 @@ Everything in this repository is built to preserve two properties.
 Every fact comes from the kernel, from `/etc`, from package metadata already
 present on the disk, or from the compose file you pointed it at. On a default run
 the tool never refreshes a package repository, never resolves a hostname and never
-opens a socket.
+opens a socket — and it does not run any of the commands that would do one of those
+for it: `debsecan` and `arch-audit`, which download their advisory data on every
+call, run only with `--online`, and `zypper` is called with `--no-refresh`.
 
 Three flags, all off by default, are the only code paths that touch the network.
-Each of them has to be typed:
+Each of them has to be **typed**: there is no `AUDIT_ONLINE`, `AUDIT_EGRESS` or
+`AUDIT_UPLOAD` — a variable left in an image, a CI runner or a login profile is
+ignored, and the run says so:
 
 | Flag | What it does | Why it is opt-in |
 |---|---|---|
-| `--online` | Queries the OSV API for advisory detail | The query discloses the host's complete package inventory to a third party. That is a reasonable trade for many operators and an unacceptable one for others, and not a decision the tool should make on their behalf. |
-| `--egress` | One TCP connect to port 443 of each registry the manifest pulls from | No TLS handshake, no HTTP request, no image fetched, nothing sent — the question is only whether this host's egress reaches the registry at all. Without it the report says reachability was *not checked* instead of implying it is fine. |
-| `--upload` | Sends the report to a witness service, once | It needs `--upload-token` alongside it, there is no default endpoint, no retry and no telemetry. What is sent is the `upload` half of the JSON document and nothing else, so it can be read before it is sent. |
+| `--online` | Queries the OSV API for advisory detail, and runs `debsecan` / `arch-audit` if installed | The query discloses the host's complete package inventory to a third party. That is a reasonable trade for many operators and an unacceptable one for others, and not a decision the tool should make on their behalf. |
+| `--egress` | One TCP connect to each registry the manifest pulls from (port 443, or the port the image names) | No TLS handshake, no HTTP request, no image fetched, nothing sent — the question is only whether this host's egress reaches the registry at all. Without it the report says reachability was *not checked* instead of implying it is fine. |
+| `--upload` | Sends the report to a witness service, once | It needs a one-time token alongside it, there is no default endpoint, no retry and no telemetry; only `https://`, and a redirect is refused rather than followed. What is sent is the `upload` half of the JSON document and nothing else, so it can be read before it is sent. |
+
+The offline claim is checkable, not only stated. Before the audit starts the tool
+logs who each enabled path will contact and what it will send — or
+`network: none` — and every report carries `network.csv`: one row per path, enabled
+or not, with its recipient and how many contacts the run made. The full per-mode
+table is in [04 — CLI reference](04-cli-reference.md#network-behaviour).
 
 Two further properties belong to the same promise:
 
@@ -71,7 +81,8 @@ in `summary.csv`:
   as absences.
 - A distribution that ships no local security metadata (Arch without
   `arch-audit`, Alpine at all) is reported as such, not as a host with no
-  vulnerabilities.
+  vulnerabilities. So is an installed `debsecan` or `arch-audit` that was not run
+  because `--online` was not given.
 - A container engine that is installed but will not answer sets
   `Runtime.Reachable = false` and degrades the section. An empty container list on
   an unreachable daemon would read as "this host runs nothing", which is the worst

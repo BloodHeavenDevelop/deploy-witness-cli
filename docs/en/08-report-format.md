@@ -2,7 +2,7 @@
 
 ## Files
 
-By default the tool writes one directory containing eleven files:
+By default the tool writes one directory containing twelve files:
 
 ```
 audit-<host>-<UTC timestamp>/
@@ -16,12 +16,13 @@ audit-<host>-<UTC timestamp>/
 ├── evidence.csv          what each finding rests on
 ├── changes.csv           what deploying will actually do
 ├── rollback.csv          and how to undo it
-└── commands.csv          every command this run executed, or tried to
+├── commands.csv          every command this run executed, or tried to
+└── network.csv           every network path, used or not, and who it contacted
 ```
 
 The last five are new in 0.2.0. Four of them belong to the `witness` section;
 `commands.csv` belongs to the run itself and is written on every run, whatever
-`--sections` said.
+`--sections` said. So does `network.csv`, added in the release after 1.2.0.
 
 **A section that produced no rows still gets a file containing its header row.**
 An absent file is indistinguishable from a section that was never run, and the
@@ -31,7 +32,7 @@ audit ran no commands at all" should be a visible claim, not a missing file.
 
 With `--stdout` the same tables are written to one stream, each preceded by a
 `# <name>` line and separated by a blank line. Spreadsheets and `csvkit` both
-read this; a single flat table cannot hold eleven different column sets.
+read this; a single flat table cannot hold twelve different column sets.
 
 With `--format json` one `report.json` is written *instead of* the CSV files. See
 [report.json](#reportjson) below.
@@ -55,11 +56,15 @@ new columns are added at the end and existing ones never move.
 
 ## summary.csv
 
-The index. One row per section, preceded by a `report` row identifying the run.
+The index. One row per section, preceded by a `report` row identifying the run
+and a `network` row saying whether the run used the network: `offline: --online,
+--egress and --upload were not given; no network path was used (network.csv)`, or
+one entry per enabled path with its contact count (`--online osv-api: 3 contact(s)`)
+or, for an upload, its recipient.
 
 | Column | Contents |
 |---|---|
-| `Section` | `report`, or the section name |
+| `Section` | `report`, `network`, or the section name |
 | `Status` | `ok`, `partial`, `skipped` or `failed` |
 | `Records` | Rows the section produced |
 | `Critical` | Critical findings (vulnerabilities only) |
@@ -284,6 +289,7 @@ every run.
 | `Duration` | Rounded to the millisecond, e.g. `36ms`, `1.204s` |
 | `Exit code` | The process exit code, or `-1` when nothing was launched |
 | `Outcome` | `ok`, `failed`, `timeout`, `missing` or `refused` |
+| `Network` | The flag that permitted a command reaching the network itself (`--online` for `debsecan` and `arch-audit`), empty for every command that works from data on this host. Appended after 1.2.0 |
 
 | Outcome | Meaning |
 |---|---|
@@ -291,7 +297,7 @@ every run.
 | `failed` | The command ran and failed |
 | `timeout` | It exceeded `--timeout` and was killed |
 | `missing` | The binary is not installed on this host. Normal, and not a failure — it is how the tool reports "this host does not use that tool" |
-| `refused` | The command is **not on the published allowlist** and was never launched |
+| `refused` | The command is **not on the published allowlist** — or it reaches the network and the run was not given the flag for it — and was never launched |
 
 **A `refused` row is a defect in `deploy-witness`, never a property of the host.**
 It means a collector asked for something the published list does not cover. It is
@@ -300,6 +306,26 @@ in the file: it is also logged at error level, and it does not change the exit
 code. Compare this file against `deploy-witness --commands` — the two agreeing is
 what turns "it only reads" from a claim into something you can check. See
 [09 — Command allowlist and journal](09-command-allowlist.md).
+
+## network.csv
+
+One row per network path, **whether it was enabled or not**, so that "this run was
+offline" is a line in a file rather than the absence of one. It is not a section and
+it is written on every run. The paths and what each sends are described in
+[04 — CLI reference](04-cli-reference.md#network-behaviour).
+
+| Column | Contents |
+|---|---|
+| `Path` | `osv-api`, `distro-feeds`, `registry-egress` or `upload` |
+| `Flag` | The flag that enables it: `--online`, `--online`, `--egress`, `--upload` |
+| `Enabled` | `true` when that flag was typed on this run |
+| `Recipient` | Who receives the traffic: the OSV URL, the distribution trackers, the registries actually dialled as `host:port`, or the upload endpoint — with `(via proxy host:port)` when the environment routes it through one. Empty when the path was not enabled |
+| `Sends` | What goes over the connection |
+| `Contacts` | Requests, connects or tool runs this run actually made on the path. Always `0` for `upload`, which happens after the report is written — its outcome is on stdout and in the exit code |
+| `Note` | Why a path was unused, an ignored `AUDIT_*` variable, the tools that ran |
+
+On a default run all four rows have `Enabled=false` and `Contacts=0`. `network.csv`
+is local only: it is in the `audit` half of `report.json`, never in `upload`.
 
 ## report.json
 
@@ -318,7 +344,7 @@ the naming is the point:
 |---|---|---|
 | `schemaVersion` | The contract version of the `upload` half. A receiver checks it first, so an agent built months ago is told its report is not understood rather than having it half-read | — |
 | `upload` | The shared `bloodheaven.audit.v1` contract, rendered as protojson: `findings` with their evidence, `collectors` (the section outcomes), `changes`, `rollback`, `command_journal`, plus `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` and `producer` | **Yes** — these are the exact bytes `--upload` sends |
-| `audit` | Everything that stays local: the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities, and the same findings in this tool's own shape | No |
+| `audit` | Everything that stays local: the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities, the network record (`network`, as in `network.csv`), and the same findings in this tool's own shape | No |
 
 A client can read the file, see which half would leave their machine, and diff it
 against what actually arrives. That is a good deal more convincing than a promise
@@ -339,7 +365,12 @@ Details worth knowing:
 - **`stale_after` is `generated_at` + 7 days.** Server state drifts; a week later
   the picture may not hold, and the reader is told so rather than left to guess.
 - **`command_journal` carries the whole journal**, refusals included, as
-  `command — outcome (duration)` lines.
+  `command — outcome (duration)` lines. That means the arguments travel too: the
+  image names given to `docker image inspect`, docker network names, the systemd
+  unit names, the user named in `crontab -l -u`.
+- **`server_hostname` is the host name, and evidence quotes paths verbatim**,
+  including the absolute path of the `--compose` file. Section notes
+  (`collectors[].note`) are sent as written.
 - **The enums go out as names** (`SEVERITY_BLOCKER`, `CATEGORY_CONFLICT`,
   `COLLECTOR_STATUS_PARTIAL`), which is what the receiving service parses.
   `partial` maps to `PARTIAL` and not to `OK`: it first went out as `OK`, and the

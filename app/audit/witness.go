@@ -125,7 +125,7 @@ const registryProbeTimeout = 5 * time.Second
 // checkRegistries tests whether the registries the manifest pulls from can be
 // reached. It runs only behind --egress.
 //
-// A TCP connect to port 443 and nothing more: no TLS handshake, no HTTP request, no
+// A TCP connect to port 443 (or the port the image reference names) and nothing more: no TLS handshake, no HTTP request, no
 // authentication, no image manifest fetched. The question is whether this host's
 // egress reaches the registry at all, and a connect answers it without sending
 // anybody a single byte about what is being deployed here.
@@ -144,12 +144,10 @@ func (a *Auditor) checkRegistries(parsed *model.Manifest, result *model.SectionR
 			continue
 		}
 
-		address := registry
-		if _, _, err := net.SplitHostPort(registry); err != nil {
-			address = net.JoinHostPort(registry, "443")
-		}
+		address := witness.RegistryAddress(registry)
 
 		a.log.Info("--egress: testing reachability of ", address)
+		a.egressTargets = append(a.egressTargets, address)
 		conn, err := net.DialTimeout("tcp", address, registryProbeTimeout)
 		if err != nil {
 			out[registry] = err.Error()
@@ -161,7 +159,8 @@ func (a *Auditor) checkRegistries(parsed *model.Manifest, result *model.SectionR
 
 	if len(out) > 0 {
 		result.Note(fmt.Sprintf("--egress was given, so %d registry host(s) were contacted with a TCP connect "+
-			"on port 443; nothing was sent and no image was fetched", len(out)))
+			"(port 443 unless the image names another): %s; nothing was sent and no image was fetched",
+			len(out), strings.Join(a.egressTargets, ", ")))
 	}
 	return out
 }

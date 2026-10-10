@@ -6,8 +6,12 @@
 # verifies it against dist/checksums.txt, installs it to /usr/local/bin and runs it
 # with every flag it was given:
 #
+#   read -rs AUDIT_UPLOAD_TOKEN && export AUDIT_UPLOAD_TOKEN
 #   curl -fsSL https://raw.githubusercontent.com/BloodHeavenDevelop/deploy-witness-cli/main/install.sh \
-#     | sudo bash -s -- --upload https://<deployment> --upload-token <token>
+#     | sudo --preserve-env=AUDIT_UPLOAD_TOKEN bash -s -- --upload https://<deployment>
+#
+# The token travels in the environment rather than as --upload-token, so it stays
+# out of the shell history and the process list; the binary inherits it from here.
 #
 # With no flags it installs and stops. --no-run does the same with flags present.
 # DEPLOY_WITNESS_REF picks the branch, tag or commit to download from (default main).

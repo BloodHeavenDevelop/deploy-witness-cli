@@ -2,6 +2,7 @@ package witness
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -285,7 +286,7 @@ func registryReachability(in Input) []model.Finding {
 				"can reach.", registry),
 			Evidence: []model.Evidence{
 				manifestEvidence(in, "", "images from "+registry+": "+strings.Join(registries[registry], ", ")),
-				evidence(in, "TCP connect to "+registry+":443 (--egress)", failure),
+				evidence(in, "TCP connect to "+RegistryAddress(registry)+" (--egress)", failure),
 			},
 		})
 	}
@@ -434,4 +435,14 @@ func majorVersion(value string) string {
 		return ""
 	}
 	return digits
+}
+
+// RegistryAddress is the host:port --egress dials for a registry: the port the
+// image reference names, or 443. The rule's evidence and the probe both use it, so
+// the report names the port that was actually contacted.
+func RegistryAddress(registry string) string {
+	if _, _, err := net.SplitHostPort(registry); err == nil {
+		return registry
+	}
+	return net.JoinHostPort(registry, "443")
 }

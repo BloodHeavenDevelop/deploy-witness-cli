@@ -67,14 +67,39 @@ by an entry; `path` and `name` are defined and unused.
 
 ### The arguments that make a read a read
 
-Three entries would be dangerous without the exact flags they are pinned to, and
+Four entries would be dangerous without the exact flags they are pinned to, and
 those flags are part of the match:
 
 | Entry | Why the flag matters |
 |---|---|
 | `apt-get -s -q … dist-upgrade` | `-s` is simulate: apt computes the upgrade and installs nothing. `dist-upgrade` is only ever permitted *with* `-s`, so the same binary cannot be asked to do the real thing |
 | `dnf -C …` / `yum -C …` | `-C` means cached metadata only. It cannot refresh a repository, which is both a network operation and, on some hosts, a slow one |
+| `zypper --no-refresh …` | The same guard for SUSE: without it `zypper list-updates` auto-refreshes any repository whose metadata has expired, which goes to the network on a run that promised not to |
 | `pacman -Q`, `-Qu`, `-Sl` | Query and list operations only. There is no `-S` or `-Sy` entry: on Arch a partial sync is the documented way to break the system |
+
+### The entries that reach the network
+
+Two tools on the list fetch data over the network themselves, on every call, and
+have no offline mode: `debsecan` downloads the Debian security tracker data
+(`security-tracker.debian.org`), `arch-audit` downloads the Arch advisories
+(`security.archlinux.org`). Their entries carry a `Network` field naming the flag
+that permits them — `--online` — and:
+
+- `--commands` prints `network: yes — runs only with --online` under each;
+- `run.Runner` refuses them on a run without `--online`, before looking the binary
+  up, with a `refused` row in the journal — so the offline default holds for child
+  processes even if a collector forgot to check;
+- the collectors do check first: without `--online` an installed `debsecan` or
+  `arch-audit` is not called, and the vulnerabilities section says so in
+  `summary.csv` (Debian then falls back to the security-archive origin of pending
+  updates);
+- with `--online`, each run of them is counted in `network.csv` and its
+  `commands.csv` row has `Network=--online`.
+
+Every other entry works from data on this host. The docker and podman entries talk
+to the local engine over its unix socket; a `DOCKER_HOST`/`CONTAINER_HOST` pointing
+at a remote engine is removed from their environment (see
+[04 — CLI reference](04-cli-reference.md#network-behaviour)).
 
 Nothing on the list starts, stops, enables, disables, pulls or removes anything.
 The container entries are `ps`, `ls`, `info`, `version` and `inspect` of an
@@ -147,15 +172,17 @@ line above it is the one being described.
   lsb_release -cs                   the release codename, to pick the right advisory suite
   dnf -C -q check-update | yum -C -q check-update
   rpm -qa --qf …                    the installed package inventory
-  zypper --non-interactive --quiet list-updates
+  zypper --non-interactive --no-refresh --quiet list-updates
   pacman -Q | -Qu | -Sl             inventory, pending updates, and the repository of each package
   apk info -v | apk version -l < | apk --print-arch
 
 [vulnerabilities]                   8 entries
   arch-audit --json                 Arch advisories affecting installed packages
+                                    network: yes — runs only with --online
   debsecan --format summary [--suite <suite>]
+                                    network: yes — runs only with --online
   dnf -C -q updateinfo list --security [--with-cve]     (and the yum equivalents)
-  zypper --non-interactive --quiet list-patches --category security --cve
+  zypper --non-interactive --no-refresh --quiet list-patches --category security --cve
 ```
 
 The grouping above collapses the near-identical Podman and yum entries for
@@ -215,5 +242,6 @@ that no journal can show, because they never involve a subprocess:
   came from a file rather than a command.
 - The one outbound connection behind `--egress` (a TCP connect, no data sent) and
   the OSV API behind `--online`. Neither is a subprocess, so neither appears in
-  `commands.csv`; both are off by default, and `--egress` also leaves a note in
-  `summary.csv` saying how many registry hosts were contacted.
+  `commands.csv`; both are off by default, and both are counted in `network.csv`,
+  with the recipients. `--egress` also leaves a note in `summary.csv` naming the
+  `host:port` of every registry contacted.

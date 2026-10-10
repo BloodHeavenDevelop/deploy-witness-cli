@@ -142,6 +142,36 @@ type CommandRun struct {
 	// defect in this tool, never a property of the host, and it is printed rather
 	// than hidden precisely because it would be the most important line here.
 	Outcome string `json:"outcome"`
+	// Network is the flag that permitted this command to reach the network
+	// (debsecan and arch-audit need --online), or "" for a command that works from
+	// local data only.
+	Network string `json:"network"`
+}
+
+// NetworkUse is one of the tool's network paths and what this run did with it.
+//
+// The report carries one row per path, enabled or not, so "this run opened no
+// connections" is a line a reader can point at rather than an absence they have to
+// trust. It lives only in the local report (network.csv, report.json → audit).
+type NetworkUse struct {
+	// Path is osv-api, distro-feeds, registry-egress or upload.
+	Path string `json:"path"`
+	// Flag is the command-line flag that enables the path.
+	Flag string `json:"flag"`
+	// Enabled is whether the flag was given on this run.
+	Enabled bool `json:"enabled"`
+	// Recipient is who receives the traffic: a URL, a list of hosts, or a
+	// description when the host is decided by a child program.
+	Recipient string `json:"recipient"`
+	// Sends is what goes over the connection.
+	Sends string `json:"sends"`
+	// Contacts counts the requests, connection attempts or command runs this run
+	// actually made on the path. For upload it is always 0: the upload happens
+	// after the report is written, and its outcome is on stdout and in the exit
+	// code.
+	Contacts int `json:"contacts"`
+	// Note qualifies the row: a proxy in the way, why a path stayed unused.
+	Note string `json:"note"`
 }
 
 // SectionResult is the audit trail for one section: what ran, whether it
@@ -189,6 +219,8 @@ type Report struct {
 	Services        []Service       `json:"services"`
 	Sections        []SectionResult `json:"sections"`
 	Commands        []CommandRun    `json:"commands"`
+	// Network is the record of every network path, used or not. See NetworkUse.
+	Network []NetworkUse `json:"network"`
 
 	// The witness section's output. Manifest and Capabilities are the two sides
 	// it compared; keeping them in the report is what lets a reader check a finding

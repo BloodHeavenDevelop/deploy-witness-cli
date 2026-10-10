@@ -26,6 +26,10 @@ var ErrNotFound = errors.New("command not found")
 type Runner struct {
 	Timeout time.Duration
 
+	// network permits the commands the allowlist marks as reaching the network.
+	// Off unless the run was given --online; see AllowNetwork.
+	network bool
+
 	mu      sync.Mutex
 	journal []JournalEntry
 }
@@ -48,6 +52,9 @@ type JournalEntry struct {
 	ExitCode int `json:"exitCode"`
 	// Outcome is "ok", "failed", "timeout", "missing" or "refused".
 	Outcome string `json:"outcome"`
+	// Network is the flag that permitted a command reaching the network, or ""
+	// for a command that works from local data only.
+	Network string `json:"network,omitempty"`
 }
 
 // Journal outcomes.
@@ -66,6 +73,13 @@ func New(timeout time.Duration) *Runner {
 	}
 	return &Runner{Timeout: timeout}
 }
+
+// AllowNetwork permits the commands the allowlist marks as reaching the network.
+// Only the audit sets it, and only from a flag typed on the command line.
+func (r *Runner) AllowNetwork(allowed bool) { r.network = allowed }
+
+// NetworkAllowed reports whether network-reaching commands may run.
+func (r *Runner) NetworkAllowed() bool { return r.network }
 
 // Journal returns every command this Runner executed, in order.
 func (r *Runner) Journal() []JournalEntry {
@@ -127,9 +141,15 @@ func (r *Runner) OutputAllowExit(allowed []int, name string, args ...string) (st
 	// The allowlist is checked before the binary is even looked up: whether the
 	// command exists on this host is none of our business until we have
 	// established that we are permitted to run it.
-	if _, ok := Allowed(name, args); !ok {
+	spec, ok := Allowed(name, args)
+	if !ok {
 		finish(OutcomeRefused, -1)
 		return "", -1, notAllowedError(name, args)
+	}
+	entry.Network = spec.Network
+	if spec.Network != "" && !r.network {
+		finish(OutcomeRefused, -1)
+		return "", -1, fmt.Errorf("%s needs %s: %w", name, spec.Network, ErrNetworkNotAllowed)
 	}
 
 	if !Available(name) {
@@ -144,7 +164,7 @@ func (r *Runner) OutputAllowExit(allowed []int, name string, args ...string) (st
 	// Deterministic, parseable output regardless of the operator's locale: a
 	// Russian or German LC_MESSAGES rewrites every table header these parsers
 	// depend on.
-	cmd.Env = append(cmd.Environ(), "LC_ALL=C", "LANG=C", "LANGUAGE=C")
+	cmd.Env = append(childEnv(cmd.Environ()), "LC_ALL=C", "LANG=C", "LANGUAGE=C")
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -176,6 +196,48 @@ func (r *Runner) OutputAllowExit(allowed []int, name string, args ...string) (st
 	}
 	finish(OutcomeOK, code)
 	return stdout.String(), code, nil
+}
+
+// engineHostVars point the docker and podman CLIs at an engine. Set to tcp:// or
+// ssh://, they would turn every docker command on the allowlist into a network
+// connection to another machine — enabled by an environment variable rather than a
+// typed flag, and auditing a host other than this one.
+var engineHostVars = []string{"DOCKER_HOST", "CONTAINER_HOST"}
+
+// RemoteEngineEnv names the engine variables in environ that point anywhere but a
+// local unix socket. The Runner drops exactly these from every child's environment.
+func RemoteEngineEnv(environ []string) []string {
+	var out []string
+	for _, kv := range environ {
+		name, value, _ := strings.Cut(kv, "=")
+		for _, v := range engineHostVars {
+			if name == v && strings.TrimSpace(value) != "" && !strings.HasPrefix(strings.TrimSpace(value), "unix://") {
+				out = append(out, name)
+			}
+		}
+	}
+	return out
+}
+
+// childEnv is the environment a command runs with: the tool's own, minus any
+// engine variable that points at a remote engine. A local unix socket (rootless
+// docker, podman's user socket) is kept.
+func childEnv(environ []string) []string {
+	drop := map[string]bool{}
+	for _, name := range RemoteEngineEnv(environ) {
+		drop[name] = true
+	}
+	if len(drop) == 0 {
+		return environ
+	}
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		name, _, _ := strings.Cut(kv, "=")
+		if !drop[name] {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 // Lines splits command output into trimmed, non-empty lines.
