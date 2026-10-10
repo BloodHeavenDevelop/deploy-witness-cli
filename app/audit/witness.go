@@ -11,7 +11,6 @@ import (
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/certs"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/docker"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/host"
-	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/manifest"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/panels"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/proxy"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/scheduler"
@@ -26,18 +25,16 @@ import (
 // already in the report, and gathering them a second time would be both slower and
 // capable of disagreeing with itself.
 func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResult) {
-	if a.cfg.Compose == "" {
-		result.Status = model.StatusSkipped
-		result.Note("no --compose was given, so there was no deployment to compare this host against; " +
-			"everything else in this report still applies")
+	// config guarantees the section runs only in a Compose preflight, and Prepare
+	// has parsed the file by now. The check stays as a guard: should either ever
+	// stop holding, the section fails rather than comparing nothing.
+	parsed := a.manifest
+	if a.cfg.Mode != model.ModeComposePreflight || parsed == nil {
+		result.Fail("the Compose file was not parsed, so no comparison was made; this is not a preflight result")
 		return
 	}
-
-	parsed, err := manifest.Parse(a.cfg.Compose, result)
-	if err != nil {
-		result.Fail(fmt.Sprintf("could not read %s: %v", a.cfg.Compose, err))
-		return
-	}
+	result.Status = a.parseNotes.Status
+	result.Notes = append(result.Notes, a.parseNotes.Notes...)
 	report.Manifest = parsed
 
 	caps := &model.Capabilities{
@@ -86,6 +83,22 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 	report.Rollback = rollback
 	for _, note := range notes {
 		result.Degrade(note)
+	}
+}
+
+// HostAuditNote is the note a host audit's witness row carries. It starts with the
+// mode identifier so a consumer that sees only the collector note — the upload —
+// can still tell a host audit from a preflight that was skipped for another reason.
+const HostAuditNote = string(model.ModeHostAudit) + ": no --compose was given, so this run is a host audit — " +
+	"no planned deployment was compared with this host, and this report is not a Compose preflight result"
+
+// HostAuditWitness is the witness row of a host audit: skipped, and saying why.
+func HostAuditWitness() model.SectionResult {
+	return model.SectionResult{
+		Section:  model.SectionWitness,
+		Status:   model.StatusSkipped,
+		Duration: "0s",
+		Notes:    []string{HostAuditNote},
 	}
 }
 

@@ -9,6 +9,13 @@ what a report from six months ago is compared against, so they do not change wit
 the wording of a title. Everything else in a finding — the title, the description,
 the thresholds — may be reworded to read better; the code will not.
 
+**The section runs only in a Compose preflight** — a run given `--compose`. A run
+without it is a host audit: the section is not run, its row is `skipped` with a note
+opening `host-audit:`, and nothing in that report is a preflight result. A Compose
+file that cannot be read or parsed stops the run with exit `2` before any section,
+rather than producing an empty finding list. See
+[04 — Modes](04-cli-reference.md#modes).
+
 ## How a finding is built
 
 Every rule is a pure function of two inputs: the parsed manifest (what is asked

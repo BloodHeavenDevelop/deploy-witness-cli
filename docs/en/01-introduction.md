@@ -22,12 +22,30 @@ Six sections, each written to its own CSV file:
   since when.
 - **witness** — what a `docker-compose.yml` asks for, what this host actually
   offers, and every place the two disagree. It is the only section that needs an
-  input: without `--compose` it reports itself as `skipped` rather than empty.
+  input, and it runs only in a Compose preflight (below).
   See [10 — Witness rules](10-witness-rules.md).
 
 The first five sections describe the machine. The sixth answers a different
 question — "will this deployment work here, and what will it change?" — and it is
 why the tool grew a manifest parser, a change list and a rollback plan.
+
+## Two modes
+
+Every run is one of two kinds, and the report says which:
+
+- **Host audit** (`host-audit`) — no `--compose`. The first five sections, the host
+  on its own. The witness section is not run; its row says `skipped` with a note
+  opening `host-audit:`, and the `preflight` row of `summary.csv` says no planned
+  deployment was compared. A host audit is never a preflight result, however clean
+  it looks.
+- **Compose preflight** (`compose-preflight`) — `--compose <docker-compose.yml>`.
+  Everything above plus the witness section. It cannot start without its input: a
+  Compose file that is missing, unreadable or does not parse stops the run with exit
+  code `2` and no report, rather than producing a report with nothing compared in
+  it.
+
+`--mode` asserts one of the two explicitly; see
+[04 — CLI reference](04-cli-reference.md#modes).
 
 ## The two promises
 

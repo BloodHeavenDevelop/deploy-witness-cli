@@ -7,7 +7,8 @@ main.go
   └─ config.Load(argv, env)          flags → Config, or an error before anything runs
   └─ --commands? print run.Commands() and exit         (the enforced allowlist itself)
   └─ logging.New(stderr, level)      diagnostics never touch stdout
-  └─ audit.New(cfg, log).Run()
+  └─ audit.New(cfg, log).Prepare()   Compose preflight only: parse --compose, or exit 2, no report
+  └─ auditor.Run()
        ├─ model.ReadOSRelease()      /etc/os-release → distribution identity
        ├─ pkgmgr.Detect(os, runner)  which package manager this host actually has
        └─ for each selected section:
@@ -17,11 +18,12 @@ main.go
             ├─ ports.Collect()       → []model.Port
             ├─ services.Collect()    → []model.Service
             └─ witnessSection()    → manifest + capabilities → findings
-                 ├─ manifest.Parse(--compose)         the requirements side
+                 ├─ the manifest Prepare parsed      the requirements side
                  ├─ host/docker/proxy/panels/          the capabilities side,
                  │  scheduler/certs/backup + databases in dependency order
                  └─ witness.Evaluate()              24 rules, findings + changes + rollback
             each producing a model.SectionResult: status, counts, duration, notes
+       └─ host audit: a skipped `witness` row labelled host-audit (never a silent gap)
        └─ report.Commands = runner.Journal()   every command, including refusals
   └─ redact.Report(result)           the last thing before anything is written
   └─ report.WriteDir() | WriteCombined() | WriteJSONFile() | WriteJSON()

@@ -38,9 +38,12 @@ type Config struct {
 	MaxOSVQuery int
 	LogLevel    logging.Level
 	ShowVersion bool
+	// Mode is host-audit or compose-preflight, resolved from --mode and --compose.
+	// A Compose preflight always has a Compose file and always runs the witness
+	// section; a host audit has neither. See resolveMode.
+	Mode model.Mode
 	// Compose is the deployment manifest the witness section compares the host
-	// against. Without it that section has no requirements side and reports itself
-	// as skipped rather than running empty.
+	// against. It is set exactly when Mode is compose-preflight.
 	Compose string
 	// Egress permits the one outbound check in the witness section: whether the
 	// registries the manifest pulls from are reachable. Off by default, like every
@@ -91,7 +94,7 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 	fs.SetOutput(out)
 
 	cfg := &Config{}
-	var sections, minSeverity, timeout string
+	var sections, minSeverity, timeout, mode string
 	var verbose, quiet bool
 
 	fs.StringVar(&cfg.OutDir, "out", env("AUDIT_OUT", ""),
@@ -121,7 +124,9 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 	fs.BoolVar(&quiet, "quiet", envBool("AUDIT_QUIET", false),
 		"log errors only")
 	fs.StringVar(&cfg.Compose, "compose", env("AUDIT_COMPOSE", ""),
-		"path to the docker-compose.yml the `witness` section checks this host against")
+		"path to the docker-compose.yml to check this host against; makes the run a Compose preflight")
+	fs.StringVar(&mode, "mode", env("AUDIT_MODE", ""),
+		"host-audit (the host on its own) or compose-preflight (needs --compose); default: compose-preflight when --compose is given, host-audit otherwise")
 	fs.BoolVar(&cfg.Egress, "egress", false,
 		"allow the witness section to test whether the manifest's registries are reachable (off by default; flag only, no AUDIT_EGRESS)")
 	fs.StringVar(&cfg.Format, "format", env("AUDIT_FORMAT", formatCSV),
@@ -194,6 +199,14 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		return nil, err
 	}
 
+	cfg.Mode, err = resolveMode(mode, cfg.Compose, strings.TrimSpace(sections) != "", cfg.Sections)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Mode == model.ModeHostAudit {
+		cfg.Sections = withoutSection(cfg.Sections, model.SectionWitness)
+	}
+
 	cfg.MinSeverity = model.ParseSeverity(minSeverity)
 	if cfg.MinSeverity == model.SeverityUnknown {
 		return nil, fmt.Errorf("invalid --min-severity %q: expected low, medium, high or critical", minSeverity)
@@ -211,8 +224,8 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 	}
 
 	if cfg.Compose != "" {
-		if _, err := os.Stat(cfg.Compose); err != nil {
-			return nil, fmt.Errorf("--compose %q: %w", cfg.Compose, err)
+		if err := checkComposeFile(cfg.Compose); err != nil {
+			return nil, err
 		}
 		cfg.Compose, err = filepath.Abs(cfg.Compose)
 		if err != nil {
@@ -269,6 +282,83 @@ func (c *Config) Wants(section model.Section) bool {
 		}
 	}
 	return false
+}
+
+// resolveMode decides between a host audit and a Compose preflight, and refuses
+// every combination that would let one pass for the other.
+//
+// Without --mode the presence of --compose decides. With it, the two must agree:
+// --mode compose-preflight is how a scheduled job asserts that it is a preflight,
+// so a Compose file that went missing from its environment stops the run instead
+// of quietly turning it into a host audit. A typed `witness` in --sections without
+// a Compose file is refused for the same reason: the section is the comparison,
+// and there is nothing to compare.
+func resolveMode(raw, compose string, sectionsTyped bool, sections []model.Section) (model.Mode, error) {
+	var mode model.Mode
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		mode = model.ModeHostAudit
+		if compose != "" {
+			mode = model.ModeComposePreflight
+		}
+	case string(model.ModeHostAudit), "host":
+		mode = model.ModeHostAudit
+	case string(model.ModeComposePreflight), "preflight":
+		mode = model.ModeComposePreflight
+	default:
+		return "", fmt.Errorf("invalid --mode %q: expected host-audit or compose-preflight", raw)
+	}
+
+	witness := false
+	for _, s := range sections {
+		if s == model.SectionWitness {
+			witness = true
+		}
+	}
+
+	switch {
+	case mode == model.ModeComposePreflight && compose == "":
+		return "", fmt.Errorf("--mode compose-preflight needs --compose <docker-compose.yml>: " +
+			"a preflight compares a planned deployment with this host, and without the file there is none")
+	case mode == model.ModeHostAudit && compose != "":
+		return "", fmt.Errorf("--mode host-audit does not read a Compose file, but --compose (or AUDIT_COMPOSE) " +
+			"names one; drop it, or use --mode compose-preflight")
+	case mode == model.ModeHostAudit && sectionsTyped && witness:
+		return "", fmt.Errorf("the witness section is the Compose preflight and needs --compose <docker-compose.yml>; " +
+			"without one, leave witness out of --sections to run a host audit")
+	case mode == model.ModeComposePreflight && sectionsTyped && !witness:
+		return "", fmt.Errorf("--compose makes this run a Compose preflight, which is the witness section, " +
+			"but --sections leaves witness out; add it, or drop --compose to run a host audit")
+	}
+	return mode, nil
+}
+
+// checkComposeFile refuses, before anything is collected, a --compose path that
+// cannot be the input of a preflight: missing, a directory, or unreadable. Whether
+// its content parses is checked by the audit before the first section runs.
+func checkComposeFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("--compose %q: the Compose preflight needs a readable Compose file: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("--compose %q: the Compose preflight needs a Compose file, and this is not a regular file", path)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("--compose %q: the Compose preflight needs a readable Compose file: %w", path, err)
+	}
+	return file.Close()
+}
+
+func withoutSection(sections []model.Section, drop model.Section) []model.Section {
+	out := make([]model.Section, 0, len(sections))
+	for _, s := range sections {
+		if s != drop {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func parseSections(raw string) ([]model.Section, error) {

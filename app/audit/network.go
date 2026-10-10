@@ -69,8 +69,9 @@ func NetworkPlan(cfg *config.Config) []model.NetworkUse {
 
 	if cfg.Egress {
 		egress.Recipient = "the registries named by the images in --compose"
-		if cfg.Compose == "" || !cfg.Wants(model.SectionWitness) {
-			egress.Note = "enabled, but no registry is contacted without --compose and the witness section"
+		if cfg.Mode != model.ModeComposePreflight {
+			egress.Note = "enabled, but no registry is contacted: --egress tests the registries of a Compose " +
+				"preflight, and this run is a host audit (no --compose)"
 		}
 	} else {
 		egress.Note = off(netpath.FlagEgress, "AUDIT_EGRESS")

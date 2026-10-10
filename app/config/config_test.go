@@ -2,6 +2,8 @@ package config
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,8 +21,12 @@ func TestDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(cfg.Sections) != len(model.AllSections) {
-		t.Errorf("sections = %v, want all", cfg.Sections)
+	// Without --compose the run is a host audit: every section but witness.
+	if cfg.Mode != model.ModeHostAudit {
+		t.Errorf("mode = %q, want host-audit", cfg.Mode)
+	}
+	if len(cfg.Sections) != len(model.AllSections)-1 || cfg.Wants(model.SectionWitness) {
+		t.Errorf("sections = %v, want all but witness", cfg.Sections)
 	}
 	if cfg.Online {
 		t.Error("the tool must be offline unless --online is passed")
@@ -170,5 +176,97 @@ func TestUploadAddressRules(t *testing.T) {
 		if (err == nil) != tc.ok {
 			t.Errorf("%v: error = %v, want ok=%v", tc.args, err, tc.ok)
 		}
+	}
+}
+
+func writeCompose(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "docker-compose.yml")
+	if err := os.WriteFile(path, []byte("services:\n  app:\n    image: nginx:1.27\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// DW-70: --compose makes the run a Compose preflight, which always includes the
+// witness section and always has its file.
+func TestComposeMakesAPreflight(t *testing.T) {
+	compose := writeCompose(t)
+
+	cfg, err := load(t, "--compose", compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Mode != model.ModeComposePreflight || !cfg.Wants(model.SectionWitness) {
+		t.Errorf("mode = %q, sections = %v; want compose-preflight with witness", cfg.Mode, cfg.Sections)
+	}
+
+	for _, args := range [][]string{
+		{"--mode", "compose-preflight", "--compose", compose},
+		{"--mode", "preflight", "--compose", compose, "--sections", "ports,witness"},
+	} {
+		cfg, err := load(t, args...)
+		if err != nil {
+			t.Errorf("%v: %v", args, err)
+			continue
+		}
+		if cfg.Mode != model.ModeComposePreflight {
+			t.Errorf("%v: mode = %q", args, cfg.Mode)
+		}
+	}
+
+	for _, args := range [][]string{{"--mode", "host-audit"}, {"--mode", "host", "--sections", "ports"}} {
+		cfg, err := load(t, args...)
+		if err != nil {
+			t.Errorf("%v: %v", args, err)
+			continue
+		}
+		if cfg.Mode != model.ModeHostAudit || cfg.Wants(model.SectionWitness) {
+			t.Errorf("%v: mode = %q, sections = %v", args, cfg.Mode, cfg.Sections)
+		}
+	}
+}
+
+// DW-70: every combination that would let a host audit pass for a preflight, or a
+// preflight run without its input, is refused before the audit starts.
+func TestModeConflictsAreRefused(t *testing.T) {
+	compose := writeCompose(t)
+	dir := t.TempDir()
+
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--sections", "witness"}, "needs --compose"},
+		{[]string{"--sections", "ports,witness"}, "needs --compose"},
+		{[]string{"--mode", "compose-preflight"}, "needs --compose"},
+		{[]string{"--mode", "host-audit", "--compose", compose}, "does not read a Compose file"},
+		{[]string{"--compose", compose, "--sections", "ports"}, "leaves witness out"},
+		{[]string{"--mode", "everything"}, "invalid --mode"},
+		{[]string{"--compose", filepath.Join(dir, "missing.yml")}, "needs a readable Compose file"},
+		{[]string{"--compose", dir}, "not a regular file"},
+	}
+	for _, tc := range cases {
+		_, err := load(t, tc.args...)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%v: error = %v, want one containing %q", tc.args, err, tc.want)
+		}
+	}
+}
+
+// AUDIT_MODE asserts a preflight from the environment: a job whose AUDIT_COMPOSE
+// went missing must stop, not quietly become a host audit.
+func TestModeFromEnvironment(t *testing.T) {
+	t.Setenv("AUDIT_MODE", "compose-preflight")
+	if _, err := load(t); err == nil {
+		t.Fatal("AUDIT_MODE=compose-preflight without a Compose file should be refused")
+	}
+	t.Setenv("AUDIT_COMPOSE", writeCompose(t))
+	cfg, err := load(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Mode != model.ModeComposePreflight {
+		t.Errorf("mode = %q, want compose-preflight", cfg.Mode)
 	}
 }
