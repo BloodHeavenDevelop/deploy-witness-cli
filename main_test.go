@@ -176,3 +176,36 @@ func TestHostAuditWitnessIsNotApplicable(t *testing.T) {
 		}
 	}
 }
+
+// DW-79: --format csv,json writes the CSV tables and report.json from the same
+// audit, so the two cannot disagree on when it ran.
+func TestFormatBothWritesOneRun(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "report")
+	code, log := cli(t, "--sections", "ports", "--format", "csv,json", "--out", out)
+	if code != exitOK {
+		t.Fatalf("exit = %d\n%s", code, log)
+	}
+	if !strings.Contains(log, "CSV files to") || !strings.Contains(log, "report.json") {
+		t.Errorf("log = %s", log)
+	}
+	summary, err := os.ReadFile(filepath.Join(out, "summary.csv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(out, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Audit struct {
+			GeneratedAt string `json:"generatedAt"`
+		} `json:"audit"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	stamp := strings.Replace(strings.TrimSuffix(doc.Audit.GeneratedAt, "Z"), "T", " ", 1)
+	if len(stamp) < 19 || !strings.Contains(string(summary), "at "+stamp[:19]+" UTC") {
+		t.Errorf("summary.csv does not carry report.json's generatedAt %q:\n%s", doc.Audit.GeneratedAt, summary)
+	}
+}

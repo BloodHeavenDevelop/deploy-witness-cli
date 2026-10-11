@@ -1041,3 +1041,132 @@ func busyHost() Input {
 	in.Manifest.Networks = []model.ManifestNetwork{{Name: "missing-net", External: true}}
 	return in
 }
+
+func changeFor(changes []model.ChangeItem, kind, target string) (model.ChangeItem, bool) {
+	for _, c := range changes {
+		if c.Kind == kind && c.Target == target {
+			return c, true
+		}
+	}
+	return model.ChangeItem{}, false
+}
+
+// DW-52 / DW-79: a container of the same name that is not this deployment's own —
+// another project's, or one created by hand and never started — is not replaced:
+// Compose fails on the name, and the change list must say so instead of promising
+// a replacement. The deployment's own container is still replaced.
+func TestChangesDoNotReplaceAForeignContainer(t *testing.T) {
+	svc := model.ManifestService{
+		Name: "orders-api", ContainerName: "orders-api",
+		Image: model.ImageRef{Raw: "nginx:1.27-alpine", Repository: "nginx", Tag: "1.27-alpine"},
+	}
+	cases := []struct {
+		name    string
+		project string
+		state   string
+		want    string
+		notWant string
+	}{
+		{"created, no project", "", "created", "not created: a container named orders-api already exists (state created, image alpine:3.21, no Compose project)", "replaced"},
+		{"another project", "billing", "running", `Compose project "billing"`, "replaced"},
+		{"this deployment", "app", "running", "replaced (currently running, image alpine:3.21) with nginx:1.27-alpine", "not created"},
+	}
+	for _, tc := range cases {
+		in := baseInput()
+		in.Manifest.Services = []model.ManifestService{svc}
+		in.Caps.Containers = []model.Container{{
+			Name: "orders-api", Project: tc.project, Service: "orders-api", Image: "alpine:3.21", State: tc.state,
+		}}
+		change, ok := changeFor(Changes(in), "container", "orders-api")
+		if !ok {
+			t.Fatalf("%s: no container row", tc.name)
+		}
+		if !strings.Contains(change.Detail, tc.want) || strings.Contains(change.Detail, tc.notWant) {
+			t.Errorf("%s: detail = %q, want %q and not %q", tc.name, change.Detail, tc.want, tc.notWant)
+		}
+	}
+}
+
+// DW-79: a host port another process holds is not "opened" by the deployment, and
+// the container that publishes it cannot start — the same conclusion as
+// witness.port_conflict, from the same matching.
+func TestChangesDoNotOpenAPortThatIsHeld(t *testing.T) {
+	in := baseInput()
+	in.Manifest.Services = []model.ManifestService{{
+		Name:  "web",
+		Image: model.ImageRef{Raw: "nginx:1.27", Repository: "nginx", Tag: "1.27"},
+		Ports: []model.PortMapping{{HostPort: 8080, ContainerPort: 80, Protocol: "tcp"}},
+	}}
+	in.Caps.Ports = []model.Port{{Protocol: "tcp", Address: "0.0.0.0", Port: 8080, State: "LISTEN", Pid: 42, Process: "python3"}}
+
+	changes := Changes(in)
+	port, _ := changeFor(changes, "firewall-port", "8080/tcp")
+	if !strings.HasPrefix(port.Detail, "not opened:") || !strings.Contains(port.Detail, "python3") {
+		t.Errorf("firewall-port = %q", port.Detail)
+	}
+	container, _ := changeFor(changes, "container", "app-web-1")
+	if !strings.Contains(container.Detail, "cannot start: host port 8080/tcp is already held") {
+		t.Errorf("container = %q", container.Detail)
+	}
+
+	in.Caps.Ports = nil
+	port, _ = changeFor(Changes(in), "firewall-port", "8080/tcp")
+	if !strings.HasPrefix(port.Detail, "opened by web on all interfaces") || strings.Contains(port.Detail, "witness.") {
+		t.Errorf("free port: firewall-port = %q", port.Detail)
+	}
+}
+
+// With the engine unreachable the container list is unknown, and the change list
+// does not promise a clean creation.
+func TestChangesAdmitAnUnknownContainerList(t *testing.T) {
+	in := baseInput()
+	in.Caps.Runtime.Reachable = false
+	in.Manifest.Services = []model.ManifestService{{Name: "web", Image: model.ImageRef{Raw: "nginx:1.27"}}}
+	change, _ := changeFor(Changes(in), "container", "app-web-1")
+	if !strings.Contains(change.Detail, "could not be checked") {
+		t.Errorf("container = %q", change.Detail)
+	}
+}
+
+// DW-79: what cannot be seen from inside the host is "unable to verify", never
+// "unavailable", and a plan whose only gaps are unverified items does not conclude
+// that there is no way back.
+func TestRollbackKeepsUnknownApartFromMissing(t *testing.T) {
+	in := baseInput()
+	in.Manifest.Services = []model.ManifestService{{Name: "web", Image: model.ImageRef{Raw: "nginx:1.27"}}}
+	in.Caps.Proxy = &model.Proxy{Kind: "apache", ConfigRoot: "/etc/httpd"}
+
+	for _, item := range Rollback(in) {
+		switch item.Kind {
+		case "snapshot", "proxy-config":
+			if item.State != model.RollbackUnverified || item.Available ||
+				!strings.HasPrefix(item.Detail, "unable to verify:") {
+				t.Errorf("%s = %+v, want unable-to-verify", item.Kind, item)
+			}
+		default:
+			if item.State != model.RollbackAvailable || !item.Available {
+				t.Errorf("%s = %+v, want available", item.Kind, item)
+			}
+		}
+	}
+
+	findings := rollbackGap(in)
+	if len(findings) != 1 {
+		t.Fatalf("findings = %+v", findings)
+	}
+	f := findings[0]
+	if f.Severity != model.FindingInfo || f.Subject != "2 of 4 unverified" ||
+		strings.Contains(f.Title, "no way back") || strings.Contains(f.Description, "Missing:") ||
+		!strings.Contains(f.Description, "Unable to verify: proxy-config") {
+		t.Errorf("finding = %+v", f)
+	}
+
+	// A known gap — a running container whose image digest is not recorded — makes
+	// it a warning, and the unverified items are still listed as such.
+	in.Caps.Containers = []model.Container{{Name: "app-web-1", Project: "app", Service: "web", Image: "nginx:1.25", State: "running"}}
+	f = rollbackGap(in)[0]
+	if f.Severity != model.FindingWarning || f.Subject != "1 of 4 missing" ||
+		!strings.Contains(f.Description, "Missing: image-tag") || !strings.Contains(f.Description, "Unable to verify: proxy-config") {
+		t.Errorf("finding = %+v", f)
+	}
+}

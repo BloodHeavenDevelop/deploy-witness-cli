@@ -49,8 +49,9 @@ type Config struct {
 	// registries the manifest pulls from are reachable. Off by default, like every
 	// other network path in this tool.
 	Egress bool
-	// Format is "csv" or "json". CSV is a directory of tables for a person; JSON is
-	// one document for a machine, and it is what --upload sends.
+	// Format is "csv", "json" or "csv,json". CSV is a directory of tables for a
+	// person; JSON is one document for a machine, and it is what --upload sends.
+	// "csv,json" writes both from the one audit, so the two describe the same run.
 	Format string
 	// UploadURL and UploadToken send the report to a witness service. Both are
 	// required together, and neither has a default: nothing is ever uploaded
@@ -72,6 +73,7 @@ type Config struct {
 const (
 	formatCSV  = "csv"
 	formatJSON = "json"
+	formatBoth = "csv,json"
 )
 
 // Defaults not worth a named constant elsewhere.
@@ -130,7 +132,7 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 	fs.BoolVar(&cfg.Egress, "egress", false,
 		"allow the witness section to test whether the manifest's registries are reachable (off by default; flag only, no AUDIT_EGRESS)")
 	fs.StringVar(&cfg.Format, "format", env("AUDIT_FORMAT", formatCSV),
-		"output format: csv (a directory of tables) or json (one document)")
+		"output format: csv (a directory of tables), json (one document) or csv,json (both, from the same run)")
 	fs.StringVar(&cfg.UploadURL, "upload", "",
 		"https:// base URL of a witness service to send the report to (off unless given; flag only, no AUDIT_UPLOAD; needs a token)")
 	fs.StringVar(&cfg.UploadToken, "upload-token", "",
@@ -218,9 +220,17 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		}
 	}
 
-	cfg.Format = strings.ToLower(strings.TrimSpace(cfg.Format))
-	if cfg.Format != formatCSV && cfg.Format != formatJSON {
-		return nil, fmt.Errorf("invalid --format %q: expected csv or json", cfg.Format)
+	cfg.Format = strings.ToLower(strings.ReplaceAll(cfg.Format, " ", ""))
+	switch cfg.Format {
+	case formatCSV, formatJSON, formatBoth:
+	case "json,csv":
+		cfg.Format = formatBoth
+	default:
+		return nil, fmt.Errorf("invalid --format %q: expected csv, json or csv,json", cfg.Format)
+	}
+	if cfg.Format == formatBoth && cfg.ToStdout {
+		return nil, fmt.Errorf("--format csv,json writes two outputs and --stdout is one stream; " +
+			"choose csv or json with --stdout, or drop --stdout")
 	}
 
 	if cfg.Compose != "" {
@@ -268,8 +278,11 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 	return cfg, nil
 }
 
-// WantsJSON reports whether the report should be rendered as one JSON document.
-func (c *Config) WantsJSON() bool { return c.Format == formatJSON }
+// WantsJSON reports whether report.json (or a JSON stream) should be written.
+func (c *Config) WantsJSON() bool { return c.Format == formatJSON || c.Format == formatBoth }
+
+// WantsCSV reports whether the CSV tables should be written.
+func (c *Config) WantsCSV() bool { return c.Format == formatCSV || c.Format == formatBoth }
 
 // WantsUpload reports whether the report should be sent to a witness service.
 func (c *Config) WantsUpload() bool { return c.UploadURL != "" && c.UploadToken != "" }

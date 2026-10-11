@@ -298,36 +298,66 @@ func persistentData(manifest *model.Manifest) []string {
 }
 
 // 21. witness.no_rollback_plan
+//
+// The finding states what the rollback section established and nothing more. An
+// item that could not be verified (a provider snapshot, an off-host copy of the
+// proxy configuration) is listed as such, and when nothing in the plan is known to
+// be missing the finding says the way back could not be fully verified — an
+// info line — rather than concluding there is none.
 func rollbackGap(in Input) []model.Finding {
 	plan := Rollback(in)
 
-	var missing []string
+	var missing, unverified []string
 	for _, item := range plan {
-		if !item.Available {
+		switch item.State {
+		case model.RollbackUnavailable:
 			missing = append(missing, item.Kind+": "+item.Detail)
+		case model.RollbackUnverified:
+			unverified = append(unverified, item.Kind+": "+item.Detail)
 		}
 	}
-	if len(missing) == 0 {
+	if len(missing) == 0 && len(unverified) == 0 {
 		return nil
 	}
 
-	return []model.Finding{{
+	var parts []string
+	if len(missing) > 0 {
+		parts = append(parts, "Missing: "+strings.Join(missing, "; ")+".")
+	}
+	if len(unverified) > 0 {
+		parts = append(parts, "Unable to verify: "+strings.Join(unverified, "; ")+".")
+	}
+	lines := append(append([]string{}, missing...), unverified...)
+
+	finding := model.Finding{
 		Code:       "witness.no_rollback_plan",
 		Category:   model.CategoryMissing,
-		Severity:   model.FindingWarning,
 		Confidence: model.ConfidenceHigh,
-		Subject:    fmt.Sprintf("%d of %d", len(missing), len(plan)),
-		Title:      "There is no way back from this deployment",
-		Description: fmt.Sprintf(
-			"The rollback plan for this host is incomplete. Missing: %s.", strings.Join(missing, "; ")),
-		WhyItMatters: "Every other finding in this report is about whether the deployment will work. This one is " +
-			"about what happens when it does not, and it is the only one that cannot be fixed after the fact.",
-		WhatToDo: "Before deploying: note the image digests currently running, copy the web server configuration " +
-			"somewhere outside this host, and take a snapshot or a volume backup.",
 		Evidence: []model.Evidence{
-			evidence(in, "the rollback section of this report", strings.Join(missing, "\n")),
+			evidence(in, "the rollback section of this report", strings.Join(lines, "\n")),
 		},
-	}}
+	}
+	if len(missing) > 0 {
+		finding.Severity = model.FindingWarning
+		finding.Subject = fmt.Sprintf("%d of %d missing", len(missing), len(plan))
+		finding.Title = "Part of the way back from this deployment is missing"
+		finding.Description = "The rollback plan for this host is incomplete. " + strings.Join(parts, " ")
+		finding.WhyItMatters = "Every other finding in this report is about whether the deployment will work. " +
+			"This one is about what happens when it does not, and it is the only one that cannot be fixed after " +
+			"the fact."
+	} else {
+		finding.Severity = model.FindingInfo
+		finding.Subject = fmt.Sprintf("%d of %d unverified", len(unverified), len(plan))
+		finding.Title = "The way back could not be fully verified"
+		finding.Description = "Nothing in the rollback plan was found to be missing, but part of it could not be " +
+			"checked from inside this host. " + strings.Join(parts, " ")
+		finding.WhyItMatters = "What this audit cannot see is not evidence that it is absent — nor that it " +
+			"exists. Whether the deployment can be undone in full depends on the items above, which only the " +
+			"people running this host can confirm."
+	}
+	finding.WhatToDo = "Before deploying: note the image digests currently running, copy the web server " +
+		"configuration somewhere outside this host, and confirm a snapshot or a volume backup exists."
+	return []model.Finding{finding}
 }
 
 // certificateExpiryWarnDays and certificateExpiryBlockDays: 30 days is when a

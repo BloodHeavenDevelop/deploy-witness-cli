@@ -24,7 +24,11 @@ func Changes(in Input) []model.ChangeItem {
 	}
 	var out []model.ChangeItem
 
-	// Containers, and whether each one replaces something.
+	// Containers, and whether each one replaces something. Only a container of this
+	// deployment's own Compose project is replaced: one that belongs to anything else
+	// — another project, or a container created by hand, running or not — makes
+	// `docker compose up` fail on the name, which is what the row has to say
+	// (witness.container_name_conflict is the blocker for it).
 	existing := map[string]model.Container{}
 	for _, c := range in.Caps.Containers {
 		existing[c.Name] = c
@@ -34,12 +38,7 @@ func Changes(in Input) []model.ChangeItem {
 		if name == "" {
 			name = fmt.Sprintf("%s-%s-1", normaliseProject(in.Project), svc.Name)
 		}
-		detail := fmt.Sprintf("created from %s", imageOrBuild(svc))
-		if found, ok := existing[name]; ok {
-			detail = fmt.Sprintf("replaced (currently %s, image %s) with %s",
-				found.State, found.Image, imageOrBuild(svc))
-		}
-		out = append(out, model.ChangeItem{Kind: "container", Target: name, Detail: detail})
+		out = append(out, model.ChangeItem{Kind: "container", Target: name, Detail: containerChange(in, svc, name, existing)})
 	}
 
 	// Images that have to be pulled. Naming them is the difference between "images
@@ -75,11 +74,19 @@ func Changes(in Input) []model.ChangeItem {
 				if mapping.HostIP != "" {
 					reach = mapping.HostIP
 				}
+				opened := fmt.Sprintf("opened by %s on %s → container port %d", svc.Name, reach, mapping.ContainerPort)
+				switch state, holders := portState(in, mapping, port); state {
+				case portTaken:
+					opened = fmt.Sprintf("not opened: %s cannot bind it on %s, because it is already held by %s "+
+						"(see witness.port_conflict)", svc.Name, reach, holders)
+				case portMaybeTaken:
+					opened += fmt.Sprintf(" — if the binding is free, which could not be established: %s "+
+						"(see witness.port_conflict)", holders)
+				}
 				out = append(out, model.ChangeItem{
 					Kind:   "firewall-port",
 					Target: fmt.Sprintf("%d/%s", port, protocolOf(mapping)),
-					Detail: fmt.Sprintf("opened by %s on %s → container port %d",
-						svc.Name, reach, mapping.ContainerPort),
+					Detail: opened,
 				})
 			}
 		}
@@ -148,6 +155,75 @@ func Changes(in Input) []model.ChangeItem {
 	return out
 }
 
+// containerChange is the change-list line for one service's container.
+func containerChange(in Input, svc model.ManifestService, name string, existing map[string]model.Container) string {
+	image := imageOrBuild(svc)
+	if in.Caps.Runtime != nil && !in.Caps.Runtime.Reachable {
+		return fmt.Sprintf("created from %s, unless a container named %s already exists — the container engine "+
+			"did not answer, so that could not be checked", image, name)
+	}
+	if found, ok := existing[name]; ok {
+		if sameProject(in, found.Project) {
+			return fmt.Sprintf("replaced (currently %s, image %s) with %s", found.State, found.Image, image)
+		}
+		owner := "no Compose project"
+		if found.Project != "" {
+			owner = fmt.Sprintf("Compose project %q", found.Project)
+		}
+		return fmt.Sprintf("not created: a container named %s already exists (state %s, image %s, %s) and does "+
+			"not belong to this deployment, so docker compose up fails on the name and leaves it as it is "+
+			"(see witness.container_name_conflict)", name, found.State, found.Image, owner)
+	}
+
+	detail := "created from " + image
+	var blocked []string
+	for _, mapping := range svc.Ports {
+		for _, port := range mapping.HostPorts() {
+			if state, _ := portState(in, mapping, port); state == portTaken {
+				blocked = append(blocked, fmt.Sprintf("%d/%s", port, protocolOf(mapping)))
+			}
+		}
+	}
+	if len(blocked) > 0 {
+		detail += fmt.Sprintf(", but it cannot start: host port %s is already held (see witness.port_conflict)",
+			strings.Join(blocked, ", "))
+	}
+	return detail
+}
+
+type portAvailability int
+
+const (
+	portFree portAvailability = iota
+	portMaybeTaken
+	portTaken
+)
+
+// portState answers, for the change list, the question witness.port_conflict
+// answers for the findings — with the same matching, so the two never disagree.
+// A binding held by this deployment's own container is free for this purpose:
+// Compose stops that container first.
+func portState(in Input, mapping model.PortMapping, port int) (portAvailability, string) {
+	want := claimFromMapping(mapping, port)
+	if !observableProtocol(want.protocol) {
+		return portFree, ""
+	}
+	holders := portHolders(in, want)
+	if len(holders) == 0 {
+		return portFree, ""
+	}
+	own := ownHolder(in, holders)
+	certain := certainHolders(holders)
+	switch {
+	case len(certain) > 0 && (own == nil || foreignContainer(in, certain)):
+		return portTaken, describeHolders(certain)
+	case own != nil:
+		return portFree, ""
+	default:
+		return portMaybeTaken, describeHolders(holders)
+	}
+}
+
 func imageOrBuild(svc model.ManifestService) string {
 	if svc.Image.Raw != "" {
 		return svc.Image.Raw
@@ -177,9 +253,13 @@ func sortChanges(items []model.ChangeItem) {
 // Rollback states what would be needed to undo the deployment, and — the part that
 // makes this section worth having — whether each of those things exists right now.
 //
-// `Available: false` is the interesting value. A rollback plan made of instructions
-// nobody can follow is not a plan, and the finding that reads this section
-// (witness.no_rollback_plan) exists because of exactly that.
+// Each item is available, unavailable or unable-to-verify. `unavailable` is the
+// interesting value: a rollback plan made of instructions nobody can follow is not a
+// plan, and the finding that reads this section (witness.no_rollback_plan) exists
+// because of exactly that. `unable-to-verify` is kept apart from it on purpose: a
+// provider snapshot or an off-host copy of a configuration cannot be seen from inside
+// the machine, and reporting what cannot be seen as missing would be a claim the
+// audit has no evidence for.
 func Rollback(in Input) []model.RollbackItem {
 	if in.Manifest == nil {
 		return nil
@@ -205,27 +285,18 @@ func Rollback(in Input) []model.RollbackItem {
 		current, isRunning := running[svc.Name]
 		switch {
 		case !isRunning:
-			out = append(out, model.RollbackItem{
-				Kind:      "image-tag",
-				Available: true,
-				Detail: fmt.Sprintf("%s is not running here yet, so undoing it means removing it — "+
-					"there is no previous version to return to", svc.Name),
-			})
+			out = append(out, model.NewRollbackItem("image-tag", model.RollbackAvailable, fmt.Sprintf(
+				"%s is not running here yet, so undoing it means removing it — "+
+					"there is no previous version to return to", svc.Name)))
 		case digests[current.Image] != "":
-			out = append(out, model.RollbackItem{
-				Kind:      "image-tag",
-				Available: true,
-				Detail: fmt.Sprintf("%s currently runs %s (%s); that digest is the version to return to",
-					svc.Name, current.Image, digests[current.Image]),
-			})
+			out = append(out, model.NewRollbackItem("image-tag", model.RollbackAvailable, fmt.Sprintf(
+				"%s currently runs %s (%s); that digest is the version to return to",
+				svc.Name, current.Image, digests[current.Image])))
 		default:
-			out = append(out, model.RollbackItem{
-				Kind:      "image-tag",
-				Available: false,
-				Detail: fmt.Sprintf("%s currently runs %s, and no digest for that image is recorded on this host — "+
+			out = append(out, model.NewRollbackItem("image-tag", model.RollbackUnavailable, fmt.Sprintf(
+				"%s currently runs %s, and no digest for that image is recorded on this host — "+
 					"after the deployment moves the tag there will be no way to name the version that worked",
-					svc.Name, current.Image),
-			})
+				svc.Name, current.Image)))
 		}
 	}
 
@@ -233,16 +304,12 @@ func Rollback(in Input) []model.RollbackItem {
 	data := persistentData(in.Manifest)
 	switch {
 	case len(data) == 0:
-		out = append(out, model.RollbackItem{
-			Kind: "volume-backup", Available: true,
-			Detail: "the deployment declares no persistent data, so there is nothing to restore",
-		})
+		out = append(out, model.NewRollbackItem("volume-backup", model.RollbackAvailable,
+			"the deployment declares no persistent data, so there is nothing to restore"))
 	case len(in.Caps.Backup.Locations) == 0:
-		out = append(out, model.RollbackItem{
-			Kind: "volume-backup", Available: false,
-			Detail: fmt.Sprintf("the deployment writes to %s and no backup location was found on this host, "+
-				"so a bad migration cannot be undone", strings.Join(data, ", ")),
-		})
+		out = append(out, model.NewRollbackItem("volume-backup", model.RollbackUnavailable, fmt.Sprintf(
+			"the deployment writes to %s and no backup location was found on this host, "+
+				"so a bad migration cannot be undone from here", strings.Join(data, ", "))))
 	default:
 		fresh := false
 		var newest string
@@ -254,36 +321,31 @@ func Rollback(in Input) []model.RollbackItem {
 			}
 		}
 		if fresh {
-			out = append(out, model.RollbackItem{
-				Kind: "volume-backup", Available: true,
-				Detail: "a recent backup exists at " + newest,
-			})
+			out = append(out, model.NewRollbackItem("volume-backup", model.RollbackAvailable,
+				"a recent backup exists at "+newest))
 		} else {
-			out = append(out, model.RollbackItem{
-				Kind: "volume-backup", Available: false,
-				Detail: "backup directories exist but none has been written to recently, so restoring would " +
-					"return the data to a state older than anyone expects",
-			})
+			out = append(out, model.NewRollbackItem("volume-backup", model.RollbackUnavailable,
+				"backup directories exist but none has been written to recently, so restoring would "+
+					"return the data to a state older than anyone expects"))
 		}
 	}
 
-	// The web server configuration, when there is one to break.
+	// The web server configuration, when there is one to break. Whether somebody
+	// keeps a copy of it elsewhere is not something this host can show.
 	if in.Caps.Proxy != nil {
-		out = append(out, model.RollbackItem{
-			Kind: "proxy-config", Available: false,
-			Detail: fmt.Sprintf("%s configuration under %s is not copied anywhere by this audit; "+
-				"take a copy before changing it, since a proxy that fails to start takes every site on this host "+
-				"down, not only the new one", in.Caps.Proxy.Kind, orUnknown(in.Caps.Proxy.ConfigRoot)),
-		})
+		out = append(out, model.NewRollbackItem("proxy-config", model.RollbackUnverified, fmt.Sprintf(
+			"unable to verify: whether a copy of the %s configuration under %s is kept outside this host cannot "+
+				"be seen from inside it; take one before changing it, since a proxy that fails to start takes "+
+				"every site on this host down, not only the new one",
+			in.Caps.Proxy.Kind, orUnknown(in.Caps.Proxy.ConfigRoot))))
 	}
 
 	// A host-level snapshot is the one thing this tool cannot establish from inside
-	// the machine, and saying so is better than omitting the line.
-	out = append(out, model.RollbackItem{
-		Kind: "snapshot", Available: false,
-		Detail: "whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — " +
-			"confirm with whoever runs the infrastructure before deploying",
-	})
+	// the machine, and saying so is better than omitting the line — or than calling
+	// it missing.
+	out = append(out, model.NewRollbackItem("snapshot", model.RollbackUnverified,
+		"unable to verify: whether a hypervisor or provider snapshot of this host exists cannot be seen from "+
+			"inside it — confirm with whoever runs the infrastructure before deploying"))
 
 	return out
 }

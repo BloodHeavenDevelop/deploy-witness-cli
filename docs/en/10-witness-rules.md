@@ -421,15 +421,20 @@ contents of a backup — the date is what tells a live backup from an abandoned 
 
 | | |
 |---|---|
-| Severity | **warning** |
-| Fires when | Any row of the rollback plan is unavailable — see [08 — rollback.csv](08-report-format.md#rollbackcsv) |
+| Case | Severity | Subject | Title |
+|---|---|---|---|
+| A row is `false` — established missing (no digest for a running image, no or stale backup) | **warning** | `N of M missing` | Part of the way back from this deployment is missing |
+| No row is `false`, but some are `unknown` — unable to verify | **info** | `N of M unverified` | The way back could not be fully verified |
+| Every row `true` | — | — | not raised |
 
-On a host with a web server this fires on nearly every run, because two rows are
-`false` by construction: the proxy configuration is not copied anywhere by this
-audit, and whether a provider snapshot exists cannot be seen from inside the
-machine. That is the intended reading, not a false positive — every other finding
-in the report is about whether the deployment will work, and this one is about what
-happens when it does not. It is the only one that cannot be fixed after the fact.
+The description lists the two kinds separately — `Missing: …` and `Unable to
+verify: …` — and so does the evidence. The finding never concludes that there is
+no way back: a provider snapshot and an off-host copy of the proxy configuration
+cannot be seen from inside the machine, and what cannot be seen is neither present
+nor absent. Since the `snapshot` row is always `unknown`, the finding appears on
+every preflight, as `info` unless something is known to be missing. Before 1.4.0
+both of those rows were `false` and the finding was always a warning titled "There
+is no way back from this deployment" — a conclusion the data did not support.
 
 ### `witness.certificate_expiring`
 

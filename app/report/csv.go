@@ -91,7 +91,7 @@ func tables(r *model.Report) []table {
 			name:    "rollback",
 			headers: []string{"Kind", "Available", "Detail"},
 			paths:   []string{"kind", "available", "detail"},
-			rows:    anySlice(r.Rollback),
+			rows:    anySlice(rollbackRows(r)),
 		},
 		{
 			// Not a section: the journal is what the run did, not something it
@@ -166,6 +166,30 @@ func evidenceRows(r *model.Report) []evidenceRow {
 				Output: e.Output, Truncated: e.Truncated, CapturedAt: e.CapturedAt,
 			})
 		}
+	}
+	return out
+}
+
+// rollbackRow is one rollback item as a CSV row. `Available` is `true`, `false` or
+// `unknown`: a boolean column would have to render an item that could not be
+// verified as `false`, which reads as "known to be missing".
+type rollbackRow struct {
+	Kind      string `json:"kind"`
+	Available string `json:"available"`
+	Detail    string `json:"detail"`
+}
+
+func rollbackRows(r *model.Report) []rollbackRow {
+	out := make([]rollbackRow, 0, len(r.Rollback))
+	for _, item := range r.Rollback {
+		available := "false"
+		switch {
+		case item.State == model.RollbackUnverified:
+			available = "unknown"
+		case item.Available:
+			available = "true"
+		}
+		out = append(out, rollbackRow{Kind: item.Kind, Available: available, Detail: item.Detail})
 	}
 	return out
 }

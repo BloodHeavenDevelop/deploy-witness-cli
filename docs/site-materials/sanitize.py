@@ -128,22 +128,21 @@ def main():
     ctx_path, raw, out = sys.argv[1:4]
     ctx = json.load(open(ctx_path))
     fingerprint = ""
-    rj = os.path.join(raw, "json", "report.json")
+    report_dir = os.path.join(raw, "report")
+    rj = os.path.join(report_dir, "report.json")
     if os.path.exists(rj):
         fingerprint = json.load(open(rj)).get("upload", {}).get("server_fingerprint", "")
     replace = compile_replacer(placeholder_map(ctx), fingerprint)
     notes = []
     os.makedirs(out, exist_ok=True)
 
-    for name in ("terminal.txt", "terminal-json.txt"):
-        p = os.path.join(raw, name)
-        if os.path.exists(p):
-            open(os.path.join(out, name), "w").write(replace(open(p).read()))
+    p = os.path.join(raw, "terminal.txt")
+    if os.path.exists(p):
+        open(os.path.join(out, "terminal.txt"), "w").write(replace(open(p).read()))
 
-    csv_dir = os.path.join(raw, "csv")
-    if os.path.isdir(csv_dir):
-        for name in sorted(os.listdir(csv_dir)):
-            text = open(os.path.join(csv_dir, name), newline="").read()
+    if os.path.isdir(report_dir):
+        for name in sorted(n for n in os.listdir(report_dir) if n.endswith(".csv")):
+            text = open(os.path.join(report_dir, name), newline="").read()
             if name == "ports.csv":
                 text = trim_ports_csv(text, ctx, notes)
             open(os.path.join(out, name), "w", newline="").write(replace(text))
