@@ -1157,8 +1157,11 @@ func TestRollbackKeepsUnknownApartFromMissing(t *testing.T) {
 	f := findings[0]
 	if f.Severity != model.FindingInfo || f.Subject != "2 of 4 unverified" ||
 		strings.Contains(f.Title, "no way back") || strings.Contains(f.Description, "Missing:") ||
-		!strings.Contains(f.Description, "Unable to verify: proxy-config") {
+		!strings.Contains(f.Description, "Unable to verify: proxy-config: whether a copy") {
 		t.Errorf("finding = %+v", f)
+	}
+	if strings.Count(strings.ToLower(f.Description), "unable to verify") != 1 {
+		t.Errorf("\"unable to verify\" is repeated: %q", f.Description)
 	}
 
 	// A known gap — a running container whose image digest is not recorded — makes

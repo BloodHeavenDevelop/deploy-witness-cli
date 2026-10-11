@@ -313,7 +313,10 @@ func rollbackGap(in Input) []model.Finding {
 		case model.RollbackUnavailable:
 			missing = append(missing, item.Kind+": "+item.Detail)
 		case model.RollbackUnverified:
-			unverified = append(unverified, item.Kind+": "+item.Detail)
+			// The detail opens with "unable to verify:" for the reader of
+			// rollback.csv; under the finding's own "Unable to verify:" heading
+			// that would be said twice.
+			unverified = append(unverified, item.Kind+": "+strings.TrimPrefix(item.Detail, unverifiedPrefix))
 		}
 	}
 	if len(missing) == 0 && len(unverified) == 0 {
@@ -327,7 +330,13 @@ func rollbackGap(in Input) []model.Finding {
 	if len(unverified) > 0 {
 		parts = append(parts, "Unable to verify: "+strings.Join(unverified, "; ")+".")
 	}
-	lines := append(append([]string{}, missing...), unverified...)
+	var lines []string
+	for _, line := range missing {
+		lines = append(lines, "missing — "+line)
+	}
+	for _, line := range unverified {
+		lines = append(lines, "unable to verify — "+line)
+	}
 
 	finding := model.Finding{
 		Code:       "witness.no_rollback_plan",

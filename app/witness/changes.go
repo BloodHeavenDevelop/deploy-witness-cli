@@ -250,6 +250,10 @@ func sortChanges(items []model.ChangeItem) {
 	})
 }
 
+// unverifiedPrefix opens the detail of every rollback item that could not be
+// verified, so the boolean the contract carries is not the only signal.
+const unverifiedPrefix = "unable to verify: "
+
 // Rollback states what would be needed to undo the deployment, and — the part that
 // makes this section worth having — whether each of those things exists right now.
 //
@@ -334,7 +338,7 @@ func Rollback(in Input) []model.RollbackItem {
 	// keeps a copy of it elsewhere is not something this host can show.
 	if in.Caps.Proxy != nil {
 		out = append(out, model.NewRollbackItem("proxy-config", model.RollbackUnverified, fmt.Sprintf(
-			"unable to verify: whether a copy of the %s configuration under %s is kept outside this host cannot "+
+			unverifiedPrefix+"whether a copy of the %s configuration under %s is kept outside this host cannot "+
 				"be seen from inside it; take one before changing it, since a proxy that fails to start takes "+
 				"every site on this host down, not only the new one",
 			in.Caps.Proxy.Kind, orUnknown(in.Caps.Proxy.ConfigRoot))))
@@ -344,7 +348,7 @@ func Rollback(in Input) []model.RollbackItem {
 	// the machine, and saying so is better than omitting the line — or than calling
 	// it missing.
 	out = append(out, model.NewRollbackItem("snapshot", model.RollbackUnverified,
-		"unable to verify: whether a hypervisor or provider snapshot of this host exists cannot be seen from "+
+		unverifiedPrefix+"whether a hypervisor or provider snapshot of this host exists cannot be seen from "+
 			"inside it — confirm with whoever runs the infrastructure before deploying"))
 
 	return out
