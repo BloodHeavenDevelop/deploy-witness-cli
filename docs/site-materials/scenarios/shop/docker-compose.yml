@@ -1,0 +1,28 @@
+# Control scenario for the external-volume checks (known defects DW-42 / DW-43).
+# run.sh creates the volume "dwkit-data" before the run and removes it afterwards.
+name: shop
+
+services:
+  shop-api:
+    image: nginx:1.27-alpine
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    volumes:
+      - dwkit-data:/srv/data
+      - aliased:/srv/aliased
+
+volumes:
+  # The key is the real volume name: the check looks it up as written.
+  dwkit-data:
+    external: true
+  # Standard Compose syntax: key "aliased", real name "dwkit-data".
+  aliased:
+    external: true
+    name: dwkit-data

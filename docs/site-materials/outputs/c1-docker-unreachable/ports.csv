@@ -1,0 +1,2 @@
+Protocol,Address,Port,Exposure,State,PID,Process,User,Command
+tcp,0.0.0.0,8080,all-interfaces,LISTEN,737076,python3,<USER>,python3 -m http.server 8080 --bind 0.0.0.0
