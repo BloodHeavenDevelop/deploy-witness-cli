@@ -5,9 +5,9 @@
     "level": 2,
     "server_fingerprint": "<SERVER-FINGERPRINT>",
     "server_hostname": "<HOSTNAME>",
-    "generated_at": "2026-10-10T19:17:07Z",
-    "stale_after": "2026-10-17T19:17:07Z",
-    "producer": "deploy-witness/1.2.0",
+    "generated_at": "2026-10-11T20:46:13Z",
+    "stale_after": "2026-10-18T20:46:13Z",
+    "producer": "deploy-witness/1.4.0",
     "findings": [
       {
         "code": "witness.port_conflict",
@@ -16,7 +16,7 @@
         "severity": "SEVERITY_BLOCKER",
         "subject": "8080/tcp",
         "title": "Port 8080 is already in use",
-        "description": "Service \"orders-api\" publishes port 8080/tcp on every host address, and that binding is already held on this host by python3 (pid 737076), listening on port 8080/tcp on 0.0.0.0.",
+        "description": "Service \"orders-api\" publishes port 8080/tcp on every host address, and that binding is already held on this host by python3 (pid 1767088), listening on port 8080/tcp on 0.0.0.0.",
         "why_it_matters": "The container will fail to start: the engine cannot bind a port another process already holds. On a deployment that stops the old stack first, the failure lands after the old one is already down.",
         "what_to_do": "Publish a different host port for \"orders-api\", or stop whatever currently holds 8080 before deploying.",
         "confidence": "CONFIDENCE_HIGH",
@@ -25,31 +25,12 @@
           {
             "command": "<WORKDIR>/orders/docker-compose.yml (service orders-api)",
             "output": "ports: publishes host port 8080/tcp on every host address → container port 80",
-            "captured_at": "2026-10-10T19:17:08Z"
+            "captured_at": "2026-10-11T20:46:13Z"
           },
           {
             "command": "ss -lntupH",
-            "output": "tcp 0.0.0.0:8080 LISTEN pid=737076 process=python3",
-            "captured_at": "2026-10-10T19:17:08Z"
-          }
-        ]
-      },
-      {
-        "code": "witness.no_rollback_plan",
-        "collector": "rollback",
-        "category": "CATEGORY_MISSING",
-        "severity": "SEVERITY_WARNING",
-        "subject": "2 of 4",
-        "title": "There is no way back from this deployment",
-        "description": "The rollback plan for this host is incomplete. Missing: proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
-        "why_it_matters": "Every other finding in this report is about whether the deployment will work. This one is about what happens when it does not, and it is the only one that cannot be fixed after the fact.",
-        "what_to_do": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and take a snapshot or a volume backup.",
-        "confidence": "CONFIDENCE_HIGH",
-        "evidence": [
-          {
-            "command": "the rollback section of this report",
-            "output": "proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nsnapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
-            "captured_at": "2026-10-10T19:17:08Z"
+            "output": "tcp 0.0.0.0:8080 LISTEN pid=1767088 process=python3",
+            "captured_at": "2026-10-11T20:46:13Z"
           }
         ]
       },
@@ -68,7 +49,7 @@
           {
             "command": "docker info --format {{json .}}",
             "output": "docker is installed but its daemon could not be queried (docker exited 1: failed to connect to the docker API at unix:///nonexistent/docker.sock; check if the path is correct and if the daemon is running: dial unix /nonexistent/docker.sock: connect: no such…); the container, network, volume and image lists are unknown rather than empty. The usual cause is an unprivileged audit: /var/run/docker.sock is readable by root and the docker group only — re-run as root, or as a member of that group, for the container checks",
-            "captured_at": "2026-10-10T19:17:08Z"
+            "captured_at": "2026-10-11T20:46:13Z"
           }
         ]
       },
@@ -87,7 +68,7 @@
           {
             "command": "<WORKDIR>/orders/docker-compose.yml (service orders-api)",
             "output": "image: nginx:1.27-alpine",
-            "captured_at": "2026-10-10T19:17:08Z"
+            "captured_at": "2026-10-11T20:46:13Z"
           }
         ]
       },
@@ -105,7 +86,26 @@
           {
             "command": "<WORKDIR>/orders/docker-compose.yml",
             "output": "registries referenced: docker.io",
-            "captured_at": "2026-10-10T19:17:08Z"
+            "captured_at": "2026-10-11T20:46:13Z"
+          }
+        ]
+      },
+      {
+        "code": "witness.no_rollback_plan",
+        "collector": "rollback",
+        "category": "CATEGORY_MISSING",
+        "severity": "SEVERITY_INFO",
+        "subject": "2 of 4 unverified",
+        "title": "The way back could not be fully verified",
+        "description": "Nothing in the rollback plan was found to be missing, but part of it could not be checked from inside this host. Unable to verify: proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
+        "why_it_matters": "What this audit cannot see is not evidence that it is absent — nor that it exists. Whether the deployment can be undone in full depends on the items above, which only the people running this host can confirm.",
+        "what_to_do": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and confirm a snapshot or a volume backup exists.",
+        "confidence": "CONFIDENCE_HIGH",
+        "evidence": [
+          {
+            "command": "the rollback section of this report",
+            "output": "unable to verify — proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nunable to verify — snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
+            "captured_at": "2026-10-11T20:46:13Z"
           }
         ]
       }
@@ -114,14 +114,14 @@
       {
         "collector": "ports",
         "status": "COLLECTOR_STATUS_PARTIAL",
-        "note": "325 processes were not readable, so some sockets have no owning process (run as root for full attribution); 22 of 146 listening sockets are bound to all interfaces",
-        "duration_ms": 39
+        "note": "370 processes were not readable, so some sockets have no owning process (run as root for full attribution); 15 of 147 listening sockets are bound to all interfaces",
+        "duration_ms": 34
       },
       {
         "collector": "witness",
         "status": "COLLECTOR_STATUS_PARTIAL",
         "note": "host: 17 mount point(s) could not be measured — usually a filesystem this account cannot enter; their capacity is absent from the report rather than assumed; docker is installed but its daemon could not be queried (docker exited 1: failed to connect to the docker API at unix:///nonexistent/docker.sock; check if the path is correct and if the daemon is running: dial unix /nonexistent/docker.sock: connect: no such…); the container, network, volume and image lists are unknown rather than empty. The usual cause is an unprivileged audit: /var/run/docker.sock is readable by root and the docker group only — re-run as root, or as a member of that group, for the container checks; panels: /var/lib/docker/volumes/portainer_data could not be examined (stat /var/lib/docker/volumes/portainer_data: permission denied), so Portainer could neither be confirmed nor ruled out; scheduled jobs: not running as root, so the per-user crontabs under /var/spool/cron are unreadable; only <USER>'s own crontab was collected. Jobs owned by other accounts exist on most hosts and are not in this report; certificates: skipped 122 CA certificate(s) reached through the system trust store (/etc/ssl/certs, /etc/pki/tls/certs) — they are the distribution's root certificates, not certificates this host serves",
-        "duration_ms": 427
+        "duration_ms": 372
       }
     ],
     "changes": [
@@ -133,17 +133,17 @@
       {
         "kind": "container",
         "target": "orders-api",
-        "detail": "created from nginx:1.27-alpine"
+        "detail": "created from nginx:1.27-alpine, unless a container named orders-api already exists — the container engine did not answer, so that could not be checked"
       },
       {
         "kind": "disk-space",
         "target": "/",
-        "detail": "95.9 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
+        "detail": "95.1 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
       },
       {
         "kind": "firewall-port",
         "target": "8080/tcp",
-        "detail": "opened by orders-api on all interfaces → container port 80"
+        "detail": "not opened: orders-api cannot bind it on all interfaces, because it is already held by python3 (pid 1767088), listening on port 8080/tcp on 0.0.0.0 (see witness.port_conflict)"
       }
     ],
     "rollback": [
@@ -159,33 +159,33 @@
       },
       {
         "kind": "proxy-config",
-        "detail": "apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
+        "detail": "unable to verify: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
       },
       {
         "kind": "snapshot",
-        "detail": "whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
+        "detail": "unable to verify: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
       }
     ],
     "command_journal": [
-      "uname -m — ok (2ms)",
-      "docker version --format {{json .}} — ok (17ms)",
-      "docker compose version --short — ok (68ms)",
-      "docker info --format {{json .}} — failed (42ms)",
-      "docker ps -a --format {{json .}} — failed (15ms)",
-      "apachectl -v — ok (28ms)",
-      "apachectl -S — ok (41ms)",
-      "crontab -l -u <USER> — ok (3ms)",
-      "systemctl list-timers --all --no-pager --plain --no-legend — ok (15ms)",
-      "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service man-db.service systemd-tmpfiles-clean.service fstrim.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service — ok (34ms)",
-      "restic version — ok (23ms)",
-      "duplicity --version — ok (123ms)"
+      "uname -m — ok (1ms)",
+      "docker version --format {{json .}} — ok (9ms)",
+      "docker compose version --short — ok (57ms)",
+      "docker info --format {{json .}} — failed (44ms)",
+      "docker ps -a --format {{json .}} — failed (11ms)",
+      "apachectl -v — ok (30ms)",
+      "apachectl -S — ok (43ms)",
+      "crontab -l -u <USER> — ok (2ms)",
+      "systemctl list-timers --all --no-pager --plain --no-legend — ok (12ms)",
+      "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service fstrim.service man-db.service systemd-tmpfiles-clean.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service — ok (26ms)",
+      "restic version — ok (15ms)",
+      "duplicity --version — ok (110ms)"
     ]
   },
   "audit": {
-    "generatedAt": "2026-10-10T19:17:07.655470009Z",
+    "generatedAt": "2026-10-11T20:46:13.535167863Z",
     "hostname": "<HOSTNAME>",
     "tool": "deploy-witness",
-    "version": "1.2.0",
+    "version": "1.4.0",
     "mode": "compose-preflight",
     "system": null,
     "updates": null,
@@ -197,7 +197,7 @@
         "port": 8080,
         "exposure": "all-interfaces",
         "state": "LISTEN",
-        "pid": 737076,
+        "pid": 1767088,
         "process": "python3",
         "user": "<USER>",
         "command": "python3 -m http.server 8080 --bind 0.0.0.0"
@@ -208,13 +208,13 @@
       {
         "section": "ports",
         "status": "partial",
-        "records": 146,
+        "records": 147,
         "critical": 0,
         "high": 0,
-        "duration": "39ms",
+        "duration": "34ms",
         "notes": [
-          "325 processes were not readable, so some sockets have no owning process (run as root for full attribution)",
-          "22 of 146 listening sockets are bound to all interfaces"
+          "370 processes were not readable, so some sockets have no owning process (run as root for full attribution)",
+          "15 of 147 listening sockets are bound to all interfaces"
         ]
       },
       {
@@ -222,8 +222,8 @@
         "status": "partial",
         "records": 5,
         "critical": 1,
-        "high": 2,
-        "duration": "427ms",
+        "high": 1,
+        "duration": "372ms",
         "notes": [
           "host: 17 mount point(s) could not be measured — usually a filesystem this account cannot enter; their capacity is absent from the report rather than assumed",
           "docker is installed but its daemon could not be queried (docker exited 1: failed to connect to the docker API at unix:///nonexistent/docker.sock; check if the path is correct and if the daemon is running: dial unix /nonexistent/docker.sock: connect: no such…); the container, network, volume and image lists are unknown rather than empty. The usual cause is an unprivileged audit: /var/run/docker.sock is readable by root and the docker group only — re-run as root, or as a member of that group, for the container checks",
@@ -236,96 +236,96 @@
     "commands": [
       {
         "command": "uname -m",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "2ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "1ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker version --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "17ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "9ms",
         "exitCode": 1,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker compose version --short",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "68ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "57ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker info --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "42ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "44ms",
         "exitCode": 1,
         "outcome": "failed",
         "network": ""
       },
       {
         "command": "docker ps -a --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "15ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "11ms",
         "exitCode": 1,
         "outcome": "failed",
         "network": ""
       },
       {
         "command": "apachectl -v",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "28ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "30ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "apachectl -S",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "41ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "43ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "crontab -l -u <USER>",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "3ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "2ms",
         "exitCode": 1,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "systemctl list-timers --all --no-pager --plain --no-legend",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "15ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "12ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
-        "command": "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service man-db.service systemd-tmpfiles-clean.service fstrim.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "34ms",
+        "command": "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service fstrim.service man-db.service systemd-tmpfiles-clean.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "26ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "restic version",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "23ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "15ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "duplicity --version",
-        "startedAt": "2026-10-10 19:17:07",
-        "duration": "123ms",
+        "startedAt": "2026-10-11 20:46:13",
+        "duration": "110ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
@@ -423,7 +423,7 @@
     "capabilities": {
       "arch": "x86_64",
       "memTotalBytes": 41654738944,
-      "memAvailableBytes": 19708694528,
+      "memAvailableBytes": 18803896320,
       "swapTotalBytes": 0,
       "filesystems": [
         {
@@ -431,10 +431,10 @@
           "device": "/dev/nvme0n1p2",
           "fsType": "ext4",
           "totalBytes": 502609965056,
-          "usedBytes": 374013714432,
-          "availableBytes": 102989799424,
+          "usedBytes": 374864236544,
+          "availableBytes": 102139277312,
           "inodesTotal": 31244288,
-          "inodesFree": 23233119,
+          "inodesFree": 23224132,
           "readOnly": false
         },
         {
@@ -456,7 +456,7 @@
           "port": 8080,
           "exposure": "all-interfaces",
           "state": "LISTEN",
-          "pid": 737076,
+          "pid": 1767088,
           "process": "python3",
           "user": "<USER>",
           "command": "python3 -m http.server 8080 --bind 0.0.0.0"
@@ -516,7 +516,7 @@
         "severity": "blocker",
         "subject": "8080/tcp",
         "title": "Port 8080 is already in use",
-        "description": "Service \"orders-api\" publishes port 8080/tcp on every host address, and that binding is already held on this host by python3 (pid 737076), listening on port 8080/tcp on 0.0.0.0.",
+        "description": "Service \"orders-api\" publishes port 8080/tcp on every host address, and that binding is already held on this host by python3 (pid 1767088), listening on port 8080/tcp on 0.0.0.0.",
         "whyItMatters": "The container will fail to start: the engine cannot bind a port another process already holds. On a deployment that stops the old stack first, the failure lands after the old one is already down.",
         "whatToDo": "Publish a different host port for \"orders-api\", or stop whatever currently holds 8080 before deploying.",
         "confidence": "high",
@@ -526,34 +526,13 @@
             "command": "<WORKDIR>/orders/docker-compose.yml (service orders-api)",
             "output": "ports: publishes host port 8080/tcp on every host address → container port 80",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:08Z"
+            "capturedAt": "2026-10-11T20:46:13Z"
           },
           {
             "command": "ss -lntupH",
-            "output": "tcp 0.0.0.0:8080 LISTEN pid=737076 process=python3",
+            "output": "tcp 0.0.0.0:8080 LISTEN pid=1767088 process=python3",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:08Z"
-          }
-        ]
-      },
-      {
-        "code": "witness.no_rollback_plan",
-        "collector": "rollback",
-        "category": "missing",
-        "severity": "warning",
-        "subject": "2 of 4",
-        "title": "There is no way back from this deployment",
-        "description": "The rollback plan for this host is incomplete. Missing: proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
-        "whyItMatters": "Every other finding in this report is about whether the deployment will work. This one is about what happens when it does not, and it is the only one that cannot be fixed after the fact.",
-        "whatToDo": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and take a snapshot or a volume backup.",
-        "confidence": "high",
-        "sortOrder": 0,
-        "evidence": [
-          {
-            "command": "the rollback section of this report",
-            "output": "proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nsnapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
-            "truncated": false,
-            "capturedAt": "2026-10-10T19:17:08Z"
+            "capturedAt": "2026-10-11T20:46:13Z"
           }
         ]
       },
@@ -574,7 +553,7 @@
             "command": "docker info --format {{json .}}",
             "output": "docker is installed but its daemon could not be queried (docker exited 1: failed to connect to the docker API at unix:///nonexistent/docker.sock; check if the path is correct and if the daemon is running: dial unix /nonexistent/docker.sock: connect: no such…); the container, network, volume and image lists are unknown rather than empty. The usual cause is an unprivileged audit: /var/run/docker.sock is readable by root and the docker group only — re-run as root, or as a member of that group, for the container checks",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:08Z"
+            "capturedAt": "2026-10-11T20:46:13Z"
           }
         ]
       },
@@ -595,7 +574,7 @@
             "command": "<WORKDIR>/orders/docker-compose.yml (service orders-api)",
             "output": "image: nginx:1.27-alpine",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:08Z"
+            "capturedAt": "2026-10-11T20:46:13Z"
           }
         ]
       },
@@ -616,7 +595,28 @@
             "command": "<WORKDIR>/orders/docker-compose.yml",
             "output": "registries referenced: docker.io",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:08Z"
+            "capturedAt": "2026-10-11T20:46:13Z"
+          }
+        ]
+      },
+      {
+        "code": "witness.no_rollback_plan",
+        "collector": "rollback",
+        "category": "missing",
+        "severity": "info",
+        "subject": "2 of 4 unverified",
+        "title": "The way back could not be fully verified",
+        "description": "Nothing in the rollback plan was found to be missing, but part of it could not be checked from inside this host. Unable to verify: proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
+        "whyItMatters": "What this audit cannot see is not evidence that it is absent — nor that it exists. Whether the deployment can be undone in full depends on the items above, which only the people running this host can confirm.",
+        "whatToDo": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and confirm a snapshot or a volume backup exists.",
+        "confidence": "high",
+        "sortOrder": 0,
+        "evidence": [
+          {
+            "command": "the rollback section of this report",
+            "output": "unable to verify — proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nunable to verify — snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
+            "truncated": false,
+            "capturedAt": "2026-10-11T20:46:13Z"
           }
         ]
       }
@@ -630,39 +630,43 @@
       {
         "kind": "container",
         "target": "orders-api",
-        "detail": "created from nginx:1.27-alpine"
+        "detail": "created from nginx:1.27-alpine, unless a container named orders-api already exists — the container engine did not answer, so that could not be checked"
       },
       {
         "kind": "disk-space",
         "target": "/",
-        "detail": "95.9 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
+        "detail": "95.1 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
       },
       {
         "kind": "firewall-port",
         "target": "8080/tcp",
-        "detail": "opened by orders-api on all interfaces → container port 80"
+        "detail": "not opened: orders-api cannot bind it on all interfaces, because it is already held by python3 (pid 1767088), listening on port 8080/tcp on 0.0.0.0 (see witness.port_conflict)"
       }
     ],
     "rollback": [
       {
         "kind": "image-tag",
         "available": true,
+        "state": "available",
         "detail": "orders-api is not running here yet, so undoing it means removing it — there is no previous version to return to"
       },
       {
         "kind": "volume-backup",
         "available": true,
+        "state": "available",
         "detail": "the deployment declares no persistent data, so there is nothing to restore"
       },
       {
         "kind": "proxy-config",
         "available": false,
-        "detail": "apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
+        "state": "unable-to-verify",
+        "detail": "unable to verify: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
       },
       {
         "kind": "snapshot",
         "available": false,
-        "detail": "whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
+        "state": "unable-to-verify",
+        "detail": "unable to verify: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
       }
     ]
   }
