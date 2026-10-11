@@ -1,0 +1,5 @@
+Path,Flag,Enabled,Recipient,Sends,Contacts,Note
+osv-api,--online,false,,"the name, version and ecosystem of every installed package (POST /v1/querybatch), then one GET /v1/vulns/<id> per advisory found; the host name is resolved by the system resolver",0,not enabled: --online was not given
+distro-feeds,--online,false,,the tool's own HTTPS download of its advisory data (debsecan's request names the release codename); the package list is compared on this host,0,not enabled: --online was not given; debsecan and arch-audit are not run
+registry-egress,--egress,false,,"a DNS lookup of each registry by the system resolver, then one TCP connect, closed at once; no TLS, no HTTP, no bytes sent",0,not enabled: --egress was not given
+upload,--upload,false,,one POST of the `upload` half of report.json with the one-time token in X-Upload-Token; no retry,0,not enabled: --upload was not given

@@ -1,0 +1,22 @@
+# Control scenario for the site materials (DW-73). The directory must be named
+# "orders": deploy-witness takes the Compose project name from it.
+# run.sh puts a foreign listener on 0.0.0.0:8080 and a foreign container named
+# "orders-api" on the host for the conflict runs, and removes both afterwards.
+name: orders
+
+services:
+  orders-api:
+    image: nginx:1.27-alpine
+    container_name: orders-api
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M

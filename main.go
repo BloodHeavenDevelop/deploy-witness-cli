@@ -88,7 +88,15 @@ func mainWithCode() int {
 		log.Info(line)
 	}
 
-	result := audit.New(cfg, log, version).Run()
+	auditor := audit.New(cfg, log, version)
+	// A Compose preflight whose input cannot be parsed stops here, before anything
+	// is collected and with no report written: there is no preflight to report, and
+	// a report without one must not be mistaken for a clean preflight.
+	if err := auditor.Prepare(); err != nil {
+		log.Error(err, "; no report was written")
+		return exitUsage
+	}
+	result := auditor.Run()
 
 	// The last thing before anything is written: sweep the free-form text for
 	// credentials. No collector reads a secret on purpose, but a cron line or a

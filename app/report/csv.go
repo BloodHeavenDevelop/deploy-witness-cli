@@ -174,7 +174,7 @@ func summaryRows(r *model.Report) []model.SummaryRow {
 	rows := []model.SummaryRow{{
 		Section: "report",
 		Status:  string(model.StatusOk),
-		Notes: fmt.Sprintf("%s %s on %s at %s UTC",
+		Notes: fmt.Sprintf("%s: %s %s on %s at %s UTC", r.Mode.Label(),
 			r.Tool, r.Version, r.Hostname, r.GeneratedAt.UTC().Format("2006-01-02 15:04:05")),
 	}}
 
@@ -188,6 +188,8 @@ func summaryRows(r *model.Report) []model.SummaryRow {
 		})
 	}
 
+	rows = append(rows, preflightRow(r))
+
 	for _, s := range r.Sections {
 		rows = append(rows, model.SummaryRow{
 			Section:  string(s.Section),
@@ -200,6 +202,48 @@ func summaryRows(r *model.Report) []model.SummaryRow {
 		})
 	}
 	return rows
+}
+
+// preflightRow is the summary's answer to "was a deployment checked against this
+// host, and did the check complete?" — the question a reader must not have to infer
+// from the witness row. Its status is the comparison's: `skipped` for a host audit,
+// the witness section's own status for a Compose preflight. The note opens with the
+// mode identifier (host-audit, compose-preflight) so a script can match on it.
+func preflightRow(r *model.Report) model.SummaryRow {
+	row := model.SummaryRow{Section: "preflight", Status: string(model.StatusSkipped)}
+	if r.Mode != model.ModeComposePreflight {
+		row.Notes = string(model.ModeHostAudit) + ": host audit only — no --compose was given, so no planned " +
+			"deployment was compared with this host; this report is not a Compose preflight result"
+		return row
+	}
+
+	row.Status = string(model.StatusFailed)
+	var witness *model.SectionResult
+	for i := range r.Sections {
+		if r.Sections[i].Section == model.SectionWitness {
+			witness = &r.Sections[i]
+		}
+	}
+	path := "the Compose file"
+	if r.Manifest != nil {
+		path = r.Manifest.Path
+	}
+	switch {
+	case witness == nil:
+		row.Notes = string(model.ModeComposePreflight) + ": the witness section did not run, so " + path +
+			" was not compared with this host; this is not a preflight result"
+	case witness.Status == model.StatusOk:
+		row.Status = string(model.StatusOk)
+		row.Notes = string(model.ModeComposePreflight) + ": " + path + " was compared with this host"
+	case witness.Status == model.StatusPartial:
+		row.Status = string(model.StatusPartial)
+		row.Notes = string(model.ModeComposePreflight) + ": " + path + " was compared with this host, " +
+			"but parts of the comparison could not be made (see the witness row)"
+	default:
+		row.Notes = string(model.ModeComposePreflight) + ": the comparison of " + path +
+			" with this host did not complete (see the witness row); this is not a preflight result"
+	}
+	return row
 }
 
 // WriteDir renders one CSV file per section and returns the paths written.

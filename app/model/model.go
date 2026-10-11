@@ -31,6 +31,37 @@ var AllSections = []Section{
 	SectionWitness,
 }
 
+// Mode is what kind of run this was. There are exactly two, and the difference is
+// whether a planned deployment was compared with the host at all.
+//
+// The values are stable identifiers: they appear in report.json (`audit.mode`), at
+// the start of the `preflight` row of summary.csv and in the note of the `witness`
+// collector the upload carries, and a consumer may match on them.
+type Mode string
+
+const (
+	// ModeHostAudit inspects the host on its own: inventory, updates, CVEs, ports,
+	// services. No Compose file is read, the witness section is not run, and the
+	// report never claims a deployment will fit — it is not a preflight result.
+	ModeHostAudit Mode = "host-audit"
+	// ModeComposePreflight additionally compares a Compose file (--compose) with the
+	// host. It cannot start without a readable, parseable file: a broken input is a
+	// usage error, never a report that merely lacks findings.
+	ModeComposePreflight Mode = "compose-preflight"
+)
+
+// Label is the mode's human name, as the log and the summary print it.
+func (m Mode) Label() string {
+	switch m {
+	case ModeHostAudit:
+		return "host audit"
+	case ModeComposePreflight:
+		return "Compose preflight"
+	default:
+		return string(m)
+	}
+}
+
 // Status is how a section ended. `partial` is load-bearing: a section that
 // collected some rows but hit an error must never be reported as `ok`, or the
 // reader takes a truncated table for a complete one.
@@ -208,10 +239,12 @@ func (r *SectionResult) Degrade(note string) {
 
 // Report is the whole audit, in memory, before it is rendered to CSV.
 type Report struct {
-	GeneratedAt     time.Time       `json:"generatedAt"`
-	Hostname        string          `json:"hostname"`
-	Tool            string          `json:"tool"`
-	Version         string          `json:"version"`
+	GeneratedAt time.Time `json:"generatedAt"`
+	Hostname    string    `json:"hostname"`
+	Tool        string    `json:"tool"`
+	Version     string    `json:"version"`
+	// Mode is host-audit or compose-preflight. See Mode.
+	Mode            Mode            `json:"mode"`
 	System          []Fact          `json:"system"`
 	Updates         []Update        `json:"updates"`
 	Vulnerabilities []Vulnerability `json:"vulnerabilities"`

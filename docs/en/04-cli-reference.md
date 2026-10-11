@@ -31,7 +31,7 @@ only together with a typed `--upload`.
 | `--out <dir>` | `AUDIT_OUT` | `./audit-<host>-<UTC timestamp>` | Directory to write the report into. Created if missing. |
 | `--stdout` | `AUDIT_STDOUT` | `false` | Write the report to stdout instead of a directory. Diagnostics go to stderr, so the stream is pipeable. |
 | `--format <csv\|json>` | `AUDIT_FORMAT` | `csv` | `csv` is a directory of tables for a person; `json` is one `report.json` for a machine. Anything else is rejected before the audit runs. |
-| `--sections <list>` | `AUDIT_SECTIONS` | all | Comma-separated subset of `system,updates,vulnerabilities,ports,services,witness`. Order is normalised — see below. |
+| `--sections <list>` | `AUDIT_SECTIONS` | all the mode runs | Comma-separated subset of `system,updates,vulnerabilities,ports,services,witness`. Order is normalised — see below. `witness` is accepted only in a Compose preflight, and a Compose preflight must include it — see [Modes](#modes). |
 | `--services-all` | `AUDIT_SERVICES_ALL` | `false` | Include inactive service units, not only running ones. |
 
 `--sections` is reordered to the canonical run order regardless of how it is
@@ -45,15 +45,46 @@ was never populated must not read as a short one.
 `--format json` writes `report.json` **instead of** the CSV files, not alongside
 them.
 
+## Modes
+
+| Flag | Environment | Default | Meaning |
+|---|---|---|---|
+| `--mode <host-audit\|compose-preflight>` | `AUDIT_MODE` | `compose-preflight` with `--compose`, `host-audit` without | Which kind of run this is. `host` and `preflight` are accepted as short forms. |
+
+- **`host-audit`** — the host on its own. No Compose file is read and the witness
+  section is not run. Default sections: all but `witness`. The report still
+  carries a `witness` row, `skipped`, with a note opening `host-audit:`, and the
+  `preflight` row of `summary.csv` says that no planned deployment was compared —
+  see [08](08-report-format.md#summarycsv).
+- **`compose-preflight`** — the host, plus a comparison of `--compose` with it.
+  The witness section always runs.
+
+Every combination that would let one mode pass for the other is a usage error
+(exit `2`), reported before anything is collected:
+
+| Given | Why it is refused |
+|---|---|
+| `witness` in `--sections`, no `--compose` | The section is the comparison; without a file there is nothing to compare. |
+| `--mode compose-preflight`, no `--compose` | Same. This is how a scheduled job asserts it is a preflight: an `AUDIT_COMPOSE` that went missing stops the run instead of quietly turning it into a host audit. |
+| `--mode host-audit` with `--compose` (or `AUDIT_COMPOSE`) | A host audit reads no Compose file; a file given anyway would be silently ignored. |
+| `--compose` with a `--sections` that leaves out `witness` | A preflight that does not compare is not a preflight. |
+| A `--compose` path that is missing, a directory, or unreadable | The preflight has no input. |
+| A `--compose` file that does not parse (not YAML, a top level that is not a mapping, an empty file) | Same — checked after the network plan is printed and before the first section runs. **No report is written.** |
+
+A file that parses but has problems inside — one unparsable port, an `include:`
+that is not followed — is not refused: the preflight runs and its `witness` row is
+`partial` with the reason.
+
 ## Witness
 
 | Flag | Environment | Default | Meaning |
 |---|---|---|---|
-| `--compose <path>` | `AUDIT_COMPOSE` | none | The `docker-compose.yml` the `witness` section compares this host against. The path is checked at startup — a missing file is exit code `2`, not a degraded section — and resolved to an absolute path. Its directory is the project directory: `.env` is looked for there, relative `env_file` paths resolve against it, and its **name** becomes the Compose project name, which is how the section tells "this port is taken by something else" from "this port is taken by the previous version of this very deployment". |
+| `--compose <path>` | `AUDIT_COMPOSE` | none | The `docker-compose.yml` the `witness` section compares this host against; giving it makes the run a Compose preflight. The file is checked at startup — missing, unreadable or unparseable is exit code `2` with no report, not a degraded section — and the path is resolved to an absolute one. Its directory is the project directory: `.env` is looked for there, relative `env_file` paths resolve against it, and its **name** becomes the Compose project name, which is how the section tells "this port is taken by something else" from "this port is taken by the previous version of this very deployment". |
 | `--egress` | — | `false` | Permit the one outbound check: a TCP connect to each registry the manifest pulls from — port 443, or the port the image reference names (`registry.local:5000/app`) — 5 s per registry. The address actually dialled is what the evidence and the section note name. No TLS handshake, no HTTP request, no authentication, no image manifest fetched. Without it the reachability rule reports "not checked" rather than concluding anything. |
 
-Without `--compose` the section is `skipped` and says so; everything else in the
-report still applies.
+Without `--compose` the run is a host audit and the witness section is not run
+(see [Modes](#modes)); the report says so in its `report`, `preflight` and
+`witness` rows.
 
 ## Vulnerabilities
 
@@ -122,7 +153,7 @@ line. This is everything the tool, and every command it runs, sends anywhere:
 |---|---|---|---|
 | **Default** (no network flag) | Nobody. | Nothing. No DNS lookup and no network socket: the binary uses only netlink (to list this host's interface addresses) and local unix sockets (D-Bus for `timedatectl`/`systemctl`, the docker/podman socket). Commands that would fetch data are not run (`debsecan`, `arch-audit`) or are pinned to cached metadata (`apt-get -s`, `dnf`/`yum -C`, `zypper --no-refresh`). | Log line `network: none …`; `summary.csv` row `network` = `offline: …`; `network.csv` has all four paths with `Enabled=false`, `Contacts=0`. |
 | `--online` | The OSV API at `--osv-url` (default `https://api.osv.dev`). If installed: `debsecan` → `security-tracker.debian.org`, `arch-audit` → `security.archlinux.org` — those addresses are chosen by the distribution tools. | OSV: name, version and ecosystem of **every installed package** (`POST /v1/querybatch`, 1000 per request), then one `GET /v1/vulns/<id>` per advisory found, up to `--max-osv-lookups`; `User-Agent: deploy-witness/<version>`. Feeds: each tool's own download of its advisory data (debsecan's request names the release codename); the comparison with the installed packages happens on this host. | `network.csv`: `osv-api` contacts = HTTP requests sent; `distro-feeds` contacts = tool runs, which also appear in `commands.csv` with `Network=--online`. |
-| `--egress` (needs `--compose` and the `witness` section) | Each registry named by an `image:` in the compose file (`docker.io` for an unqualified image), on port 443 or the port the reference names. | A DNS lookup through the system resolver, then one TCP connect, closed at once. No TLS, no HTTP, not a byte of payload. | `network.csv`: recipients as `host:port`, contacts = connects; the section note and the finding's evidence name the same `host:port`. |
+| `--egress` (needs a Compose preflight) | Each registry named by an `image:` in the compose file (`docker.io` for an unqualified image), on port 443 or the port the reference names. | A DNS lookup through the system resolver, then one TCP connect, closed at once. No TLS, no HTTP, not a byte of payload. | `network.csv`: recipients as `host:port`, contacts = connects; the section note and the finding's evidence name the same `host:port`. |
 | `--upload` | Exactly `<base-url>/api/public/audit/upload`, as typed. | One `POST`: the `upload` half of the report (see above) and the `X-Upload-Token` header. | The recipient line before sending; the outcome on stdout and in the exit code. `network.csv` lists the recipient — the upload happens after the report is written, so its contacts column stays `0`. |
 
 Rules the three paths share:
@@ -183,7 +214,7 @@ Child processes:
 |---|---|
 | `0` | The report was written. Sections may still carry notes in `summary.csv`. |
 | `1` | The report was written, but at least one section failed outright. |
-| `2` | Bad arguments — including an `--upload`/`--osv-url` address that is not `https://` — or the report could not be written. |
+| `2` | Bad arguments — including an `--upload`/`--osv-url` address that is not `https://`, a mode conflict, or a `--compose` file that is missing, unreadable or does not parse (no report is written) — or the report could not be written. |
 | `3` | The report was written, but `--upload` could not deliver it — including when the address answered with a redirect, which is never followed. |
 
 A `partial` section does not change the exit code — a partial section still
@@ -201,7 +232,7 @@ a `refused` row in `commands.csv`.
 ## Examples
 
 ```bash
-# Everything, into a timestamped directory.
+# Host audit: everything about the host, into a timestamped directory. Not a preflight.
 sudo deploy-witness
 
 # What can this binary do to my server? Answered without running it.
@@ -210,8 +241,11 @@ deploy-witness --commands
 # Only what is exposed to the network, piped straight into a spreadsheet tool.
 deploy-witness --sections ports,services --stdout > exposure.csv
 
-# Check a deployment against this host before deploying it.
+# Compose preflight: check a deployment against this host before deploying it.
 sudo deploy-witness --compose /srv/app/docker-compose.yml
+
+# The same, for a scheduled job that must never degrade into a host audit.
+sudo deploy-witness --mode compose-preflight --compose /srv/app/docker-compose.yml
 
 # The witness section only, and test whether the registries are reachable.
 sudo deploy-witness --sections ports,services,witness \

@@ -1,0 +1,13 @@
+Command,Started at,Duration,Exit code,Outcome,Network
+uname -m,2026-10-10 19:17:22,1ms,0,ok,
+docker version --format {{json .}},2026-10-10 19:17:22,8ms,1,ok,
+docker compose version --short,2026-10-10 19:17:22,75ms,0,ok,
+docker info --format {{json .}},2026-10-10 19:17:22,54ms,1,failed,
+docker ps -a --format {{json .}},2026-10-10 19:17:22,15ms,1,failed,
+apachectl -v,2026-10-10 19:17:22,30ms,0,ok,
+apachectl -S,2026-10-10 19:17:22,39ms,0,ok,
+crontab -l -u <USER>,2026-10-10 19:17:22,2ms,1,ok,
+systemctl list-timers --all --no-pager --plain --no-legend,2026-10-10 19:17:22,15ms,0,ok,
+systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service man-db.service systemd-tmpfiles-clean.service fstrim.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service,2026-10-10 19:17:22,33ms,0,ok,
+restic version,2026-10-10 19:17:22,33ms,0,ok,
+duplicity --version,2026-10-10 19:17:22,110ms,0,ok,

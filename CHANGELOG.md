@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-10
+
 ### Security
 
 - **A default run no longer reaches the network through child processes** (DW-53).
@@ -46,6 +48,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `app/netpath/static_test.go`: fails if a network API appears in any file other than
   the three network paths.
 
+### Changed
+
+- **Two explicit run modes: host audit and Compose preflight** (DW-70). A run without
+  `--compose` is a **host audit** (`host-audit`): the witness section is not run, and
+  the report says so instead of looking like a full audit with one skipped section.
+  `--compose` makes it a **Compose preflight** (`compose-preflight`), which always
+  runs the witness section. New `--mode host-audit|compose-preflight`
+  (`AUDIT_MODE`; default: decided by `--compose`) lets a job assert the mode, so a
+  preflight whose Compose file went missing stops instead of degrading into a host
+  audit. Refused with exit `2` before anything is collected: `witness` in
+  `--sections` without `--compose`, `--mode compose-preflight` without `--compose`,
+  `--mode host-audit` with `--compose`, `--compose` with a `--sections` that leaves
+  `witness` out, and a `--compose` path that is missing, not a regular file or
+  unreadable ([app/config/config.go](app/config/config.go)). A Compose file that does
+  not parse now stops the run with exit `2` and **no report written**, instead of
+  a report whose witness row failed ([app/audit/audit.go](app/audit/audit.go) `Prepare`,
+  [main.go](main.go)). The report names the mode everywhere: `mode:` log line at the
+  start, `audit.mode` in `report.json`, the `report` row of `summary.csv` opens with
+  `host audit:`/`Compose preflight:`, and a new `preflight` row says whether a
+  planned deployment was compared (`skipped` for a host audit, the witness status
+  for a preflight — `failed` when the comparison did not complete, never `ok`). A
+  host audit always carries a `witness` row with status `skipped` and a note opening
+  with `host-audit:` — in `summary.csv`, `report.json` and the uploaded collector
+  list — so an uploaded host audit can never arrive as a run with every collector
+  complete and no findings ([app/audit/witness.go](app/audit/witness.go),
+  [app/report/csv.go](app/report/csv.go)). The `bloodheaven.audit.v1` contract is
+  unchanged.
+
 ### Fixed
 
 - `--egress` evidence and the section note named port 443 for a registry with an
@@ -55,6 +85,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Documentation
 
+- **Site materials kit** in [docs/site-materials](docs/site-materials/README.md) (DW-73):
+  control Compose scenarios (conflict, no conflict, two "could not check" cases,
+  external volumes, manifest rules), the exact commands, the reports they produced
+  (CSV + `report.json`, sanitised with marked placeholders and trimmed of unrelated
+  host inventory), `run.sh` to recreate the host states, run and clean up, and a
+  [verification matrix](docs/site-materials/MATRIX.md) of every public claim —
+  verified on what, by which scenario, or not verified / not supported. Recorded with
+  the tree at `5ab9f51`, which `make build` stamps `1.2.0` because the version comes
+  from the first numbered CHANGELOG heading. `.gitignore` admits the sample CSVs;
+  both tables of contents link the kit.
 - `04-cli-reference.md`: a "Network behaviour" table per mode (who is contacted, what
   is sent, where it is recorded), how to verify an offline run, the token-through-the-
   environment recipe (`sudo --preserve-env`), what an upload contains (host name,

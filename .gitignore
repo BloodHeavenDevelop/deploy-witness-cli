@@ -9,3 +9,5 @@
 # must never be committed.
 /audit-*/
 *.csv
+# …except the sanitised sample reports published for the site (DW-73).
+!/docs/site-materials/outputs/**/*.csv

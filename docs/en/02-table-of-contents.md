@@ -12,6 +12,7 @@
 | 08 | [Report format](08-report-format.md) | Every CSV file, every column, and the JSON document |
 | 09 | [Command allowlist and journal](09-command-allowlist.md) | Everything the binary is able to execute, and the record of what it did |
 | 10 | [Witness rules](10-witness-rules.md) | The 24 finding codes, their severities and what triggers each |
+| — | [Site materials](../site-materials/README.md) | Verified runs behind the site's examples and claims: control Compose scenarios, the exact commands, the reports they produced, and the [verification matrix](../site-materials/MATRIX.md). Language-neutral kit, English with a Russian summary |
 
 The same set exists in Russian under [`docs/ru/`](../ru/). Both languages are
 updated together, in the same change.

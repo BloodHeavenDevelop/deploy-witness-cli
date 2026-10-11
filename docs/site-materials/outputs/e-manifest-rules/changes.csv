@@ -1,0 +1,7 @@
+Kind,Target,Detail
+command,nginx:latest,pulled from docker.io
+container,network isolated,created with subnet 10.250.73.0/24
+container,rules-rules-app-1,created from nginx:latest
+disk-space,/,"95.9 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
+file,/etc,bind-mounted into rules-app at /host-etc (read only)
+file,/var/run/docker.sock,bind-mounted into rules-app at /var/run/docker.sock (read/write)

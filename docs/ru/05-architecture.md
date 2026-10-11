@@ -7,7 +7,8 @@ main.go
   └─ config.Load(argv, env)          флаги → Config, либо ошибка до любого действия
   └─ --commands? напечатать run.Commands() и выйти      (сам применяемый список)
   └─ logging.New(stderr, level)      диагностика никогда не попадает в stdout
-  └─ audit.New(cfg, log).Run()
+  └─ audit.New(cfg, log).Prepare()   только Compose preflight: разбор --compose, иначе код 2 без отчёта
+  └─ auditor.Run()
        ├─ model.ReadOSRelease()      /etc/os-release → идентичность дистрибутива
        ├─ pkgmgr.Detect(os, runner)  какой пакетный менеджер реально есть на хосте
        └─ для каждого выбранного раздела:
@@ -17,11 +18,12 @@ main.go
             ├─ ports.Collect()       → []model.Port
             ├─ services.Collect()    → []model.Service
             └─ witnessSection()    → манифест + возможности → находки
-                 ├─ manifest.Parse(--compose)         сторона требований
+                 ├─ манифест, разобранный Prepare   сторона требований
                  ├─ host/docker/proxy/panels/         сторона возможностей,
                  │  scheduler/certs/backup + databases в порядке зависимостей
                  └─ witness.Evaluate()              24 правила: находки, изменения, откат
             каждый даёт model.SectionResult: статус, счётчики, длительность, замечания
+       └─ аудит хоста: строка `witness` skipped с пометкой host-audit (не молчаливый пропуск)
        └─ report.Commands = runner.Journal()   каждая команда, включая отклонённые
   └─ redact.Report(result)           последнее действие перед любой записью
   └─ report.WriteDir() | WriteCombined() | WriteJSONFile() | WriteJSON()
