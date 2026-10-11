@@ -52,28 +52,34 @@ func main() {
 }
 
 func mainWithCode() int {
-	cfg, err := config.Load(os.Args[1:], version, os.Stderr)
+	return runCLI(os.Args[1:], os.Stdout, os.Stderr)
+}
+
+// runCLI is the whole program with its arguments and streams passed in, so the
+// tests can drive it end to end — exit code, log and files written — as a user would.
+func runCLI(args []string, stdout, stderr io.Writer) int {
+	cfg, err := config.Load(args, version, stderr)
 	switch {
 	case errors.Is(err, flag.ErrHelp):
 		return exitOK
 	case err != nil:
-		fmt.Fprintln(os.Stderr, "deploy-witness:", err)
+		fmt.Fprintln(stderr, "deploy-witness:", err)
 		return exitUsage
 	}
 
 	if cfg.ShowVersion {
-		fmt.Println("deploy-witness", version)
+		fmt.Fprintln(stdout, "deploy-witness", version)
 		return exitOK
 	}
 
 	if cfg.ShowCommands {
-		printCommands(os.Stdout)
+		printCommands(stdout)
 		return exitOK
 	}
 
 	// Every diagnostic goes to stderr, so --stdout yields a CSV stream a pipe can
 	// consume unmodified.
-	log := logging.New(os.Stderr, cfg.LogLevel)
+	log := logging.New(stderr, cfg.LogLevel)
 
 	for _, name := range cfg.IgnoredEnv {
 		log.Warn(name + " is set in the environment and ignored: network paths are enabled only by a flag " +
@@ -105,7 +111,7 @@ func mainWithCode() int {
 		log.Infof("masked credential-looking material in %d field(s) before writing the report", masked)
 	}
 
-	payload, err := writeReport(cfg, log, result)
+	payload, err := writeReport(cfg, log, result, stdout)
 	if err != nil {
 		log.Error("could not write the report: ", err)
 		return exitUsage
@@ -127,7 +133,7 @@ func mainWithCode() int {
 		log.Infof("uploaded %d bytes to %s; anyone holding the report link in the answer below can read it",
 			len(payload), cfg.UploadURL)
 		if trimmed := strings.TrimSpace(url); trimmed != "" {
-			fmt.Println(trimmed)
+			fmt.Fprintln(stdout, trimmed)
 		}
 	}
 
@@ -137,10 +143,10 @@ func mainWithCode() int {
 // writeReport renders the report in the requested format and returns the contract
 // payload — the exact bytes --upload would send, taken from the same document that
 // was written to disk rather than built a second time.
-func writeReport(cfg *config.Config, log *logging.Logger, result *model.Report) ([]byte, error) {
+func writeReport(cfg *config.Config, log *logging.Logger, result *model.Report, stdout io.Writer) ([]byte, error) {
 	switch {
 	case cfg.WantsJSON() && cfg.ToStdout:
-		return report.WriteJSON(os.Stdout, result)
+		return report.WriteJSON(stdout, result)
 
 	case cfg.WantsJSON():
 		path, payload, err := report.WriteJSONFile(cfg.OutDir, result)
@@ -151,7 +157,7 @@ func writeReport(cfg *config.Config, log *logging.Logger, result *model.Report) 
 		return payload, nil
 
 	case cfg.ToStdout:
-		if err := report.WriteCombined(os.Stdout, result); err != nil {
+		if err := report.WriteCombined(stdout, result); err != nil {
 			return nil, err
 		}
 		return contractPayload(cfg, result)

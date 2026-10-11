@@ -54,6 +54,15 @@ func Contract(r *model.Report) *auditv1.Report {
 		out.Findings = append(out.Findings, contractFinding(finding))
 	}
 	for _, section := range r.Sections {
+		// A section outside the run's scope is not a collector of this run. The
+		// contract has no status for it — every CollectorStatus other than OK counts
+		// against the run's completeness on the receiving side — so it is left out
+		// rather than sent as SKIPPED. A host audit therefore arrives with no witness
+		// collector, which is also how the receiver tells it from a preflight (a
+		// preflight always carries one, whatever its status).
+		if section.Status == model.StatusNotApplicable {
+			continue
+		}
 		out.Collectors = append(out.Collectors, contractCollector(section))
 	}
 	for _, change := range r.Changes {

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **In a host audit the witness section is "not applicable", not "skipped"**
+  (DW-70). A run without `--compose` never set out to compare a deployment, so the
+  missing comparison is outside its scope rather than a gap in it. New section
+  status `not-applicable` ([app/model/model.go](app/model/model.go)): the `witness`
+  and `preflight` rows of `summary.csv` carry it, with notes opening
+  `host-audit: not applicable`, and so does `audit.sections` in `report.json`; a host
+  audit whose sections completed now has no `skipped`, `partial` or `failed` row on
+  account of the absent Compose file. The log says "witness not applicable" instead
+  of describing a missing preflight.
+- **The upload of a host audit no longer contains a `witness` collector** (DW-70).
+  It used to go out as `COLLECTOR_STATUS_SKIPPED`, which the receiving service counts
+  against completeness and stored the run as `partial`. `bloodheaven.audit.v1` has
+  no "not applicable" status, so a section outside the run's scope is left out of
+  `collectors` ([app/report/contract.go](app/report/contract.go)); a Compose
+  preflight always sends its `witness` collector, which is how the receiver tells
+  the two apart. A `NOT_APPLICABLE` status or a mode field is a change for the
+  `contracts` repository.
+
+### Added
+
+- **End-to-end tests of an explicitly requested preflight with a broken input**
+  (DW-70, [main_test.go](main_test.go)): missing file, unreadable file, a
+  directory, and three unparseable files (not YAML, a top-level list, an empty
+  file) — each asserts exit `2`, the reason in the log and that no report directory
+  was created. `docs/<lang>/04-cli-reference.md` lists the binary's verbatim output
+  for each case. `main` now runs through `runCLI(args, stdout, stderr)` so the tests
+  drive it as a user does.
+
 ## [1.3.0] - 2026-10-10
 
 ### Security

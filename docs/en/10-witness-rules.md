@@ -10,8 +10,9 @@ the wording of a title. Everything else in a finding — the title, the descript
 the thresholds — may be reworded to read better; the code will not.
 
 **The section runs only in a Compose preflight** — a run given `--compose`. A run
-without it is a host audit: the section is not run, its row is `skipped` with a note
-opening `host-audit:`, and nothing in that report is a preflight result. A Compose
+without it is a host audit: the section is outside its scope, its row is
+`not-applicable` with a note opening `host-audit:` (not a gap), and nothing in that
+report is a preflight result. A Compose
 file that cannot be read or parsed stops the run with exit `2` before any section,
 rather than producing an empty finding list. See
 [04 — Modes](04-cli-reference.md#modes).

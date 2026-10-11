@@ -50,10 +50,11 @@ deploy-witness [флаги]
 | `--mode <host-audit\|compose-preflight>` | `AUDIT_MODE` | `compose-preflight` при `--compose`, иначе `host-audit` | Вид прогона. Короткие формы `host` и `preflight` тоже принимаются. |
 
 - **`host-audit`** (аудит хоста) — хост сам по себе. Compose-файл не читается,
-  раздел witness не выполняется. Разделы по умолчанию: все, кроме `witness`. В
-  отчёте всё равно есть строка `witness` со статусом `skipped` и замечанием,
-  начинающимся с `host-audit:`, а строка `preflight` в `summary.csv` говорит, что
-  планируемый деплой ни с чем не сравнивался — см. [08](08-report-format.md#summarycsv).
+  раздел witness не выполняется: он вне рамок этого режима. Разделы по умолчанию:
+  все, кроме `witness`. Строки `witness` и `preflight` в `summary.csv` имеют статус
+  `not-applicable` с замечанием, начинающимся с `host-audit:`, в отправляемом отчёте
+  нет коллектора `witness`, и ничто не считает отсутствие сравнения пробелом — см.
+  [08](08-report-format.md#summarycsv).
 - **`compose-preflight`** — хост плюс сравнение `--compose` с ним. Раздел witness
   выполняется всегда.
 
@@ -73,6 +74,22 @@ deploy-witness [флаги]
 `include:`, по которому не переходят, — не отвергается: preflight выполняется, а
 его строка `witness` получает `partial` с причиной.
 
+Что печатает явно запрошенный preflight (`--mode compose-preflight --compose <файл>
+--out ./report`) для каждого испорченного входа — дословно из бинарника 1.3.x; во
+всех случаях код возврата `2`, а `./report` не создаётся:
+
+| Вход | Вывод (stderr) |
+|---|---|
+| файла нет | `deploy-witness: --compose "./missing.yml": the Compose preflight needs a readable Compose file: stat ./missing.yml: no such file or directory` |
+| файл нельзя прочитать (права `0000`, без root) | `deploy-witness: --compose "./locked.yml": the Compose preflight needs a readable Compose file: open ./locked.yml: permission denied` |
+| каталог | `deploy-witness: --compose "./.": the Compose preflight needs a Compose file, and this is not a regular file` |
+| не YAML (`services: [unclosed`) | строка `network: none …`, затем `ERROR the Compose preflight cannot start, the Compose file could not be parsed: <абс. путь>: yaml: line 1: did not find expected ',' or ']'; no report was written` |
+| верхний уровень — список | то же, с окончанием `…: expected a compose file at the top level, got a sequence; no report was written` |
+| пустой (только комментарии) | то же, с окончанием `…: the file declares nothing; no report was written` |
+
+Первые три случая отвергаются при разборе флагов, поэтому больше ничего не
+печатается; последние три — после сетевого плана и до первого раздела.
+
 ## Witness
 
 | Флаг | Переменная | По умолчанию | Значение |
@@ -80,9 +97,9 @@ deploy-witness [флаги]
 | `--compose <путь>` | `AUDIT_COMPOSE` | нет | `docker-compose.yml`, с которым раздел `witness` сравнивает этот хост; с ним прогон становится Compose preflight. Файл проверяется на старте — отсутствующий, нечитаемый или неразбираемый файл это код возврата `2` без отчёта, а не понижение раздела — а путь приводится к абсолютному. Его каталог считается каталогом проекта: там ищется `.env`, относительно него разрешаются пути `env_file`, а его **имя** становится именем Compose-проекта — именно так раздел отличает «порт занят чем-то посторонним» от «порт занят предыдущей версией этого же деплоя». |
 | `--egress` | — | `false` | Разрешить единственную исходящую проверку: TCP-connect к каждому реестру, из которого тянет манифест, — на порт 443 или на порт, указанный в ссылке на образ (`registry.local:5000/app`), — по 5 с на реестр. Доказательство и заметка раздела называют именно тот адрес, к которому подключались. Ни TLS-рукопожатия, ни HTTP-запроса, ни аутентификации, ни запроса манифеста образа. Без флага правило доступности пишет «не проверялось», а не делает выводов. |
 
-Без `--compose` прогон — аудит хоста, и раздел witness не выполняется (см.
-[Режимы](#режимы)); отчёт говорит об этом в строках `report`, `preflight` и
-`witness`.
+Без `--compose` прогон — аудит хоста, и раздел witness вне его рамок (см.
+[Режимы](#режимы)); отчёт говорит об этом в строке `report` и в строках
+`preflight` и `witness`, обе `not-applicable`.
 
 ## Уязвимости
 

@@ -70,20 +70,22 @@ The index. One row per section, preceded by three rows about the run itself:
 
 | Mode | `preflight` status | Meaning |
 |---|---|---|
-| host audit | `skipped` | No `--compose`: nothing was compared, and this report is not a preflight result |
+| host audit | `not-applicable` | No `--compose`: a comparison is outside the scope of this run — not a gap, and not a preflight result |
 | Compose preflight | `ok` | The Compose file was compared with the host |
 | Compose preflight | `partial` | Compared, but part of the comparison could not be made — the `witness` row says what |
 | Compose preflight | `failed` | The comparison did not complete — this is not a preflight result |
 
 The `preflight` row is never `ok` in a host audit. A host audit also carries a
-`witness` row, `skipped`, with a note opening `host-audit:` — the same row is in
-`report.json` and in the uploaded `collectors` list, so a host audit can never read
-as a preflight that found nothing.
+`witness` row, `not-applicable`, with a note opening `host-audit: not applicable` —
+the same row is in `report.json` (`audit.sections`). Neither counts against the
+report's completeness: a host audit whose sections are all `ok` has no `skipped`,
+`partial` or `failed` row, and the upload leaves the `witness` collector out (see
+[report.json](#reportjson), the `upload` half).
 
 | Column | Contents |
 |---|---|
 | `Section` | `report`, `network`, `preflight`, or the section name |
-| `Status` | `ok`, `partial`, `skipped` or `failed` |
+| `Status` | `ok`, `partial`, `skipped`, `failed` or `not-applicable` |
 | `Records` | Rows the section produced |
 | `Critical` | Critical findings (vulnerabilities only) |
 | `High` | High findings (vulnerabilities only) |
@@ -96,8 +98,9 @@ Statuses:
 |---|---|
 | `ok` | The section ran to completion |
 | `partial` | It produced rows but hit at least one problem — read `Notes` |
-| `skipped` | It did not run, and the note says why — e.g. `witness` in a host audit. A section that was not selected has no row |
+| `skipped` | It belonged to this run but did not run, and the note says why. A gap. A section that was not selected has no row |
 | `failed` | It produced nothing usable |
+| `not-applicable` | It is outside the scope of this kind of run — `witness` (and `preflight`) in a host audit. Not a gap: nothing was expected of it |
 
 `partial` is load-bearing. A section that collected some rows and then hit an
 error is never reported as `ok`, or the reader takes a truncated table for a
@@ -394,11 +397,15 @@ Details worth knowing:
   `partial` maps to `PARTIAL` and not to `OK`: it first went out as `OK`, and the
   receiving service duly stored a run that had degraded on an unprivileged host as
   a complete audit of that machine.
-- **The contract has no mode field.** The mode reaches the receiver through the
-  `witness` collector: in a host audit it is `COLLECTOR_STATUS_SKIPPED` with a note
-  opening `host-audit:`; in a Compose preflight it carries the comparison's own
-  status. A host audit therefore never arrives as a run with every collector
-  complete and no findings.
+- **The contract has no mode field and no "not applicable" status.** Every
+  `CollectorStatus` other than `OK` counts against a run's completeness on the
+  receiving side, so a section outside the run's scope is not sent at all: a host
+  audit's upload has **no `witness` collector**, while a Compose preflight always
+  has one, carrying the comparison's own status (`OK`, `PARTIAL`, `FAILED`). That
+  presence is how the receiver tells the two modes apart. The `host-audit: not
+  applicable` note stays in `audit.sections` of `report.json`; carrying the mode or a
+  `NOT_APPLICABLE` status in the contract itself needs a change in the `contracts`
+  repository.
 - **The package inventory, the pending updates and the CVE list are not in
   `upload`.** The contract is a findings document, and sending them would be
   volunteering a full software inventory of somebody's production host to a
