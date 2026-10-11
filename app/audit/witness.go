@@ -71,6 +71,8 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 		Caps:     caps,
 		Now:      time.Now().UTC(),
 		Project:  projectName(a.cfg.Compose),
+		// Without the ports section the socket list is unknown, not empty.
+		PortsUnchecked: !a.cfg.Wants(model.SectionPorts),
 	}
 	if a.cfg.Egress {
 		in.EgressChecked = true

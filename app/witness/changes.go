@@ -82,6 +82,9 @@ func Changes(in Input) []model.ChangeItem {
 				case portMaybeTaken:
 					opened += fmt.Sprintf(" — if the binding is free, which could not be established: %s "+
 						"(see witness.port_conflict)", holders)
+				case portUnchecked:
+					opened += " — if the binding is free, which was not checked: the ports section was not " +
+						"selected, so the listening sockets were not read"
 				}
 				out = append(out, model.ChangeItem{
 					Kind:   "firewall-port",
@@ -197,6 +200,7 @@ const (
 	portFree portAvailability = iota
 	portMaybeTaken
 	portTaken
+	portUnchecked
 )
 
 // portState answers, for the change list, the question witness.port_conflict
@@ -210,6 +214,9 @@ func portState(in Input, mapping model.PortMapping, port int) (portAvailability,
 	}
 	holders := portHolders(in, want)
 	if len(holders) == 0 {
+		if in.PortsUnchecked {
+			return portUnchecked, ""
+		}
 		return portFree, ""
 	}
 	own := ownHolder(in, holders)

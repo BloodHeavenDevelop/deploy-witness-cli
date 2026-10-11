@@ -1111,8 +1111,15 @@ func TestChangesDoNotOpenAPortThatIsHeld(t *testing.T) {
 
 	in.Caps.Ports = nil
 	port, _ = changeFor(Changes(in), "firewall-port", "8080/tcp")
-	if !strings.HasPrefix(port.Detail, "opened by web on all interfaces") || strings.Contains(port.Detail, "witness.") {
+	if port.Detail != "opened by web on all interfaces → container port 80" {
 		t.Errorf("free port: firewall-port = %q", port.Detail)
+	}
+
+	// Without the ports section the sockets were never read: not "free".
+	in.PortsUnchecked = true
+	port, _ = changeFor(Changes(in), "firewall-port", "8080/tcp")
+	if !strings.Contains(port.Detail, "which was not checked: the ports section was not selected") {
+		t.Errorf("unchecked port: firewall-port = %q", port.Detail)
 	}
 }
 
