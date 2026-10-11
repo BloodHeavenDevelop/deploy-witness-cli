@@ -1,5 +1,5 @@
 Kind,Available,Detail
 image-tag,true,"orders-api is not running here yet, so undoing it means removing it — there is no previous version to return to"
 volume-backup,true,"the deployment declares no persistent data, so there is nothing to restore"
-proxy-config,false,"apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
-snapshot,false,whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying
+proxy-config,unknown,"unable to verify: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
+snapshot,unknown,unable to verify: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying

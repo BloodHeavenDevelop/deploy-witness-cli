@@ -47,6 +47,10 @@ type Input struct {
 	// RegistryResults maps a registry host to the error from reaching it, or "" for
 	// success. Only populated when EgressChecked is true.
 	RegistryResults map[string]string
+	// PortsUnchecked records that the listening sockets were not collected (the
+	// ports section was not selected), so an empty Caps.Ports means "not looked
+	// at", not "nothing listening".
+	PortsUnchecked bool
 }
 
 // rule is one check. Rules never observe and never mutate their input.

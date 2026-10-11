@@ -30,7 +30,7 @@ only together with a typed `--upload`.
 |---|---|---|---|
 | `--out <dir>` | `AUDIT_OUT` | `./audit-<host>-<UTC timestamp>` | Directory to write the report into. Created if missing. |
 | `--stdout` | `AUDIT_STDOUT` | `false` | Write the report to stdout instead of a directory. Diagnostics go to stderr, so the stream is pipeable. |
-| `--format <csv\|json>` | `AUDIT_FORMAT` | `csv` | `csv` is a directory of tables for a person; `json` is one `report.json` for a machine. Anything else is rejected before the audit runs. |
+| `--format <csv\|json\|csv,json>` | `AUDIT_FORMAT` | `csv` | `csv` is a directory of tables for a person; `json` is one `report.json` for a machine; `csv,json` writes both into `--out` from the same run. Anything else — and `csv,json` with `--stdout` — is rejected before the audit runs. |
 | `--sections <list>` | `AUDIT_SECTIONS` | all the mode runs | Comma-separated subset of `system,updates,vulnerabilities,ports,services,witness`. Order is normalised — see below. `witness` is accepted only in a Compose preflight, and a Compose preflight must include it — see [Modes](#modes). |
 | `--services-all` | `AUDIT_SERVICES_ALL` | `false` | Include inactive service units, not only running ones. |
 
@@ -42,8 +42,11 @@ Selecting `witness` without `ports` is allowed and degrades the section with a
 note — port conflicts are the most useful thing it has, and a conflict list that
 was never populated must not read as a short one.
 
-`--format json` writes `report.json` **instead of** the CSV files, not alongside
-them.
+`--format json` writes `report.json` **instead of** the CSV files. To have both,
+use `--format csv,json`: the tables and `report.json` are rendered from one audit,
+so they carry the same `Checked at`, the same PIDs and the same evidence timestamps.
+Two separate runs — one per format — are two audits, seconds apart, and can
+disagree.
 
 ## Modes
 

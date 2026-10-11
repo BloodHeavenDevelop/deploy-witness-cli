@@ -1,10 +1,11 @@
 $ cd orders
-$ deploy-witness --sections ports,witness --compose ./docker-compose.yml --out ./report
-2026-10-10 19:17:02 INFO  network: none — --online, --egress and --upload were not given: deploy-witness opens no network connection and runs none of the commands that fetch data over the network
-2026-10-10 19:17:02 INFO  mode: Compose preflight of <WORKDIR>/orders/docker-compose.yml
-2026-10-10 19:17:02 INFO  package manager: pacman
-2026-10-10 19:17:02 INFO  section ports: partial, 146 rows in 33ms
-2026-10-10 19:17:04 INFO  section witness: partial, 5 rows in 2.321s
-2026-10-10 19:17:04 INFO  masked credential-looking material in 1 field(s) before writing the report
-2026-10-10 19:17:04 INFO  wrote 12 CSV files to <WORKDIR>/raw/a-conflict/csv
+$ deploy-witness --sections ports,witness --compose ./docker-compose.yml --format csv,json --out ./report
+2026-10-11 20:46:11 INFO  network: none — --online, --egress and --upload were not given: deploy-witness opens no network connection and runs none of the commands that fetch data over the network
+2026-10-11 20:46:11 INFO  mode: Compose preflight of <WORKDIR>/orders/docker-compose.yml
+2026-10-11 20:46:11 INFO  package manager: pacman
+2026-10-11 20:46:11 INFO  section ports: partial, 147 rows in 44ms
+2026-10-11 20:46:13 INFO  section witness: partial, 5 rows in 2.412s
+2026-10-11 20:46:13 INFO  masked credential-looking material in 1 field(s) before writing the report
+2026-10-11 20:46:13 INFO  wrote 12 CSV files to <WORKDIR>/raw/a-conflict/report
+2026-10-11 20:46:13 INFO  wrote <WORKDIR>/raw/a-conflict/report/report.json
 exit 0

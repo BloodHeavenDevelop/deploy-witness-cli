@@ -1,7 +1,7 @@
 Code,Subject,Command,Output,Truncated,Captured at
-witness.container_name_conflict,orders-api,<WORKDIR>/orders/docker-compose.yml (service orders-api),container_name: orders-api,false,2026-10-10T19:17:10Z
-witness.container_name_conflict,orders-api,docker ps -a --format {{json .}},"container orders-api exists: image alpine:3.21, state created, project """"",false,2026-10-10T19:17:10Z
-witness.no_rollback_plan,2 of 4,the rollback section of this report,"proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one
-snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",false,2026-10-10T19:17:10Z
-witness.floating_image_tag,nginx:1.27-alpine,<WORKDIR>/orders/docker-compose.yml (service orders-api),image: nginx:1.27-alpine,false,2026-10-10T19:17:10Z
-witness.registry_unreachable,,<WORKDIR>/orders/docker-compose.yml,registries referenced: docker.io,false,2026-10-10T19:17:10Z
+witness.container_name_conflict,orders-api,<WORKDIR>/orders/docker-compose.yml (service orders-api),container_name: orders-api,false,2026-10-11T20:46:16Z
+witness.container_name_conflict,orders-api,docker ps -a --format {{json .}},"container orders-api exists: image alpine:3.21, state created, project """"",false,2026-10-11T20:46:16Z
+witness.floating_image_tag,nginx:1.27-alpine,<WORKDIR>/orders/docker-compose.yml (service orders-api),image: nginx:1.27-alpine,false,2026-10-11T20:46:16Z
+witness.registry_unreachable,,<WORKDIR>/orders/docker-compose.yml,registries referenced: docker.io,false,2026-10-11T20:46:16Z
+witness.no_rollback_plan,2 of 4 unverified,the rollback section of this report,"unable to verify — proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one
+unable to verify — snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",false,2026-10-11T20:46:16Z

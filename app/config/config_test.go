@@ -270,3 +270,25 @@ func TestModeFromEnvironment(t *testing.T) {
 		t.Errorf("mode = %q, want compose-preflight", cfg.Mode)
 	}
 }
+
+// DW-79: --format csv,json writes both outputs from one run; it cannot share one
+// stdout stream.
+func TestFormatBoth(t *testing.T) {
+	for _, value := range []string{"csv,json", "json,csv", "CSV, JSON"} {
+		cfg, err := load(t, "--format", value)
+		if err != nil {
+			t.Errorf("%q: %v", value, err)
+			continue
+		}
+		if !cfg.WantsCSV() || !cfg.WantsJSON() {
+			t.Errorf("%q: csv=%v json=%v, want both", value, cfg.WantsCSV(), cfg.WantsJSON())
+		}
+	}
+	if _, err := load(t, "--format", "csv,json", "--stdout"); err == nil || !strings.Contains(err.Error(), "one stream") {
+		t.Errorf("csv,json with --stdout: %v", err)
+	}
+	cfg, _ := load(t, "--format", "json")
+	if cfg.WantsCSV() {
+		t.Error("--format json must not write CSV")
+	}
+}

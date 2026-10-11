@@ -1,21 +1,21 @@
 Code,Subject,Command,Output,Truncated,Captured at
-witness.architecture_mismatch,rules-app,<WORKDIR>/rules/docker-compose.yml (service rules-app),platform: linux/arm64,false,2026-10-10T19:17:25Z
-witness.architecture_mismatch,rules-app,uname -m,x86_64,false,2026-10-10T19:17:25Z
-witness.env_file_missing,./missing.env,<WORKDIR>/rules/docker-compose.yml (service rules-app),env_file: ./missing.env,false,2026-10-10T19:17:25Z
-witness.env_file_missing,./missing.env,stat ./missing.env,no such file (the file's contents are never read by this audit),false,2026-10-10T19:17:25Z
-witness.insufficient_memory,100.0 GiB,<WORKDIR>/rules/docker-compose.yml,rules-app reserves 100.0 GiB,false,2026-10-10T19:17:25Z
+witness.architecture_mismatch,rules-app,<WORKDIR>/rules/docker-compose.yml (service rules-app),platform: linux/arm64,false,2026-10-11T20:46:24Z
+witness.architecture_mismatch,rules-app,uname -m,x86_64,false,2026-10-11T20:46:24Z
+witness.env_file_missing,./missing.env,<WORKDIR>/rules/docker-compose.yml (service rules-app),env_file: ./missing.env,false,2026-10-11T20:46:24Z
+witness.env_file_missing,./missing.env,stat ./missing.env,no such file (the file's contents are never read by this audit),false,2026-10-11T20:46:24Z
+witness.insufficient_memory,100.0 GiB,<WORKDIR>/rules/docker-compose.yml,rules-app reserves 100.0 GiB,false,2026-10-11T20:46:24Z
 witness.insufficient_memory,100.0 GiB,/proc/meminfo,"MemTotal 38.8 GiB
-MemAvailable 18.4 GiB
-SwapTotal 0 B",false,2026-10-10T19:17:25Z
+MemAvailable 17.5 GiB
+SwapTotal 0 B",false,2026-10-11T20:46:24Z
 witness.privileged_container,rules-app,<WORKDIR>/rules/docker-compose.yml (service rules-app),"privileged: true, which disables essentially every container boundary
-it bind-mounts the container runtime socket, which is equivalent to root on the host",false,2026-10-10T19:17:25Z
-witness.subnet_overlap,10.250.73.0/24,<WORKDIR>/rules/docker-compose.yml,networks.isolated.ipam: subnet 10.250.73.0/24,false,2026-10-10T19:17:25Z
-witness.subnet_overlap,10.250.73.0/24,docker network inspect dwkit-net --format {{json .IPAM}},network dwkit-net uses 10.250.73.0/24,false,2026-10-10T19:17:25Z
-witness.bind_path_conflict,/etc,<WORKDIR>/rules/docker-compose.yml (service rules-app),volumes: /etc:/host-etc:ro,false,2026-10-10T19:17:25Z
-witness.bind_path_conflict,/var/run/docker.sock,<WORKDIR>/rules/docker-compose.yml (service rules-app),volumes: /var/run/docker.sock:/var/run/docker.sock,false,2026-10-10T19:17:25Z
-witness.floating_image_tag,nginx:latest,<WORKDIR>/rules/docker-compose.yml (service rules-app),image: nginx:latest,false,2026-10-10T19:17:25Z
-witness.no_healthcheck,rules-app,<WORKDIR>/rules/docker-compose.yml,no healthcheck in: rules-app,false,2026-10-10T19:17:25Z
-witness.no_rollback_plan,3 of 4,the rollback section of this report,"volume-backup: the deployment writes to bind /var/run/docker.sock (rules-app) and no backup location was found on this host, so a bad migration cannot be undone
-proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one
-snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",false,2026-10-10T19:17:25Z
-witness.registry_unreachable,,<WORKDIR>/rules/docker-compose.yml,registries referenced: docker.io,false,2026-10-10T19:17:25Z
+it bind-mounts the container runtime socket, which is equivalent to root on the host",false,2026-10-11T20:46:24Z
+witness.subnet_overlap,10.250.73.0/24,<WORKDIR>/rules/docker-compose.yml,networks.isolated.ipam: subnet 10.250.73.0/24,false,2026-10-11T20:46:24Z
+witness.subnet_overlap,10.250.73.0/24,docker network inspect dwkit-net --format {{json .IPAM}},network dwkit-net uses 10.250.73.0/24,false,2026-10-11T20:46:24Z
+witness.bind_path_conflict,/etc,<WORKDIR>/rules/docker-compose.yml (service rules-app),volumes: /etc:/host-etc:ro,false,2026-10-11T20:46:24Z
+witness.bind_path_conflict,/var/run/docker.sock,<WORKDIR>/rules/docker-compose.yml (service rules-app),volumes: /var/run/docker.sock:/var/run/docker.sock,false,2026-10-11T20:46:24Z
+witness.floating_image_tag,nginx:latest,<WORKDIR>/rules/docker-compose.yml (service rules-app),image: nginx:latest,false,2026-10-11T20:46:24Z
+witness.no_healthcheck,rules-app,<WORKDIR>/rules/docker-compose.yml,no healthcheck in: rules-app,false,2026-10-11T20:46:24Z
+witness.no_rollback_plan,1 of 4 missing,the rollback section of this report,"missing — volume-backup: the deployment writes to bind /var/run/docker.sock (rules-app) and no backup location was found on this host, so a bad migration cannot be undone from here
+unable to verify — proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one
+unable to verify — snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",false,2026-10-11T20:46:24Z
+witness.registry_unreachable,,<WORKDIR>/rules/docker-compose.yml,registries referenced: docker.io,false,2026-10-11T20:46:24Z

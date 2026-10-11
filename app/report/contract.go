@@ -70,6 +70,10 @@ func Contract(r *model.Report) *auditv1.Report {
 			Kind: change.Kind, Target: change.Target, Detail: change.Detail,
 		})
 	}
+	// The contract's rollback item has a boolean only. An item that could not be
+	// verified goes out as available=false — the contract cannot say more — and its
+	// detail opens with "unable to verify:", so the receiver can still tell it from
+	// one that is known to be missing.
 	for _, item := range r.Rollback {
 		out.Rollback = append(out.Rollback, &auditv1.RollbackItem{
 			Kind: item.Kind, Available: item.Available, Detail: item.Detail,
