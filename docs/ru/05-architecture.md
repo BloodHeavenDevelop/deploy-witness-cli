@@ -23,7 +23,7 @@ main.go
                  │  scheduler/certs/backup + databases в порядке зависимостей
                  └─ witness.Evaluate()              24 правила: находки, изменения, откат
             каждый даёт model.SectionResult: статус, счётчики, длительность, замечания
-       └─ аудит хоста: строка `witness` skipped с пометкой host-audit (не молчаливый пропуск)
+       └─ аудит хоста: строка `witness` not-applicable с пометкой host-audit (вне рамок, не пробел)
        └─ report.Commands = runner.Journal()   каждая команда, включая отклонённые
   └─ redact.Report(result)           последнее действие перед любой записью
   └─ report.WriteDir() | WriteCombined() | WriteJSONFile() | WriteJSON()

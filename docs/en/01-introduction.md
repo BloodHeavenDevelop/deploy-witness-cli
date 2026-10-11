@@ -34,10 +34,11 @@ why the tool grew a manifest parser, a change list and a rollback plan.
 Every run is one of two kinds, and the report says which:
 
 - **Host audit** (`host-audit`) — no `--compose`. The first five sections, the host
-  on its own. The witness section is not run; its row says `skipped` with a note
-  opening `host-audit:`, and the `preflight` row of `summary.csv` says no planned
-  deployment was compared. A host audit is never a preflight result, however clean
-  it looks.
+  on its own. Comparing a planned deployment is **outside the scope** of this mode,
+  not missing from it: the `witness` and `preflight` rows are `not-applicable`, with
+  a note opening `host-audit:`, and neither counts as a gap — a host audit whose
+  sections all completed is a complete report. It is still never a preflight
+  result, however clean it looks.
 - **Compose preflight** (`compose-preflight`) — `--compose <docker-compose.yml>`.
   Everything above plus the witness section. It cannot start without its input: a
   Compose file that is missing, unreadable or does not parse stops the run with exit

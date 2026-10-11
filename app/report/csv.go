@@ -206,16 +206,21 @@ func summaryRows(r *model.Report) []model.SummaryRow {
 
 // preflightRow is the summary's answer to "was a deployment checked against this
 // host, and did the check complete?" — the question a reader must not have to infer
-// from the witness row. Its status is the comparison's: `skipped` for a host audit,
-// the witness section's own status for a Compose preflight. The note opens with the
+// from the witness row. Its status is the comparison's: `not-applicable` for a host
+// audit, whose scope never included one, and the witness section's own status for
+// a Compose preflight. The note opens with the
 // mode identifier (host-audit, compose-preflight) so a script can match on it.
 func preflightRow(r *model.Report) model.SummaryRow {
-	row := model.SummaryRow{Section: "preflight", Status: string(model.StatusSkipped)}
 	if r.Mode != model.ModeComposePreflight {
-		row.Notes = string(model.ModeHostAudit) + ": host audit only — no --compose was given, so no planned " +
-			"deployment was compared with this host; this report is not a Compose preflight result"
-		return row
+		return model.SummaryRow{
+			Section: "preflight",
+			Status:  string(model.StatusNotApplicable),
+			Notes: string(model.ModeHostAudit) + ": not applicable — this run is a host audit; comparing a " +
+				"planned deployment with this host is outside its scope, not missing from it, and this report " +
+				"is not a Compose preflight result",
+		}
 	}
+	row := model.SummaryRow{Section: "preflight"}
 
 	row.Status = string(model.StatusFailed)
 	var witness *model.SectionResult

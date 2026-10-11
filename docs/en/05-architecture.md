@@ -23,7 +23,7 @@ main.go
                  │  scheduler/certs/backup + databases in dependency order
                  └─ witness.Evaluate()              24 rules, findings + changes + rollback
             each producing a model.SectionResult: status, counts, duration, notes
-       └─ host audit: a skipped `witness` row labelled host-audit (never a silent gap)
+       └─ host audit: a `not-applicable` `witness` row labelled host-audit (out of scope, not a gap)
        └─ report.Commands = runner.Journal()   every command, including refusals
   └─ redact.Report(result)           the last thing before anything is written
   └─ report.WriteDir() | WriteCombined() | WriteJSONFile() | WriteJSON()
