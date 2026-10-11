@@ -31,6 +31,37 @@ var AllSections = []Section{
 	SectionWitness,
 }
 
+// Mode is what kind of run this was. There are exactly two, and the difference is
+// whether a planned deployment was compared with the host at all.
+//
+// The values are stable identifiers: they appear in report.json (`audit.mode`), at
+// the start of the `preflight` row of summary.csv and in the note of the `witness`
+// collector the upload carries, and a consumer may match on them.
+type Mode string
+
+const (
+	// ModeHostAudit inspects the host on its own: inventory, updates, CVEs, ports,
+	// services. No Compose file is read, the witness section is not run, and the
+	// report never claims a deployment will fit — it is not a preflight result.
+	ModeHostAudit Mode = "host-audit"
+	// ModeComposePreflight additionally compares a Compose file (--compose) with the
+	// host. It cannot start without a readable, parseable file: a broken input is a
+	// usage error, never a report that merely lacks findings.
+	ModeComposePreflight Mode = "compose-preflight"
+)
+
+// Label is the mode's human name, as the log and the summary print it.
+func (m Mode) Label() string {
+	switch m {
+	case ModeHostAudit:
+		return "host audit"
+	case ModeComposePreflight:
+		return "Compose preflight"
+	default:
+		return string(m)
+	}
+}
+
 // Status is how a section ended. `partial` is load-bearing: a section that
 // collected some rows but hit an error must never be reported as `ok`, or the
 // reader takes a truncated table for a complete one.
@@ -142,6 +173,36 @@ type CommandRun struct {
 	// defect in this tool, never a property of the host, and it is printed rather
 	// than hidden precisely because it would be the most important line here.
 	Outcome string `json:"outcome"`
+	// Network is the flag that permitted this command to reach the network
+	// (debsecan and arch-audit need --online), or "" for a command that works from
+	// local data only.
+	Network string `json:"network"`
+}
+
+// NetworkUse is one of the tool's network paths and what this run did with it.
+//
+// The report carries one row per path, enabled or not, so "this run opened no
+// connections" is a line a reader can point at rather than an absence they have to
+// trust. It lives only in the local report (network.csv, report.json → audit).
+type NetworkUse struct {
+	// Path is osv-api, distro-feeds, registry-egress or upload.
+	Path string `json:"path"`
+	// Flag is the command-line flag that enables the path.
+	Flag string `json:"flag"`
+	// Enabled is whether the flag was given on this run.
+	Enabled bool `json:"enabled"`
+	// Recipient is who receives the traffic: a URL, a list of hosts, or a
+	// description when the host is decided by a child program.
+	Recipient string `json:"recipient"`
+	// Sends is what goes over the connection.
+	Sends string `json:"sends"`
+	// Contacts counts the requests, connection attempts or command runs this run
+	// actually made on the path. For upload it is always 0: the upload happens
+	// after the report is written, and its outcome is on stdout and in the exit
+	// code.
+	Contacts int `json:"contacts"`
+	// Note qualifies the row: a proxy in the way, why a path stayed unused.
+	Note string `json:"note"`
 }
 
 // SectionResult is the audit trail for one section: what ran, whether it
@@ -178,10 +239,12 @@ func (r *SectionResult) Degrade(note string) {
 
 // Report is the whole audit, in memory, before it is rendered to CSV.
 type Report struct {
-	GeneratedAt     time.Time       `json:"generatedAt"`
-	Hostname        string          `json:"hostname"`
-	Tool            string          `json:"tool"`
-	Version         string          `json:"version"`
+	GeneratedAt time.Time `json:"generatedAt"`
+	Hostname    string    `json:"hostname"`
+	Tool        string    `json:"tool"`
+	Version     string    `json:"version"`
+	// Mode is host-audit or compose-preflight. See Mode.
+	Mode            Mode            `json:"mode"`
 	System          []Fact          `json:"system"`
 	Updates         []Update        `json:"updates"`
 	Vulnerabilities []Vulnerability `json:"vulnerabilities"`
@@ -189,6 +252,8 @@ type Report struct {
 	Services        []Service       `json:"services"`
 	Sections        []SectionResult `json:"sections"`
 	Commands        []CommandRun    `json:"commands"`
+	// Network is the record of every network path, used or not. See NetworkUse.
+	Network []NetworkUse `json:"network"`
 
 	// The witness section's output. Manifest and Capabilities are the two sides
 	// it compared; keeping them in the report is what lets a reader check a finding

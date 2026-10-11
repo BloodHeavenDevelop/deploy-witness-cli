@@ -11,7 +11,6 @@ import (
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/certs"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/docker"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/host"
-	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/manifest"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/panels"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/proxy"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/scheduler"
@@ -26,18 +25,16 @@ import (
 // already in the report, and gathering them a second time would be both slower and
 // capable of disagreeing with itself.
 func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResult) {
-	if a.cfg.Compose == "" {
-		result.Status = model.StatusSkipped
-		result.Note("no --compose was given, so there was no deployment to compare this host against; " +
-			"everything else in this report still applies")
+	// config guarantees the section runs only in a Compose preflight, and Prepare
+	// has parsed the file by now. The check stays as a guard: should either ever
+	// stop holding, the section fails rather than comparing nothing.
+	parsed := a.manifest
+	if a.cfg.Mode != model.ModeComposePreflight || parsed == nil {
+		result.Fail("the Compose file was not parsed, so no comparison was made; this is not a preflight result")
 		return
 	}
-
-	parsed, err := manifest.Parse(a.cfg.Compose, result)
-	if err != nil {
-		result.Fail(fmt.Sprintf("could not read %s: %v", a.cfg.Compose, err))
-		return
-	}
+	result.Status = a.parseNotes.Status
+	result.Notes = append(result.Notes, a.parseNotes.Notes...)
 	report.Manifest = parsed
 
 	caps := &model.Capabilities{
@@ -89,6 +86,22 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 	}
 }
 
+// HostAuditNote is the note a host audit's witness row carries. It starts with the
+// mode identifier so a consumer that sees only the collector note — the upload —
+// can still tell a host audit from a preflight that was skipped for another reason.
+const HostAuditNote = string(model.ModeHostAudit) + ": no --compose was given, so this run is a host audit — " +
+	"no planned deployment was compared with this host, and this report is not a Compose preflight result"
+
+// HostAuditWitness is the witness row of a host audit: skipped, and saying why.
+func HostAuditWitness() model.SectionResult {
+	return model.SectionResult{
+		Section:  model.SectionWitness,
+		Status:   model.StatusSkipped,
+		Duration: "0s",
+		Notes:    []string{HostAuditNote},
+	}
+}
+
 // projectName is the Compose project the deployment will use: the name of the
 // directory holding the manifest, which is Compose's own default. Getting this
 // wrong turns every redeployment into a wall of false conflicts with itself, so it
@@ -125,7 +138,7 @@ const registryProbeTimeout = 5 * time.Second
 // checkRegistries tests whether the registries the manifest pulls from can be
 // reached. It runs only behind --egress.
 //
-// A TCP connect to port 443 and nothing more: no TLS handshake, no HTTP request, no
+// A TCP connect to port 443 (or the port the image reference names) and nothing more: no TLS handshake, no HTTP request, no
 // authentication, no image manifest fetched. The question is whether this host's
 // egress reaches the registry at all, and a connect answers it without sending
 // anybody a single byte about what is being deployed here.
@@ -144,12 +157,10 @@ func (a *Auditor) checkRegistries(parsed *model.Manifest, result *model.SectionR
 			continue
 		}
 
-		address := registry
-		if _, _, err := net.SplitHostPort(registry); err != nil {
-			address = net.JoinHostPort(registry, "443")
-		}
+		address := witness.RegistryAddress(registry)
 
 		a.log.Info("--egress: testing reachability of ", address)
+		a.egressTargets = append(a.egressTargets, address)
 		conn, err := net.DialTimeout("tcp", address, registryProbeTimeout)
 		if err != nil {
 			out[registry] = err.Error()
@@ -161,7 +172,8 @@ func (a *Auditor) checkRegistries(parsed *model.Manifest, result *model.SectionR
 
 	if len(out) > 0 {
 		result.Note(fmt.Sprintf("--egress was given, so %d registry host(s) were contacted with a TCP connect "+
-			"on port 443; nothing was sent and no image was fetched", len(out)))
+			"(port 443 unless the image names another): %s; nothing was sent and no image was fetched",
+			len(out), strings.Join(a.egressTargets, ", ")))
 	}
 	return out
 }

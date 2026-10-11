@@ -1,0 +1,5 @@
+Kind,Target,Detail
+command,nginx:1.27-alpine,pulled from docker.io
+container,orders-api,created from nginx:1.27-alpine
+disk-space,/,"95.9 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
+firewall-port,8080/tcp,opened by orders-api on all interfaces → container port 80

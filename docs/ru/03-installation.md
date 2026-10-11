@@ -93,15 +93,22 @@ ssh server 'sudo deploy-witness --out /var/log/deploy-witness'
 откуда качать, по умолчанию `main`):
 
 ```bash
+read -rs AUDIT_UPLOAD_TOKEN && export AUDIT_UPLOAD_TOKEN
 curl -fsSL https://raw.githubusercontent.com/BloodHeavenDevelop/deploy-witness-cli/main/install.sh \
-  | sudo bash -s -- --upload https://<deployment> --upload-token <token>
+  | sudo --preserve-env=AUDIT_UPLOAD_TOKEN bash -s -- --upload https://<deployment>
 ```
+
+Токен передаётся через окружение, а не как `--upload-token`, поэтому он не попадает
+ни в историю шелла, ни в список процессов, который может прочитать любой локальный
+пользователь; `--preserve-env` нужен, потому что иначе `sudo` сбрасывает окружение.
+См. [04 — Справочник CLI](04-cli-reference.md#отправка-отчёта).
 
 На Windows — скачать `.exe` и запустить:
 
 ```powershell
 curl.exe -fsSLo deploy-witness.exe https://raw.githubusercontent.com/BloodHeavenDevelop/deploy-witness-cli/main/dist/deploy-witness-windows-amd64.exe
-.\deploy-witness.exe --upload https://<deployment> --upload-token <token>
+$env:AUDIT_UPLOAD_TOKEN = Read-Host -MaskInput "upload token"
+.\deploy-witness.exe --upload https://<deployment>
 ```
 
 **Все коллекторы читают Linux** — `/proc`, `/etc`, пакетный менеджер дистрибутива,

@@ -68,14 +68,38 @@ systemd-fsck@dev-disk-by\x2duuid-F9EA\x2dEBDF.service
 
 ### Аргументы, которые делают чтение чтением
 
-Три записи были бы опасны без тех точных флагов, к которым они привязаны, и эти
+Четыре записи были бы опасны без тех точных флагов, к которым они привязаны, и эти
 флаги — часть сопоставления:
 
 | Запись | Почему флаг важен |
 |---|---|
 | `apt-get -s -q … dist-upgrade` | `-s` — симуляция: apt вычисляет обновление и ничего не устанавливает. `dist-upgrade` разрешён только *вместе* с `-s`, поэтому тот же бинарь нельзя попросить сделать это по-настоящему |
 | `dnf -C …` / `yum -C …` | `-C` — только кешированные метаданные. Обновить репозиторий невозможно, а это и сетевая операция, и на части хостов медленная |
+| `zypper --no-refresh …` | Та же защита для SUSE: без него `zypper list-updates` сам обновляет любой репозиторий с устаревшими метаданными, то есть выходит в сеть в запуске, который обещал этого не делать |
 | `pacman -Q`, `-Qu`, `-Sl` | Только запрос и перечисление. Записей `-S` или `-Sy` нет: на Arch частичная синхронизация — документированный способ сломать систему |
+
+### Записи, которые выходят в сеть
+
+Две утилиты из списка сами скачивают данные по сети при каждом вызове, и
+офлайн-режима у них нет: `debsecan` загружает данные Debian security tracker
+(`security-tracker.debian.org`), `arch-audit` — бюллетени Arch
+(`security.archlinux.org`). У их записей есть поле `Network` с флагом, который их
+разрешает, — `--online`, и:
+
+- `--commands` печатает под каждой `network: yes — runs only with --online`;
+- `run.Runner` отказывает им в запуске без `--online` ещё до поиска бинаря, со
+  строкой `refused` в журнале, — так обещание «локально по умолчанию» держится для
+  дочерних процессов, даже если коллектор забыл проверить;
+- коллекторы проверяют первыми: без `--online` установленный `debsecan` или
+  `arch-audit` не вызывается, и раздел уязвимостей сообщает об этом в `summary.csv`
+  (Debian при этом откатывается к признаку «обновление из архива безопасности»);
+- с `--online` каждый их запуск считается в `network.csv`, а строка в
+  `commands.csv` получает `Network=--online`.
+
+Все остальные записи работают с данными этого хоста. Записи docker и podman говорят
+с локальным движком через его unix-сокет; `DOCKER_HOST`/`CONTAINER_HOST`,
+указывающие на удалённый движок, удаляются из их окружения (см.
+[04 — Справочник CLI](04-cli-reference.md#сетевое-поведение)).
 
 Ничто в списке не запускает, не останавливает, не включает, не выключает, не тянет и
 не удаляет. Записи для контейнеров — это `ps`, `ls`, `info`, `version` и `inspect`
@@ -148,15 +172,17 @@ deploy-witness --commands
   lsb_release -cs                   the release codename, to pick the right advisory suite
   dnf -C -q check-update | yum -C -q check-update
   rpm -qa --qf …                    the installed package inventory
-  zypper --non-interactive --quiet list-updates
+  zypper --non-interactive --no-refresh --quiet list-updates
   pacman -Q | -Qu | -Sl             inventory, pending updates, and the repository of each package
   apk info -v | apk version -l < | apk --print-arch
 
 [vulnerabilities]                   8 записей
   arch-audit --json                 Arch advisories affecting installed packages
+                                    network: yes — runs only with --online
   debsecan --format summary [--suite <suite>]
+                                    network: yes — runs only with --online
   dnf -C -q updateinfo list --security [--with-cve]     (и эквиваленты для yum)
-  zypper --non-interactive --quiet list-patches --category security --cve
+  zypper --non-interactive --no-refresh --quiet list-patches --category security --cve
 ```
 
 Группировка выше сворачивает почти одинаковые записи podman и yum ради читаемости;
@@ -212,7 +238,8 @@ grep refused /tmp/audit/commands.csv
   пришло из файла, а не из команды.
 - Единственное исходящее соединение за `--egress` (TCP-connect, без передачи
   данных) и OSV API за `--online`. Ни то, ни другое не подпроцесс, поэтому в
-  `commands.csv` их нет; оба выключены по умолчанию, а `--egress` вдобавок оставляет
-  в `summary.csv` замечание о том, к скольким хостам реестров был сделан
-  TCP-connect на порт 443 — с прямым указанием, что ничего не отправлялось и ни один
-  образ не скачивался.
+  `commands.csv` их нет; оба выключены по умолчанию, и оба считаются в
+  `network.csv` вместе с получателями. `--egress` вдобавок оставляет в
+  `summary.csv` замечание с `host:port` каждого реестра, к которому был сделан
+  TCP-connect, — с прямым указанием, что ничего не отправлялось и ни один образ не
+  скачивался.

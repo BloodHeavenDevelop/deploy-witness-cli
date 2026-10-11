@@ -6,16 +6,22 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
+	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/netpath"
 )
 
 // Uploading is the only thing this tool does that reaches outward with content, and
 // the rules it follows are deliberately narrow:
 //
-//   - It happens only when --upload and --upload-token were both given. There is no
-//     default endpoint, no environment default that could be set by an image, and no
-//     telemetry.
+//   - It happens only when --upload was typed and a token was given (--upload-token
+//     or AUDIT_UPLOAD_TOKEN). There is no default endpoint, no environment variable
+//     that could choose one, and no telemetry.
+//   - Only https:// (plain http:// only for a loopback host), and no redirect is
+//     followed: a 3xx is reported as a failure naming where it pointed, and neither
+//     the token nor the report is sent there.
 //   - One request. No retries in the background, no queue, nothing that could send a
 //     report minutes after the operator watched the command finish.
 //   - It sends the `upload` half of the JSON document and nothing else, so the
@@ -34,10 +40,27 @@ const uploadTimeout = 30 * time.Second
 // validation message, not enough for an error page.
 const maxErrorBody = 2000
 
-// Upload sends the contract payload to a witness service and returns the public
-// URL of the stored report when the service supplies one.
+// UploadEndpoint is the full URL a base address uploads to, after the same checks
+// Upload applies. main prints it before anything is sent.
+func UploadEndpoint(baseURL string) (*url.URL, error) {
+	base, err := netpath.CheckEndpoint("--upload", baseURL)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := *base
+	endpoint.Path = strings.TrimRight(base.Path, "/") + uploadPath
+	endpoint.RawPath = ""
+	return &endpoint, nil
+}
+
+// Upload sends the contract payload to a witness service and returns the service's
+// answer — a small JSON document naming the stored report — when it supplies one.
 func Upload(ctx context.Context, baseURL, token string, payload []byte, userAgent string) (string, error) {
-	endpoint := strings.TrimRight(baseURL, "/") + uploadPath
+	target, err := UploadEndpoint(baseURL)
+	if err != nil {
+		return "", err
+	}
+	endpoint := target.String()
 
 	ctx, cancel := context.WithTimeout(ctx, uploadTimeout)
 	defer cancel()
@@ -52,12 +75,18 @@ func Upload(ctx context.Context, baseURL, token string, payload []byte, userAgen
 	request.Header.Set("X-Upload-Token", token)
 	request.Header.Set("User-Agent", userAgent)
 
-	client := &http.Client{Timeout: uploadTimeout}
+	// Never follows a redirect: the request carries the token and the report, and
+	// only the address the operator typed may receive them.
+	client := netpath.NewHTTPClient(uploadTimeout)
 	response, err := client.Do(request)
 	if err != nil {
 		return "", fmt.Errorf("could not reach %s: %w", endpoint, err)
 	}
 	defer func() { _ = response.Body.Close() }()
+
+	if err := netpath.RedirectRefused(response); err != nil {
+		return "", err
+	}
 
 	body, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBody))
 

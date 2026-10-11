@@ -22,7 +22,7 @@ func (m *zypperManager) Installed() ([]Package, error) {
 
 func (m *zypperManager) Updates() ([]model.Update, error) {
 	out, _, err := m.runner.OutputAllowExit([]int{100, 101, 102, 103},
-		"zypper", "--non-interactive", "--quiet", "list-updates")
+		"zypper", "--non-interactive", "--no-refresh", "--quiet", "list-updates")
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (m *zypperManager) Updates() ([]model.Update, error) {
 
 func (m *zypperManager) Advisories() ([]model.Vulnerability, error) {
 	out, _, err := m.runner.OutputAllowExit([]int{100, 101, 102, 103},
-		"zypper", "--non-interactive", "--quiet", "list-patches", "--category", "security", "--cve")
+		"zypper", "--non-interactive", "--no-refresh", "--quiet", "list-patches", "--category", "security", "--cve")
 	if err != nil {
 		return nil, err
 	}

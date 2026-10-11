@@ -14,6 +14,11 @@ package run
 //     flag is part of the allowlist entry, so the unsimulated form is refused.
 //   - `dnf/yum -C` forbids touching the network: `-C` means "cache only", and it
 //     is what keeps a pending-updates check from refreshing a repository.
+//     `zypper --no-refresh` is the same guard for SUSE.
+//
+// Two entries do reach the network, and say so in their Network field: debsecan
+// and arch-audit download their advisory data on every call and have no offline
+// mode. The Runner refuses them unless the run was given --online.
 var commands = []Spec{
 	// ── core ────────────────────────────────────────────────────────────────────
 	{
@@ -258,11 +263,14 @@ var commands = []Spec{
 	},
 	{
 		Binary: "debsecan", Args: []string{"--format", "summary"},
-		Section: "vulnerabilities", Purpose: "Debian security advisories affecting installed packages",
+		Section: "vulnerabilities", Network: "--online",
+		Purpose: "Debian security advisories affecting installed packages — downloads the Debian " +
+			"security tracker data over HTTPS on every call, so it runs only with --online",
 	},
 	{
 		Binary: "debsecan", Args: []string{"--format", "summary", "--suite", "<suite>"},
-		Section: "vulnerabilities", Purpose: "the same, pinned to the host's suite",
+		Section: "vulnerabilities", Network: "--online",
+		Purpose: "the same, pinned to the host's suite",
 	},
 
 	// ── updates and vulnerabilities: RHEL family ────────────────────────────────
@@ -297,14 +305,14 @@ var commands = []Spec{
 
 	// ── updates and vulnerabilities: SUSE ───────────────────────────────────────
 	{
-		Binary: "zypper", Args: []string{"--non-interactive", "--quiet", "list-updates"},
-		Section: "updates", Purpose: "pending updates",
+		Binary: "zypper", Args: []string{"--non-interactive", "--no-refresh", "--quiet", "list-updates"},
+		Section: "updates", Purpose: "pending updates from cached metadata (--no-refresh: no repository refresh)",
 	},
 	{
 		Binary: "zypper",
-		Args: []string{"--non-interactive", "--quiet", "list-patches", "--category",
+		Args: []string{"--non-interactive", "--no-refresh", "--quiet", "list-patches", "--category",
 			"security", "--cve"},
-		Section: "vulnerabilities", Purpose: "security patches with their CVE identifiers",
+		Section: "vulnerabilities", Purpose: "security patches with their CVE identifiers, from cached metadata",
 	},
 
 	// ── updates and vulnerabilities: Arch ───────────────────────────────────────
@@ -322,7 +330,9 @@ var commands = []Spec{
 	},
 	{
 		Binary: "arch-audit", Args: []string{"--json"},
-		Section: "vulnerabilities", Purpose: "Arch security advisories affecting installed packages",
+		Section: "vulnerabilities", Network: "--online",
+		Purpose: "Arch security advisories affecting installed packages — downloads them from " +
+			"security.archlinux.org on every call, so it runs only with --online",
 	},
 
 	// ── updates and vulnerabilities: Alpine ─────────────────────────────────────

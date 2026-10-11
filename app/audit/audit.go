@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/manifest"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/ports"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/services"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/system"
@@ -32,16 +33,51 @@ type Auditor struct {
 	// reading it twice is the single most expensive thing the tool would do.
 	packages     []pkgmgr.Package
 	packagesRead bool
+
+	// manifest is the Compose file of a preflight, parsed by Prepare before any
+	// section runs; parseNotes holds what the parser degraded on, for the witness
+	// section to carry.
+	manifest   *model.Manifest
+	parseNotes model.SectionResult
+
+	// What the network paths actually did, for network.csv: requests sent to the
+	// OSV API, and the host:port of every registry --egress dialled.
+	osvRequests   int
+	egressTargets []string
 }
 
 // New prepares an audit.
 func New(cfg *config.Config, log *logging.Logger, version string) *Auditor {
+	runner := run.New(cfg.Timeout)
+	// The child programs that fetch advisory data themselves (debsecan,
+	// arch-audit) are part of the --online path, and only of it.
+	runner.AllowNetwork(cfg.Online)
 	return &Auditor{
 		cfg:     cfg,
 		log:     log,
 		version: version,
-		runner:  run.New(cfg.Timeout),
+		runner:  runner,
 	}
+}
+
+// Prepare checks the input of a Compose preflight before anything is collected.
+//
+// A Compose file that cannot be read or parsed is a usage error, returned here so
+// the run stops before the first section: an audit that ran for minutes and then
+// reported a failed comparison would be a report with no preflight in it, and that
+// is the one shape a missing preflight must never take. A host audit has no input,
+// and Prepare does nothing.
+func (a *Auditor) Prepare() error {
+	if a.cfg.Mode != model.ModeComposePreflight {
+		return nil
+	}
+	a.parseNotes = model.SectionResult{Section: model.SectionWitness, Status: model.StatusOk}
+	parsed, err := manifest.Parse(a.cfg.Compose, &a.parseNotes)
+	if err != nil {
+		return fmt.Errorf("the Compose preflight cannot start, the Compose file could not be parsed: %w", err)
+	}
+	a.manifest = parsed
+	return nil
 }
 
 // Run executes every selected section. It returns a report even when sections
@@ -55,6 +91,15 @@ func (a *Auditor) Run() *model.Report {
 		Hostname:    hostname,
 		Tool:        "deploy-witness",
 		Version:     a.version,
+		Mode:        a.cfg.Mode,
+	}
+
+	switch a.cfg.Mode {
+	case model.ModeComposePreflight:
+		a.log.Info(fmt.Sprintf("mode: %s of %s", a.cfg.Mode.Label(), a.cfg.Compose))
+	default:
+		a.log.Info(fmt.Sprintf("mode: %s — no --compose was given, so no planned deployment is compared "+
+			"with this host and the witness section is not run", a.cfg.Mode.Label()))
 	}
 
 	osrel, err := model.ReadOSRelease()
@@ -105,7 +150,18 @@ func (a *Auditor) Run() *model.Report {
 			section, result.Status, result.Records, result.Duration))
 	}
 
+	// A host audit still carries a witness row, marked skipped and labelled as a host
+	// audit, in summary.csv, report.json and the upload alike. Leaving the row out
+	// would make the upload a collector list with nothing missing and no findings —
+	// which a receiver cannot tell from a preflight that found nothing wrong.
+	if a.cfg.Mode == model.ModeHostAudit {
+		report.Sections = append(report.Sections, HostAuditWitness())
+		a.log.Info("host audit finished: no Compose preflight was run, so nothing in this report says " +
+			"whether a deployment fits this host")
+	}
+
 	report.Commands = journal(a.runner)
+	report.Network = a.networkRecord(report.Commands)
 	if refused := refusedCommands(report.Commands); refused > 0 {
 		// A refusal means a collector asked for something the published allowlist
 		// does not cover: a defect in this tool. It is stated at error level and in
@@ -129,6 +185,7 @@ func journal(runner *run.Runner) []model.CommandRun {
 			Duration:  e.Duration,
 			ExitCode:  e.ExitCode,
 			Outcome:   e.Outcome,
+			Network:   e.Network,
 		})
 	}
 	return out
@@ -189,6 +246,7 @@ func (a *Auditor) vulnerabilities(result *model.SectionResult) []model.Vulnerabi
 		MinSeverity: a.cfg.MinSeverity,
 		Timeout:     a.cfg.Timeout,
 		UserAgent:   "deploy-witness/" + a.version,
+		Requests:    &a.osvRequests,
 	}, result)
 }
 

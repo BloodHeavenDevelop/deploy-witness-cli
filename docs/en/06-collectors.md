@@ -56,7 +56,7 @@ documented way to break the system.
 |---|---|---|
 | apt | `apt-get -s -q dist-upgrade` | Origin string contains `security` |
 | dnf / yum | `dnf -C -q check-update` | `dnf -C -q updateinfo list --security --with-cve` |
-| zypper | `zypper --non-interactive list-updates` | via `list-patches` in the vulnerability section |
+| zypper | `zypper --non-interactive --no-refresh list-updates` | via `list-patches` in the vulnerability section |
 | pacman | `pacman -Qu` | none published |
 | apk | `apk version -l '<'` | none published |
 
@@ -161,7 +161,10 @@ through `Degrade`, so the section cannot be labelled complete. A requirement tha
 was not understood is not a requirement that was met.
 
 **Needs root:** nothing. It needs read access to the compose file, which
-`--compose` validates at startup.
+`--compose` validates at startup. The file is parsed once, before the first section
+runs: a file that is not YAML or whose top level is not a mapping stops the Compose
+preflight with exit `2` and no report, since a report with nothing compared in it
+must not be mistaken for a preflight result.
 
 ### The capabilities side
 

@@ -56,7 +56,7 @@
 |---|---|---|
 | apt | `apt-get -s -q dist-upgrade` | Строка origin содержит `security` |
 | dnf / yum | `dnf -C -q check-update` | `dnf -C -q updateinfo list --security --with-cve` |
-| zypper | `zypper --non-interactive list-updates` | через `list-patches` в разделе уязвимостей |
+| zypper | `zypper --non-interactive --no-refresh list-updates` | через `list-patches` в разделе уязвимостей |
 | pacman | `pacman -Qu` | не публикуется |
 | apk | `apk version -l '<'` | не публикуется |
 
@@ -162,7 +162,10 @@ origin — единственный способ отличить обновле
 которое не поняли, — не требование, которое выполнено.
 
 **Требует root:** ничего. Нужен доступ на чтение compose-файла, который
-`--compose` проверяет на старте.
+`--compose` проверяет на старте. Файл разбирается один раз, до первого раздела:
+файл, который не является YAML или чей верхний уровень не mapping, останавливает
+Compose preflight с кодом `2` и без отчёта — отчёт, в котором ничего не
+сравнивалось, нельзя принять за результат preflight.
 
 ### Сторона возможностей
 

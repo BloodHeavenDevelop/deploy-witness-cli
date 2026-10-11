@@ -2,6 +2,7 @@ package pkgmgr
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
@@ -120,10 +121,15 @@ type archAuditEntry struct {
 
 // Advisories reads arch-audit, the Arch Security Tracker client. It is not
 // installed by default; when it is missing the section reports that instead of an
-// empty, reassuring table.
+// empty, reassuring table. It downloads the advisories on every call, so it runs
+// only with --online.
 func (m *pacmanManager) Advisories() ([]model.Vulnerability, error) {
 	if !run.Available("arch-audit") {
 		return nil, run.ErrNotFound
+	}
+	// arch-audit has no offline mode: every call fetches security.archlinux.org.
+	if !m.runner.NetworkAllowed() {
+		return nil, fmt.Errorf("arch-audit %w", ErrFeedNeedsNetwork)
 	}
 
 	out, _, err := m.runner.OutputAllowExit([]int{1}, "arch-audit", "--json")

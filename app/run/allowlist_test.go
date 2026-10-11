@@ -148,3 +148,70 @@ func TestArgumentPatternsRejectMetacharacters(t *testing.T) {
 		}
 	}
 }
+
+// debsecan and arch-audit download their advisory data on every call (DW-53). The
+// Runner refuses them on a run without --online, before looking the binary up, so
+// the offline promise holds for child processes even if a collector forgets to
+// check.
+func TestRunnerRefusesNetworkCommandsOffline(t *testing.T) {
+	r := New(0)
+	if r.NetworkAllowed() {
+		t.Fatal("a new Runner must not allow the network")
+	}
+
+	for _, argv := range [][]string{{"debsecan", "--format", "summary"}, {"arch-audit", "--json"}} {
+		_, _, err := r.OutputAllowExit(nil, argv[0], argv[1:]...)
+		if !errors.Is(err, ErrNetworkNotAllowed) {
+			t.Errorf("%v: error = %v, want ErrNetworkNotAllowed", argv, err)
+		}
+	}
+	for _, entry := range r.Journal() {
+		if entry.Outcome != OutcomeRefused || entry.Network != "--online" {
+			t.Errorf("journal entry = %+v, want refused and marked --online", entry)
+		}
+	}
+
+	r.AllowNetwork(true)
+	if _, _, err := r.OutputAllowExit(nil, "arch-audit", "--json"); errors.Is(err, ErrNetworkNotAllowed) {
+		t.Error("with the network allowed, arch-audit must not be refused")
+	}
+}
+
+// Every command that reaches the network says which flag permits it, and the only
+// flag that may is --online: --egress and --upload are done by the binary itself.
+func TestNetworkCommandsNameOnline(t *testing.T) {
+	networked := NetworkCommands()
+	if len(networked) == 0 {
+		t.Fatal("debsecan and arch-audit must be marked as reaching the network")
+	}
+	for _, spec := range networked {
+		if spec.Network != "--online" {
+			t.Errorf("%s: network flag = %q, want --online", spec, spec.Network)
+		}
+	}
+	for _, spec := range Commands() {
+		if (spec.Binary == "debsecan" || spec.Binary == "arch-audit") && spec.Network == "" {
+			t.Errorf("%s fetches advisories over the network and is not marked", spec)
+		}
+		if spec.Binary == "zypper" && !strings.Contains(strings.Join(spec.Args, " "), "--no-refresh") {
+			t.Errorf("%s may refresh repositories: it needs --no-refresh", spec)
+		}
+	}
+}
+
+func TestChildEnvDropsRemoteEngines(t *testing.T) {
+	environ := []string{
+		"PATH=/usr/bin",
+		"DOCKER_HOST=tcp://10.0.0.5:2375",
+		"CONTAINER_HOST=ssh://core@10.0.0.6/run/podman/podman.sock",
+	}
+	got := strings.Join(childEnv(environ), " ")
+	if strings.Contains(got, "DOCKER_HOST") || strings.Contains(got, "CONTAINER_HOST") || !strings.Contains(got, "PATH=") {
+		t.Errorf("childEnv = %q, want the remote engine variables dropped", got)
+	}
+
+	local := []string{"DOCKER_HOST=unix:///run/user/1000/docker.sock"}
+	if len(childEnv(local)) != 1 || len(RemoteEngineEnv(local)) != 0 {
+		t.Error("a local unix socket must be kept")
+	}
+}

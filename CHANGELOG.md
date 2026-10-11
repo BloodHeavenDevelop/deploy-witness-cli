@@ -7,6 +7,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-10
+
+### Security
+
+- **A default run no longer reaches the network through child processes** (DW-53).
+  `debsecan` and `arch-audit` download their advisory data on every call; their
+  allowlist entries now carry `Network: "--online"` ([app/run/commands.go](app/run/commands.go)),
+  the collectors skip them without `--online` and say so in `summary.csv`
+  ([app/pkgmgr/apt.go](app/pkgmgr/apt.go), [app/pkgmgr/pacman.go](app/pkgmgr/pacman.go)),
+  and `run.Runner` refuses them on a run without that flag. Both `zypper` entries
+  gained `--no-refresh`, so an expired repository is never auto-refreshed.
+- **Network paths are enabled only by a typed flag** (DW-56). `AUDIT_ONLINE`,
+  `AUDIT_EGRESS`, `AUDIT_UPLOAD` and `AUDIT_OSV_URL` are no longer read; a run that
+  finds one set logs a warning naming it ([app/config/config.go](app/config/config.go)).
+  `AUDIT_UPLOAD_TOKEN` is still read, only together with a typed `--upload`, and is
+  now the recommended way to pass the token (it stays out of `/proc/<pid>/cmdline`).
+- **Upload: `https://` only, no redirects** (DW-57). `--upload` and `--osv-url` must be
+  `https://` (`http://` only for `localhost`, `127.0.0.0/8`, `::1`), with no
+  credentials, query or fragment — checked before the audit runs (exit `2`). Neither
+  the upload nor the OSV client follows a redirect: a `3xx` is a failure naming where
+  it pointed, and the token and report are not sent there (exit `3` for an upload)
+  ([app/netpath](app/netpath)).
+- `DOCKER_HOST`/`CONTAINER_HOST` pointing at anything but a `unix://` socket are
+  removed from the environment of every command the audit runs, with a warning, so
+  the docker/podman entries cannot be redirected to a remote engine by a variable.
+
+### Added
+
+- **`network.csv`** and a `network` row in `summary.csv`: one row per network path
+  (`osv-api`, `distro-feeds`, `registry-egress`, `upload`), enabled or not, with the
+  recipient, what is sent and how many contacts the run made — so an offline run says
+  so in the report ([app/audit/network.go](app/audit/network.go)). Also in the `audit`
+  half of `report.json` as `network`; never uploaded.
+- **Recipients are printed before anything is sent**: the network plan is logged
+  before the audit starts (`network: none …` on a default run), and the exact upload
+  endpoint, with any proxy, right before the request.
+- A `Network` column appended to `commands.csv`, and `network: yes — runs only with
+  --online` under the networked entries in `--commands`.
+- `app/netpath/static_test.go`: fails if a network API appears in any file other than
+  the three network paths.
+
+### Changed
+
+- **Two explicit run modes: host audit and Compose preflight** (DW-70). A run without
+  `--compose` is a **host audit** (`host-audit`): the witness section is not run, and
+  the report says so instead of looking like a full audit with one skipped section.
+  `--compose` makes it a **Compose preflight** (`compose-preflight`), which always
+  runs the witness section. New `--mode host-audit|compose-preflight`
+  (`AUDIT_MODE`; default: decided by `--compose`) lets a job assert the mode, so a
+  preflight whose Compose file went missing stops instead of degrading into a host
+  audit. Refused with exit `2` before anything is collected: `witness` in
+  `--sections` without `--compose`, `--mode compose-preflight` without `--compose`,
+  `--mode host-audit` with `--compose`, `--compose` with a `--sections` that leaves
+  `witness` out, and a `--compose` path that is missing, not a regular file or
+  unreadable ([app/config/config.go](app/config/config.go)). A Compose file that does
+  not parse now stops the run with exit `2` and **no report written**, instead of
+  a report whose witness row failed ([app/audit/audit.go](app/audit/audit.go) `Prepare`,
+  [main.go](main.go)). The report names the mode everywhere: `mode:` log line at the
+  start, `audit.mode` in `report.json`, the `report` row of `summary.csv` opens with
+  `host audit:`/`Compose preflight:`, and a new `preflight` row says whether a
+  planned deployment was compared (`skipped` for a host audit, the witness status
+  for a preflight — `failed` when the comparison did not complete, never `ok`). A
+  host audit always carries a `witness` row with status `skipped` and a note opening
+  with `host-audit:` — in `summary.csv`, `report.json` and the uploaded collector
+  list — so an uploaded host audit can never arrive as a run with every collector
+  complete and no findings ([app/audit/witness.go](app/audit/witness.go),
+  [app/report/csv.go](app/report/csv.go)). The `bloodheaven.audit.v1` contract is
+  unchanged.
+
+### Fixed
+
+- `--egress` evidence and the section note named port 443 for a registry with an
+  explicit port (`127.0.0.1:18444` became `127.0.0.1:18444:443`); they now name the
+  `host:port` actually dialled (DW-50).
+- The `main.go` package comment claimed the OSV API was the only network path (DW-62).
+
+### Documentation
+
+- **Site materials kit** in [docs/site-materials](docs/site-materials/README.md) (DW-73):
+  control Compose scenarios (conflict, no conflict, two "could not check" cases,
+  external volumes, manifest rules), the exact commands, the reports they produced
+  (CSV + `report.json`, sanitised with marked placeholders and trimmed of unrelated
+  host inventory), `run.sh` to recreate the host states, run and clean up, and a
+  [verification matrix](docs/site-materials/MATRIX.md) of every public claim —
+  verified on what, by which scenario, or not verified / not supported. Recorded with
+  the tree at `5ab9f51`, which `make build` stamps `1.2.0` because the version comes
+  from the first numbered CHANGELOG heading. `.gitignore` admits the sample CSVs;
+  both tables of contents link the kit.
+- `04-cli-reference.md`: a "Network behaviour" table per mode (who is contacted, what
+  is sent, where it is recorded), how to verify an offline run, the token-through-the-
+  environment recipe (`sudo --preserve-env`), what an upload contains (host name,
+  absolute compose path, journal arguments) and that the returned public link is
+  readable by anyone holding it (DW-62). `01`, `03`, `05`, `06`, `07`, `08`, `09` and
+  the README updated to match, in English and Russian.
+
 ## [1.2.0] - 2026-10-06
 
 ### Added

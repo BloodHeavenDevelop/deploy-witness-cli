@@ -3,6 +3,7 @@
 package pkgmgr
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -38,6 +39,13 @@ type Manager interface {
 	// Comparator is the version ordering this ecosystem uses.
 	Comparator() Compare
 }
+
+// ErrFeedNeedsNetwork is returned by Advisories when the distribution's advisory
+// reader is installed but fetches its data over the network on every call
+// (debsecan, arch-audit), and this run was not given --online. It is a gap in
+// coverage, reported as one, never an empty table.
+var ErrFeedNeedsNetwork = errors.New("downloads its advisory data over HTTPS on every call, " +
+	"so it runs only with --online; its advisories were not collected")
 
 // base carries what every backend needs.
 type base struct {

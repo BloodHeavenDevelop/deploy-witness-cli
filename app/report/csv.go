@@ -11,6 +11,7 @@ import (
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/csv"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
+	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/netpath"
 )
 
 // table is one CSV file: a name, the column headers, the field paths behind them
@@ -97,9 +98,17 @@ func tables(r *model.Report) []table {
 			// found. It is written unconditionally so that "the audit ran no
 			// commands at all" is a visible claim rather than a missing file.
 			name:    "commands",
-			headers: []string{"Command", "Started at", "Duration", "Exit code", "Outcome"},
-			paths:   []string{"command", "startedAt", "duration", "exitCode", "outcome"},
+			headers: []string{"Command", "Started at", "Duration", "Exit code", "Outcome", "Network"},
+			paths:   []string{"command", "startedAt", "duration", "exitCode", "outcome", "network"},
 			rows:    anySlice(r.Commands),
+		},
+		{
+			// Also not a section: one row per network path, used or not, so that an
+			// offline run says so in a file rather than by the absence of one.
+			name:    "network",
+			headers: []string{"Path", "Flag", "Enabled", "Recipient", "Sends", "Contacts", "Note"},
+			paths:   []string{"path", "flag", "enabled", "recipient", "sends", "contacts", "note"},
+			rows:    anySlice(r.Network),
 		},
 	}
 }
@@ -165,9 +174,21 @@ func summaryRows(r *model.Report) []model.SummaryRow {
 	rows := []model.SummaryRow{{
 		Section: "report",
 		Status:  string(model.StatusOk),
-		Notes: fmt.Sprintf("%s %s on %s at %s UTC",
+		Notes: fmt.Sprintf("%s: %s %s on %s at %s UTC", r.Mode.Label(),
 			r.Tool, r.Version, r.Hostname, r.GeneratedAt.UTC().Format("2006-01-02 15:04:05")),
 	}}
+
+	// The network gets a line of its own, right under the report line: whether
+	// this run was offline is the first thing a cautious reader wants confirmed.
+	if r.Network != nil {
+		rows = append(rows, model.SummaryRow{
+			Section: "network",
+			Status:  string(model.StatusOk),
+			Notes:   networkSummary(r.Network),
+		})
+	}
+
+	rows = append(rows, preflightRow(r))
 
 	for _, s := range r.Sections {
 		rows = append(rows, model.SummaryRow{
@@ -181,6 +202,48 @@ func summaryRows(r *model.Report) []model.SummaryRow {
 		})
 	}
 	return rows
+}
+
+// preflightRow is the summary's answer to "was a deployment checked against this
+// host, and did the check complete?" — the question a reader must not have to infer
+// from the witness row. Its status is the comparison's: `skipped` for a host audit,
+// the witness section's own status for a Compose preflight. The note opens with the
+// mode identifier (host-audit, compose-preflight) so a script can match on it.
+func preflightRow(r *model.Report) model.SummaryRow {
+	row := model.SummaryRow{Section: "preflight", Status: string(model.StatusSkipped)}
+	if r.Mode != model.ModeComposePreflight {
+		row.Notes = string(model.ModeHostAudit) + ": host audit only — no --compose was given, so no planned " +
+			"deployment was compared with this host; this report is not a Compose preflight result"
+		return row
+	}
+
+	row.Status = string(model.StatusFailed)
+	var witness *model.SectionResult
+	for i := range r.Sections {
+		if r.Sections[i].Section == model.SectionWitness {
+			witness = &r.Sections[i]
+		}
+	}
+	path := "the Compose file"
+	if r.Manifest != nil {
+		path = r.Manifest.Path
+	}
+	switch {
+	case witness == nil:
+		row.Notes = string(model.ModeComposePreflight) + ": the witness section did not run, so " + path +
+			" was not compared with this host; this is not a preflight result"
+	case witness.Status == model.StatusOk:
+		row.Status = string(model.StatusOk)
+		row.Notes = string(model.ModeComposePreflight) + ": " + path + " was compared with this host"
+	case witness.Status == model.StatusPartial:
+		row.Status = string(model.StatusPartial)
+		row.Notes = string(model.ModeComposePreflight) + ": " + path + " was compared with this host, " +
+			"but parts of the comparison could not be made (see the witness row)"
+	default:
+		row.Notes = string(model.ModeComposePreflight) + ": the comparison of " + path +
+			" with this host did not complete (see the witness row); this is not a preflight result"
+	}
+	return row
 }
 
 // WriteDir renders one CSV file per section and returns the paths written.
@@ -266,4 +329,23 @@ func anySlice[T any](items []T) []any {
 		out[i] = item
 	}
 	return out
+}
+
+// networkSummary is the one line summary.csv gives the network.
+func networkSummary(record []model.NetworkUse) string {
+	var used []string
+	for _, use := range record {
+		if !use.Enabled {
+			continue
+		}
+		if use.Path == netpath.PathUpload {
+			used = append(used, fmt.Sprintf("%s → %s (after the report is written)", use.Flag, use.Recipient))
+			continue
+		}
+		used = append(used, fmt.Sprintf("%s %s: %d contact(s)", use.Flag, use.Path, use.Contacts))
+	}
+	if len(used) == 0 {
+		return "offline: --online, --egress and --upload were not given; no network path was used (network.csv)"
+	}
+	return strings.Join(used, "; ") + " (network.csv)"
 }
