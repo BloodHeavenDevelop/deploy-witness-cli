@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-11
+
 ### Fixed
 
 - **`changes.csv` no longer promises to replace somebody else's container**
@@ -21,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   cannot start: host port … is already held`, and that port's `firewall-port` row is
   `not opened: … already held by …` instead of `opened by …` — decided by the same
   matching as `witness.port_conflict`. With the engine unreachable the container row
-  says the name could not be checked instead of promising a clean creation.
+  says the name could not be checked instead of promising a clean creation, and
+  without the `ports` section the `firewall-port` row says the binding was not
+  checked instead of promising it opens.
 - **What cannot be seen is "unable to verify", not "not available"** (DW-79). The
   `snapshot` and `proxy-config` rollback rows were `false`, which reads as
   "established missing", while their own text said it could not be seen from inside
