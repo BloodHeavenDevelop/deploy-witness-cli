@@ -5,29 +5,10 @@
     "level": 2,
     "server_fingerprint": "<SERVER-FINGERPRINT>",
     "server_hostname": "<HOSTNAME>",
-    "generated_at": "2026-10-10T19:17:15Z",
-    "stale_after": "2026-10-17T19:17:15Z",
-    "producer": "deploy-witness/1.2.0",
+    "generated_at": "2026-10-11T20:46:16Z",
+    "stale_after": "2026-10-18T20:46:16Z",
+    "producer": "deploy-witness/1.4.0",
     "findings": [
-      {
-        "code": "witness.no_rollback_plan",
-        "collector": "rollback",
-        "category": "CATEGORY_MISSING",
-        "severity": "SEVERITY_WARNING",
-        "subject": "2 of 4",
-        "title": "There is no way back from this deployment",
-        "description": "The rollback plan for this host is incomplete. Missing: proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
-        "why_it_matters": "Every other finding in this report is about whether the deployment will work. This one is about what happens when it does not, and it is the only one that cannot be fixed after the fact.",
-        "what_to_do": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and take a snapshot or a volume backup.",
-        "confidence": "CONFIDENCE_HIGH",
-        "evidence": [
-          {
-            "command": "the rollback section of this report",
-            "output": "proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nsnapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
-            "captured_at": "2026-10-10T19:17:17Z"
-          }
-        ]
-      },
       {
         "code": "witness.floating_image_tag",
         "collector": "floating-tag",
@@ -43,7 +24,7 @@
           {
             "command": "<WORKDIR>/orders/docker-compose.yml (service orders-api)",
             "output": "image: nginx:1.27-alpine",
-            "captured_at": "2026-10-10T19:17:17Z"
+            "captured_at": "2026-10-11T20:46:18Z"
           }
         ]
       },
@@ -61,7 +42,26 @@
           {
             "command": "<WORKDIR>/orders/docker-compose.yml",
             "output": "registries referenced: docker.io",
-            "captured_at": "2026-10-10T19:17:17Z"
+            "captured_at": "2026-10-11T20:46:18Z"
+          }
+        ]
+      },
+      {
+        "code": "witness.no_rollback_plan",
+        "collector": "rollback",
+        "category": "CATEGORY_MISSING",
+        "severity": "SEVERITY_INFO",
+        "subject": "2 of 4 unverified",
+        "title": "The way back could not be fully verified",
+        "description": "Nothing in the rollback plan was found to be missing, but part of it could not be checked from inside this host. Unable to verify: proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
+        "why_it_matters": "What this audit cannot see is not evidence that it is absent — nor that it exists. Whether the deployment can be undone in full depends on the items above, which only the people running this host can confirm.",
+        "what_to_do": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and confirm a snapshot or a volume backup exists.",
+        "confidence": "CONFIDENCE_HIGH",
+        "evidence": [
+          {
+            "command": "the rollback section of this report",
+            "output": "unable to verify — proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nunable to verify — snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
+            "captured_at": "2026-10-11T20:46:18Z"
           }
         ]
       }
@@ -70,14 +70,14 @@
       {
         "collector": "ports",
         "status": "COLLECTOR_STATUS_PARTIAL",
-        "note": "325 processes were not readable, so some sockets have no owning process (run as root for full attribution); 21 of 145 listening sockets are bound to all interfaces",
-        "duration_ms": 33
+        "note": "338 processes were not readable, so some sockets have no owning process (run as root for full attribution); 14 of 146 listening sockets are bound to all interfaces",
+        "duration_ms": 40
       },
       {
         "collector": "witness",
         "status": "COLLECTOR_STATUS_PARTIAL",
         "note": "host: 17 mount point(s) could not be measured — usually a filesystem this account cannot enter; their capacity is absent from the report rather than assumed; panels: /var/lib/docker/volumes/portainer_data could not be examined (stat /var/lib/docker/volumes/portainer_data: permission denied), so Portainer could neither be confirmed nor ruled out; scheduled jobs: not running as root, so the per-user crontabs under /var/spool/cron are unreadable; only <USER>'s own crontab was collected. Jobs owned by other accounts exist on most hosts and are not in this report; certificates: skipped 122 CA certificate(s) reached through the system trust store (/etc/ssl/certs, /etc/pki/tls/certs) — they are the distribution's root certificates, not certificates this host serves",
-        "duration_ms": 2296
+        "duration_ms": 2385
       }
     ],
     "changes": [
@@ -94,7 +94,7 @@
       {
         "kind": "disk-space",
         "target": "/",
-        "detail": "95.9 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
+        "detail": "95.1 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
       },
       {
         "kind": "firewall-port",
@@ -115,84 +115,87 @@
       },
       {
         "kind": "proxy-config",
-        "detail": "apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
+        "detail": "unable to verify: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
       },
       {
         "kind": "snapshot",
-        "detail": "whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
+        "detail": "unable to verify: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
       }
     ],
     "command_journal": [
       "uname -m — ok (1ms)",
-      "docker version --format {{json .}} — ok (20ms)",
-      "docker compose version --short — ok (63ms)",
-      "docker info --format {{json .}} — ok (78ms)",
-      "docker ps -a --format {{json .}} — ok (916ms)",
-      "docker network ls --format {{json .}} — ok (13ms)",
-      "docker network inspect <host-network-01> --format {{json .IPAM}} — ok (17ms)",
-      "docker network inspect <host-network-02> --format {{json .IPAM}} — ok (18ms)",
-      "docker network inspect <host-network-03> --format {{json .IPAM}} — ok (19ms)",
+      "docker version --format {{json .}} — ok (24ms)",
+      "docker compose version --short — ok (80ms)",
+      "docker info --format {{json .}} — ok (66ms)",
+      "docker ps -a --format {{json .}} — ok (937ms)",
+      "docker network ls --format {{json .}} — ok (12ms)",
+      "docker network inspect <host-network-01> --format {{json .IPAM}} — ok (14ms)",
+      "docker network inspect <host-network-02> --format {{json .IPAM}} — ok (17ms)",
+      "docker network inspect <host-network-03> --format {{json .IPAM}} — ok (17ms)",
       "docker network inspect <host-network-04> --format {{json .IPAM}} — ok (18ms)",
-      "docker network inspect bridge --format {{json .IPAM}} — ok (20ms)",
+      "docker network inspect bridge --format {{json .IPAM}} — ok (19ms)",
       "docker network inspect host --format {{json .IPAM}} — ok (20ms)",
-      "docker network inspect none --format {{json .IPAM}} — ok (20ms)",
-      "docker volume ls --format {{json .}} — ok (27ms)",
-      "docker image ls --all --digests --format {{json .}} — ok (27ms)",
+      "docker network inspect none --format {{json .IPAM}} — ok (19ms)",
+      "docker volume ls --format {{json .}} — ok (26ms)",
+      "docker image ls --all --digests --format {{json .}} — ok (30ms)",
+      "docker image inspect e130f2966f1a --format {{json .}} — ok (20ms)",
+      "docker image inspect <host-image-id-34> --format {{json .}} — ok (19ms)",
+      "docker image inspect <host-image-id-08> --format {{json .}} — ok (18ms)",
       "docker image inspect <host-image-22> --format {{json .}} — ok (17ms)",
-      "docker image inspect <host-image-03> --format {{json .}} — ok (18ms)",
-      "docker image inspect <host-image-id-23> --format {{json .}} — ok (21ms)",
-      "docker image inspect <host-image-14> --format {{json .}} — ok (20ms)",
+      "docker image inspect <host-image-03> --format {{json .}} — ok (19ms)",
       "docker image inspect <host-image-id-24> --format {{json .}} — ok (19ms)",
-      "docker image inspect <host-image-id-13> --format {{json .}} — ok (19ms)",
-      "docker image inspect <host-image-id-26> --format {{json .}} — ok (19ms)",
-      "docker image inspect <host-image-id-37> --format {{json .}} — ok (21ms)",
-      "docker image inspect <host-image-id-32> --format {{json .}} — ok (21ms)",
+      "docker image inspect <host-image-14> --format {{json .}} — ok (20ms)",
+      "docker image inspect <host-image-id-25> --format {{json .}} — ok (16ms)",
+      "docker image inspect <host-image-id-14> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-id-27> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-id-39> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-id-33> --format {{json .}} — ok (20ms)",
       "docker image inspect <host-image-id-02> --format {{json .}} — ok (20ms)",
-      "docker image inspect <host-image-06> --format {{json .}} — ok (17ms)",
-      "docker image inspect <host-image-07> --format {{json .}} — ok (35ms)",
-      "docker image inspect <host-image-id-01> --format {{json .}} — ok (17ms)",
-      "docker image inspect <host-image-id-36> --format {{json .}} — ok (20ms)",
-      "docker image inspect <host-image-id-10> --format {{json .}} — ok (19ms)",
-      "docker image inspect <host-image-id-16> --format {{json .}} — ok (18ms)",
-      "docker image inspect <host-image-id-15> --format {{json .}} — ok (16ms)",
-      "docker image inspect <host-image-id-35> --format {{json .}} — ok (17ms)",
-      "docker image inspect <host-image-id-07> --format {{json .}} — ok (19ms)",
-      "docker image inspect <host-image-id-04> --format {{json .}} — ok (16ms)",
-      "docker image inspect <host-image-10> --format {{json .}} — ok (14ms)",
-      "docker image inspect <host-image-11> --format {{json .}} — ok (18ms)",
-      "docker image inspect <host-image-09> --format {{json .}} — ok (15ms)",
-      "docker image inspect <host-image-08> --format {{json .}} — ok (15ms)",
-      "docker image inspect <host-image-id-11> --format {{json .}} — ok (16ms)",
+      "docker image inspect <host-image-06> --format {{json .}} — ok (20ms)",
+      "docker image inspect <host-image-07> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-id-01> --format {{json .}} — ok (20ms)",
+      "docker image inspect <host-image-id-38> --format {{json .}} — ok (21ms)",
+      "docker image inspect <host-image-id-11> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-id-17> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-id-16> --format {{json .}} — ok (21ms)",
+      "docker image inspect <host-image-id-37> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-id-07> --format {{json .}} — ok (21ms)",
+      "docker image inspect <host-image-id-04> --format {{json .}} — ok (17ms)",
+      "docker image inspect <host-image-10> --format {{json .}} — ok (19ms)",
+      "docker image inspect <host-image-11> --format {{json .}} — ok (19ms)",
+      "docker image inspect <host-image-09> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-08> --format {{json .}} — ok (19ms)",
+      "docker image inspect <host-image-id-12> --format {{json .}} — ok (20ms)",
       "docker image inspect <host-image-05> --format {{json .}} — ok (17ms)",
-      "docker image inspect <host-image-id-17> --format {{json .}} — ok (17ms)",
-      "docker image inspect <host-image-16> --format {{json .}} — ok (13ms)",
-      "docker image inspect <host-image-04> --format {{json .}} — ok (18ms)",
-      "docker image inspect alpine:3.21 --format {{json .}} — ok (14ms)",
-      "docker image inspect <host-image-01> --format {{json .}} — ok (16ms)",
-      "docker image inspect <host-image-02> --format {{json .}} — ok (16ms)",
-      "docker image inspect <host-image-12> --format {{json .}} — ok (18ms)",
-      "docker image inspect <host-image-23> --format {{json .}} — ok (18ms)",
-      "docker image inspect <host-image-18> --format {{json .}} — ok (19ms)",
-      "docker image inspect <host-image-17> --format {{json .}} — ok (18ms)",
-      "docker image inspect <host-image-21> --format {{json .}} — ok (20ms)",
-      "docker image inspect <host-image-15> --format {{json .}} — ok (20ms)",
-      "docker image inspect <host-image-19> --format {{json .}} — ok (19ms)",
-      "docker image inspect <host-image-13> --format {{json .}} — ok (18ms)",
-      "docker image inspect <host-image-20> --format {{json .}} — ok (20ms)",
-      "apachectl -v — ok (28ms)",
-      "apachectl -S — ok (41ms)",
+      "docker image inspect <host-image-id-18> --format {{json .}} — ok (15ms)",
+      "docker image inspect <host-image-16> --format {{json .}} — ok (15ms)",
+      "docker image inspect <host-image-04> --format {{json .}} — ok (19ms)",
+      "docker image inspect alpine:3.21 --format {{json .}} — ok (17ms)",
+      "docker image inspect <host-image-01> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-02> --format {{json .}} — ok (17ms)",
+      "docker image inspect <host-image-12> --format {{json .}} — ok (19ms)",
+      "docker image inspect <host-image-23> --format {{json .}} — ok (19ms)",
+      "docker image inspect <host-image-18> --format {{json .}} — ok (16ms)",
+      "docker image inspect <host-image-17> --format {{json .}} — ok (16ms)",
+      "docker image inspect <host-image-21> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-15> --format {{json .}} — ok (18ms)",
+      "docker image inspect <host-image-19> --format {{json .}} — ok (16ms)",
+      "docker image inspect <host-image-13> --format {{json .}} — ok (20ms)",
+      "docker image inspect <host-image-20> --format {{json .}} — ok (19ms)",
+      "apachectl -v — ok (31ms)",
+      "apachectl -S — ok (42ms)",
       "crontab -l -u <USER> — ok (2ms)",
-      "systemctl list-timers --all --no-pager --plain --no-legend — ok (13ms)",
-      "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service man-db.service systemd-tmpfiles-clean.service fstrim.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service — ok (32ms)",
-      "restic version — ok (22ms)",
+      "systemctl list-timers --all --no-pager --plain --no-legend — ok (15ms)",
+      "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service fstrim.service man-db.service systemd-tmpfiles-clean.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service — ok (36ms)",
+      "restic version — ok (19ms)",
       "duplicity --version — ok (113ms)"
     ]
   },
   "audit": {
-    "generatedAt": "2026-10-10T19:17:15.111394811Z",
+    "generatedAt": "2026-10-11T20:46:16.413397923Z",
     "hostname": "<HOSTNAME>",
     "tool": "deploy-witness",
-    "version": "1.2.0",
+    "version": "1.4.0",
     "mode": "compose-preflight",
     "system": null,
     "updates": null,
@@ -203,13 +206,13 @@
       {
         "section": "ports",
         "status": "partial",
-        "records": 145,
+        "records": 146,
         "critical": 0,
         "high": 0,
-        "duration": "33ms",
+        "duration": "40ms",
         "notes": [
-          "325 processes were not readable, so some sockets have no owning process (run as root for full attribution)",
-          "21 of 145 listening sockets are bound to all interfaces"
+          "338 processes were not readable, so some sockets have no owning process (run as root for full attribution)",
+          "14 of 146 listening sockets are bound to all interfaces"
         ]
       },
       {
@@ -217,8 +220,8 @@
         "status": "partial",
         "records": 3,
         "critical": 0,
-        "high": 1,
-        "duration": "2.296s",
+        "high": 0,
+        "duration": "2.385s",
         "notes": [
           "host: 17 mount point(s) could not be measured — usually a filesystem this account cannot enter; their capacity is absent from the report rather than assumed",
           "panels: /var/lib/docker/volumes/portainer_data could not be examined (stat /var/lib/docker/volumes/portainer_data: permission denied), so Portainer could neither be confirmed nor ruled out",
@@ -230,7 +233,7 @@
     "commands": [
       {
         "command": "uname -m",
-        "startedAt": "2026-10-10 19:17:15",
+        "startedAt": "2026-10-11 20:46:16",
         "duration": "1ms",
         "exitCode": 0,
         "outcome": "ok",
@@ -238,71 +241,71 @@
       },
       {
         "command": "docker version --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:15",
-        "duration": "20ms",
+        "startedAt": "2026-10-11 20:46:16",
+        "duration": "24ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker compose version --short",
-        "startedAt": "2026-10-10 19:17:15",
-        "duration": "63ms",
+        "startedAt": "2026-10-11 20:46:16",
+        "duration": "80ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker info --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:15",
-        "duration": "78ms",
+        "startedAt": "2026-10-11 20:46:16",
+        "duration": "66ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker ps -a --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:15",
-        "duration": "916ms",
+        "startedAt": "2026-10-11 20:46:16",
+        "duration": "937ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker network ls --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "13ms",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "12ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker network inspect <host-network-01> --format {{json .IPAM}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "17ms",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "14ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker network inspect <host-network-02> --format {{json .IPAM}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "18ms",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "17ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker network inspect <host-network-03> --format {{json .IPAM}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "19ms",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "17ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker network inspect <host-network-04> --format {{json .IPAM}}",
-        "startedAt": "2026-10-10 19:17:16",
+        "startedAt": "2026-10-11 20:46:17",
         "duration": "18ms",
         "exitCode": 0,
         "outcome": "ok",
@@ -310,15 +313,15 @@
       },
       {
         "command": "docker network inspect bridge --format {{json .IPAM}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "20ms",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "19ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker network inspect host --format {{json .IPAM}}",
-        "startedAt": "2026-10-10 19:17:16",
+        "startedAt": "2026-10-11 20:46:17",
         "duration": "20ms",
         "exitCode": 0,
         "outcome": "ok",
@@ -326,31 +329,55 @@
       },
       {
         "command": "docker network inspect none --format {{json .IPAM}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "20ms",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "19ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker volume ls --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "27ms",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "26ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image ls --all --digests --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "27ms",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "30ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect e130f2966f1a --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "20ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-id-34> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "19ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-id-08> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "18ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-22> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
+        "startedAt": "2026-10-11 20:46:17",
         "duration": "17ms",
         "exitCode": 0,
         "outcome": "ok",
@@ -358,71 +385,71 @@
       },
       {
         "command": "docker image inspect <host-image-03> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "18ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-id-23> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "21ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-14> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "20ms",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "19ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-id-24> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
+        "startedAt": "2026-10-11 20:46:17",
         "duration": "19ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
-        "command": "docker image inspect <host-image-id-13> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "19ms",
+        "command": "docker image inspect <host-image-14> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "20ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
-        "command": "docker image inspect <host-image-id-26> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "19ms",
+        "command": "docker image inspect <host-image-id-25> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "16ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
-        "command": "docker image inspect <host-image-id-37> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "21ms",
+        "command": "docker image inspect <host-image-id-14> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "18ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
-        "command": "docker image inspect <host-image-id-32> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "21ms",
+        "command": "docker image inspect <host-image-id-27> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "18ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-id-39> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "18ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-id-33> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:17",
+        "duration": "20ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-id-02> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
+        "startedAt": "2026-10-11 20:46:17",
         "duration": "20ms",
         "exitCode": 0,
         "outcome": "ok",
@@ -430,271 +457,271 @@
       },
       {
         "command": "docker image inspect <host-image-06> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "17ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "20ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-07> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "35ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "18ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-id-01> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "17ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-id-36> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
+        "startedAt": "2026-10-11 20:46:18",
         "duration": "20ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
-        "command": "docker image inspect <host-image-id-10> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "19ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-id-16> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "18ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-id-15> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "16ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-id-35> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "17ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-id-07> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "19ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-id-04> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "16ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-10> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "14ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-11> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "18ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-09> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "15ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-08> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "15ms",
+        "command": "docker image inspect <host-image-id-38> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "21ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-id-11> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "16ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-05> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "17ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "18ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-id-17> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "18ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-id-16> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "21ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-id-37> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "18ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-id-07> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "21ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-id-04> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
         "duration": "17ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
+        "command": "docker image inspect <host-image-10> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "19ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-11> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "19ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-09> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "18ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-08> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "19ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-id-12> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "20ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-05> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "17ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-id-18> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "15ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
         "command": "docker image inspect <host-image-16> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "13ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "15ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-04> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "18ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "19ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect alpine:3.21 --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "14ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "17ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-01> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "16ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "18ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-02> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:16",
-        "duration": "16ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "17ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-12> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "18ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "19ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-23> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "18ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "19ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-18> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "19ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "16ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-17> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "18ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "16ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker image inspect <host-image-21> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "20ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-15> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "20ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-19> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "19ms",
-        "exitCode": 0,
-        "outcome": "ok",
-        "network": ""
-      },
-      {
-        "command": "docker image inspect <host-image-13> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:17",
+        "startedAt": "2026-10-11 20:46:18",
         "duration": "18ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
-        "command": "docker image inspect <host-image-20> --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:17",
+        "command": "docker image inspect <host-image-15> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "18ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-19> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "16ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
+        "command": "docker image inspect <host-image-13> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
         "duration": "20ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
+        "command": "docker image inspect <host-image-20> --format {{json .}}",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "19ms",
+        "exitCode": 0,
+        "outcome": "ok",
+        "network": ""
+      },
+      {
         "command": "apachectl -v",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "28ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "31ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "apachectl -S",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "41ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "42ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "crontab -l -u <USER>",
-        "startedAt": "2026-10-10 19:17:17",
+        "startedAt": "2026-10-11 20:46:18",
         "duration": "2ms",
         "exitCode": 1,
         "outcome": "ok",
@@ -702,31 +729,31 @@
       },
       {
         "command": "systemctl list-timers --all --no-pager --plain --no-legend",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "13ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "15ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
-        "command": "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service man-db.service systemd-tmpfiles-clean.service fstrim.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "32ms",
+        "command": "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service fstrim.service man-db.service systemd-tmpfiles-clean.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "36ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "restic version",
-        "startedAt": "2026-10-10 19:17:17",
-        "duration": "22ms",
+        "startedAt": "2026-10-11 20:46:18",
+        "duration": "19ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "duplicity --version",
-        "startedAt": "2026-10-10 19:17:17",
+        "startedAt": "2026-10-11 20:46:18",
         "duration": "113ms",
         "exitCode": 0,
         "outcome": "ok",
@@ -825,7 +852,7 @@
     "capabilities": {
       "arch": "x86_64",
       "memTotalBytes": 41654738944,
-      "memAvailableBytes": 19756609536,
+      "memAvailableBytes": 18757623808,
       "swapTotalBytes": 0,
       "filesystems": [
         {
@@ -833,10 +860,10 @@
           "device": "/dev/nvme0n1p2",
           "fsType": "ext4",
           "totalBytes": 502609965056,
-          "usedBytes": 374013669376,
-          "availableBytes": 102989844480,
+          "usedBytes": 374864285696,
+          "availableBytes": 102139228160,
           "inodesTotal": 31244288,
-          "inodesFree": 23233141,
+          "inodesFree": 23224153,
           "readOnly": false
         },
         {
@@ -929,27 +956,6 @@
     },
     "findings": [
       {
-        "code": "witness.no_rollback_plan",
-        "collector": "rollback",
-        "category": "missing",
-        "severity": "warning",
-        "subject": "2 of 4",
-        "title": "There is no way back from this deployment",
-        "description": "The rollback plan for this host is incomplete. Missing: proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
-        "whyItMatters": "Every other finding in this report is about whether the deployment will work. This one is about what happens when it does not, and it is the only one that cannot be fixed after the fact.",
-        "whatToDo": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and take a snapshot or a volume backup.",
-        "confidence": "high",
-        "sortOrder": 0,
-        "evidence": [
-          {
-            "command": "the rollback section of this report",
-            "output": "proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nsnapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
-            "truncated": false,
-            "capturedAt": "2026-10-10T19:17:17Z"
-          }
-        ]
-      },
-      {
         "code": "witness.floating_image_tag",
         "collector": "floating-tag",
         "category": "missing",
@@ -966,7 +972,7 @@
             "command": "<WORKDIR>/orders/docker-compose.yml (service orders-api)",
             "output": "image: nginx:1.27-alpine",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:17Z"
+            "capturedAt": "2026-10-11T20:46:18Z"
           }
         ]
       },
@@ -987,7 +993,28 @@
             "command": "<WORKDIR>/orders/docker-compose.yml",
             "output": "registries referenced: docker.io",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:17Z"
+            "capturedAt": "2026-10-11T20:46:18Z"
+          }
+        ]
+      },
+      {
+        "code": "witness.no_rollback_plan",
+        "collector": "rollback",
+        "category": "missing",
+        "severity": "info",
+        "subject": "2 of 4 unverified",
+        "title": "The way back could not be fully verified",
+        "description": "Nothing in the rollback plan was found to be missing, but part of it could not be checked from inside this host. Unable to verify: proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
+        "whyItMatters": "What this audit cannot see is not evidence that it is absent — nor that it exists. Whether the deployment can be undone in full depends on the items above, which only the people running this host can confirm.",
+        "whatToDo": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and confirm a snapshot or a volume backup exists.",
+        "confidence": "high",
+        "sortOrder": 0,
+        "evidence": [
+          {
+            "command": "the rollback section of this report",
+            "output": "unable to verify — proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nunable to verify — snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
+            "truncated": false,
+            "capturedAt": "2026-10-11T20:46:18Z"
           }
         ]
       }
@@ -1006,7 +1033,7 @@
       {
         "kind": "disk-space",
         "target": "/",
-        "detail": "95.9 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
+        "detail": "95.1 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
       },
       {
         "kind": "firewall-port",
@@ -1018,22 +1045,26 @@
       {
         "kind": "image-tag",
         "available": true,
+        "state": "available",
         "detail": "orders-api is not running here yet, so undoing it means removing it — there is no previous version to return to"
       },
       {
         "kind": "volume-backup",
         "available": true,
+        "state": "available",
         "detail": "the deployment declares no persistent data, so there is nothing to restore"
       },
       {
         "kind": "proxy-config",
         "available": false,
-        "detail": "apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
+        "state": "unable-to-verify",
+        "detail": "unable to verify: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
       },
       {
         "kind": "snapshot",
         "available": false,
-        "detail": "whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
+        "state": "unable-to-verify",
+        "detail": "unable to verify: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
       }
     ]
   }

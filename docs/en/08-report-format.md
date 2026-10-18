@@ -243,7 +243,7 @@ that the reader can check them.
 | `Command` | What to run to see the same thing: a command from the published allowlist, or a path on disk, or the manifest and the service (`docker-compose.yml (service db)`) |
 | `Output` | What was observed, rendered compactly from the parsed values |
 | `Truncated` | `true` when the capture was cut at 1500 characters. A shortened capture that does not admit it invites the reader to conclude too much from it |
-| `Captured at` | RFC 3339 UTC |
+| `Captured at` | RFC 3339 UTC: the moment the witness section compared the manifest with what it had collected. It is later than the run's `Checked at` in `summary.csv` (the start of the run) by however long the collection took, and earlier than the log's `wrote …` line. All three belong to the same run |
 
 **A finding with no evidence is never published.** The engine discards it and
 counts the discard in the section's notes, as a bug in `deploy-witness` rather than
@@ -264,9 +264,9 @@ be updated" is worth nothing to the person who has to answer for it.
 
 | Kind | Rows it produces |
 |---|---|
-| `container` | One per service (created, or replaced — naming what it replaces), plus one per non-external network the manifest declares |
+| `container` | One per service, plus one per non-external network the manifest declares. A service's row says one of: `created from <image>`; `replaced (currently <state>, image <image>) with <image>` — only for a container of **this** Compose project; `not created: a container named <name> already exists … and does not belong to this deployment` — another project's container, or one created by hand (running or not), on which `docker compose up` fails (`witness.container_name_conflict`); `created from <image>, but it cannot start: host port <port> is already held` (`witness.port_conflict`); or, with the engine unreachable, `created … unless a container named <name> already exists — … could not be checked` |
 | `command` | An image that has to be pulled, with the registry it comes from; or a service that is built locally, with its build context |
-| `firewall-port` | One per published host port, with how far it will be reachable — a port published without a host IP is on every interface, which is the part people do not expect |
+| `firewall-port` | One per published host port, with how far it will be reachable — a port published without a host IP is on every interface, which is the part people do not expect. When something else already holds the binding the row says `not opened: … already held by …`, and when that could not be decided it adds `if the binding is free, which could not be established` — the same matching as `witness.port_conflict`. Without the `ports` section it adds `if the binding is free, which was not checked` |
 | `file` | Every bind mount (with read/write or read only) and every named volume |
 | `disk-space` | Space available on the filesystem holding the container store, and how many images still have to be pulled |
 
@@ -284,18 +284,25 @@ value, and the reason this is not merely a list of instructions.
 | Column | Contents |
 |---|---|
 | `Kind` | `image-tag`, `volume-backup`, `proxy-config` or `snapshot` |
-| `Available` | Whether the thing exists **right now** |
-| `Detail` | What it is, or precisely what is missing |
+| `Available` | `true` — established to exist right now (or nothing is needed); `false` — established **not** to exist on this host; `unknown` — **unable to verify** from inside the host. `unknown` is never rendered as `false`: what the audit cannot see is not evidence of absence |
+| `Detail` | What it is, or precisely what is missing; an `unknown` row opens with `unable to verify:` |
 
 | Kind | What it checks |
 |---|---|
 | `image-tag` | Whether the digest of each currently running image is recorded on this host. A tag is not enough: the tag is what moved |
 | `volume-backup` | Whether a backup exists, and whether it is recent — a stale one would return the data to a state older than anyone expects |
-| `proxy-config` | Always `false`: this audit copies nobody's nginx configuration anywhere, and a proxy that fails to start takes every site on the host down, not only the new one |
-| `snapshot` | Always `false`: whether a hypervisor or provider snapshot exists cannot be seen from inside the machine, and saying so beats omitting the line |
+| `proxy-config` | Always `unknown`: whether a copy of the web server configuration is kept outside the host cannot be seen from inside it, and a proxy that fails to start takes every site on the host down, not only the new one |
+| `snapshot` | Always `unknown`: whether a hypervisor or provider snapshot exists cannot be seen from inside the machine, and saying so beats omitting the line — or calling it missing |
 
-`witness.no_rollback_plan` is raised from this table when any row is
-unavailable.
+In `report.json`, `audit.rollback[]` carries `state` (`available`,
+`unavailable`, `unable-to-verify`) next to the boolean `available`, which is `true`
+only for `available`. The upload's `rollback[]` has the boolean alone — the contract
+has no third value — so an unverified item goes out as `available: false` with its
+detail opening `unable to verify:`.
+
+`witness.no_rollback_plan` is raised from this table when any row is `false` or
+`unknown` — see [10](10-witness-rules.md#witnessno_rollback_plan) for how the two
+differ in the finding.
 
 ## commands.csv
 

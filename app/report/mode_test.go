@@ -104,3 +104,24 @@ func TestContractLeavesTheHostAuditWitnessOut(t *testing.T) {
 		}
 	}
 }
+
+// DW-79: rollback.csv renders an item that could not be verified as `unknown`, not
+// `false`.
+func TestRollbackCSVRendersUnknown(t *testing.T) {
+	r := reportWith(model.ModeComposePreflight, &model.SectionResult{Section: model.SectionWitness, Status: model.StatusOk})
+	r.Rollback = []model.RollbackItem{
+		model.NewRollbackItem("image-tag", model.RollbackAvailable, "a"),
+		model.NewRollbackItem("volume-backup", model.RollbackUnavailable, "b"),
+		model.NewRollbackItem("snapshot", model.RollbackUnverified, "unable to verify: c"),
+	}
+	rows := rollbackRows(r)
+	got := []string{rows[0].Available, rows[1].Available, rows[2].Available}
+	if strings.Join(got, ",") != "true,false,unknown" {
+		t.Errorf("Available = %v", got)
+	}
+	for _, item := range Contract(r).Rollback {
+		if item.Kind == "snapshot" && (item.Available || !strings.HasPrefix(item.Detail, "unable to verify:")) {
+			t.Errorf("contract snapshot = %+v", item)
+		}
+	}
+}

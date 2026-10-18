@@ -7,7 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-11
+
+### Fixed
+
+- **`changes.csv` no longer promises to replace somebody else's container**
+  (DW-52, DW-79). A container of the same name was always reported as `replaced
+  (currently …) with …`, including one of another Compose project or one created by
+  hand and never started — on which `docker compose up` fails, exactly as the
+  `witness.container_name_conflict` blocker says. Only a container of this
+  deployment's own project is `replaced` now; any other is `not created: a container
+  named … already exists (state …, image …, no Compose project | Compose project "…")
+  and does not belong to this deployment …` ([app/witness/changes.go](app/witness/changes.go)).
+  A container whose published port is held by something else is `created …, but it
+  cannot start: host port … is already held`, and that port's `firewall-port` row is
+  `not opened: … already held by …` instead of `opened by …` — decided by the same
+  matching as `witness.port_conflict`. With the engine unreachable the container row
+  says the name could not be checked instead of promising a clean creation, and
+  without the `ports` section the `firewall-port` row says the binding was not
+  checked instead of promising it opens.
+- **What cannot be seen is "unable to verify", not "not available"** (DW-79). The
+  `snapshot` and `proxy-config` rollback rows were `false`, which reads as
+  "established missing", while their own text said it could not be seen from inside
+  the host. Rollback items now have a state — `available`, `unavailable`,
+  `unable-to-verify` ([app/model/preflight.go](app/model/preflight.go)): `rollback.csv`
+  `Available` is `true`, `false` or `unknown`, `report.json` `audit.rollback[]`
+  gains `state`, and an unverified detail opens with `unable to verify:` (the
+  upload's boolean stays `false` — the contract has no third value).
+- **`witness.no_rollback_plan` no longer concludes there is no way back**
+  (DW-79). With something established missing it is a warning, "Part of the way
+  back from this deployment is missing", subject `N of M missing`; with only
+  unverifiable items it is info, "The way back could not be fully verified", subject
+  `N of M unverified`. The description and evidence list `Missing:` and `Unable to
+  verify:` separately ([app/witness/hygiene.rules.go](app/witness/hygiene.rules.go)).
+
+### Added
+
+- **`--format csv,json`** (DW-79) writes the CSV tables and `report.json` into
+  `--out` from **one** audit, so the two carry the same `Checked at`, PIDs and
+  evidence timestamps. Producing both used to take two runs, seconds apart — the
+  site-materials kit did exactly that, and its terminal log (CSV run) and its JSON
+  evidence (JSON run) disagreed by three seconds. Refused with `--stdout`.
+  `docs/<lang>/08-report-format.md` now states what each timestamp of one run means
+  (`Checked at` = start, evidence `Captured at` = when the witness section
+  compared, the log's `wrote …` = when the files were written).
+
+- **End-to-end tests of an explicitly requested preflight with a broken input**
+  (DW-70, [main_test.go](main_test.go)): missing file, unreadable file, a
+  directory, and three unparseable files (not YAML, a top-level list, an empty
+  file) — each asserts exit `2`, the reason in the log and that no report directory
+  was created. `docs/<lang>/04-cli-reference.md` lists the binary's verbatim output
+  for each case. `main` now runs through `runCLI(args, stdout, stderr)` so the tests
+  drive it as a user does.
+
 ### Changed
+
+- **The site-materials kit is one run per scenario** (DW-79):
+  `docs/site-materials/run.sh` uses `--format csv,json`, `terminal-json.txt` is gone,
+  and every output was regenerated with the released binary.
 
 - **In a host audit the witness section is "not applicable", not "skipped"**
   (DW-70). A run without `--compose` never set out to compare a deployment, so the
@@ -26,16 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   preflight always sends its `witness` collector, which is how the receiver tells
   the two apart. A `NOT_APPLICABLE` status or a mode field is a change for the
   `contracts` repository.
-
-### Added
-
-- **End-to-end tests of an explicitly requested preflight with a broken input**
-  (DW-70, [main_test.go](main_test.go)): missing file, unreadable file, a
-  directory, and three unparseable files (not YAML, a top-level list, an empty
-  file) — each asserts exit `2`, the reason in the log and that no report directory
-  was created. `docs/<lang>/04-cli-reference.md` lists the binary's verbatim output
-  for each case. `main` now runs through `runCLI(args, stdout, stderr)` so the tests
-  drive it as a user does.
 
 ## [1.3.0] - 2026-10-10
 

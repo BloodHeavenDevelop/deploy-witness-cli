@@ -5,9 +5,9 @@
     "level": 2,
     "server_fingerprint": "<SERVER-FINGERPRINT>",
     "server_hostname": "<HOSTNAME>",
-    "generated_at": "2026-10-10T19:17:22Z",
-    "stale_after": "2026-10-17T19:17:22Z",
-    "producer": "deploy-witness/1.2.0",
+    "generated_at": "2026-10-11T20:46:21Z",
+    "stale_after": "2026-10-18T20:46:21Z",
+    "producer": "deploy-witness/1.4.0",
     "findings": [
       {
         "code": "witness.volume_name_conflict",
@@ -24,12 +24,12 @@
           {
             "command": "<WORKDIR>/shop/docker-compose.yml",
             "output": "volumes: aliased declared external",
-            "captured_at": "2026-10-10T19:17:22Z"
+            "captured_at": "2026-10-11T20:46:21Z"
           },
           {
             "command": "docker volume ls --format {{json .}}",
             "output": "no volume named aliased among the 0 volumes on this host",
-            "captured_at": "2026-10-10T19:17:22Z"
+            "captured_at": "2026-10-11T20:46:21Z"
           }
         ]
       },
@@ -48,12 +48,12 @@
           {
             "command": "<WORKDIR>/shop/docker-compose.yml",
             "output": "volumes: dwkit-data declared external",
-            "captured_at": "2026-10-10T19:17:22Z"
+            "captured_at": "2026-10-11T20:46:21Z"
           },
           {
             "command": "docker volume ls --format {{json .}}",
             "output": "no volume named dwkit-data among the 0 volumes on this host",
-            "captured_at": "2026-10-10T19:17:22Z"
+            "captured_at": "2026-10-11T20:46:21Z"
           }
         ]
       },
@@ -62,17 +62,17 @@
         "collector": "rollback",
         "category": "CATEGORY_MISSING",
         "severity": "SEVERITY_WARNING",
-        "subject": "3 of 4",
-        "title": "There is no way back from this deployment",
-        "description": "The rollback plan for this host is incomplete. Missing: volume-backup: the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone; proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
+        "subject": "1 of 4 missing",
+        "title": "Part of the way back from this deployment is missing",
+        "description": "The rollback plan for this host is incomplete. Missing: volume-backup: the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone from here. Unable to verify: proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
         "why_it_matters": "Every other finding in this report is about whether the deployment will work. This one is about what happens when it does not, and it is the only one that cannot be fixed after the fact.",
-        "what_to_do": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and take a snapshot or a volume backup.",
+        "what_to_do": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and confirm a snapshot or a volume backup exists.",
         "confidence": "CONFIDENCE_HIGH",
         "evidence": [
           {
             "command": "the rollback section of this report",
-            "output": "volume-backup: the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone\nproxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nsnapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
-            "captured_at": "2026-10-10T19:17:22Z"
+            "output": "missing — volume-backup: the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone from here\nunable to verify — proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nunable to verify — snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
+            "captured_at": "2026-10-11T20:46:21Z"
           }
         ]
       },
@@ -91,7 +91,7 @@
           {
             "command": "docker info --format {{json .}}",
             "output": "docker is installed but its daemon could not be queried (docker exited 1: failed to connect to the docker API at unix:///nonexistent/docker.sock; check if the path is correct and if the daemon is running: dial unix /nonexistent/docker.sock: connect: no such…); the container, network, volume and image lists are unknown rather than empty. The usual cause is an unprivileged audit: /var/run/docker.sock is readable by root and the docker group only — re-run as root, or as a member of that group, for the container checks",
-            "captured_at": "2026-10-10T19:17:22Z"
+            "captured_at": "2026-10-11T20:46:21Z"
           }
         ]
       },
@@ -110,7 +110,7 @@
           {
             "command": "<WORKDIR>/shop/docker-compose.yml (service shop-api)",
             "output": "image: nginx:1.27-alpine",
-            "captured_at": "2026-10-10T19:17:22Z"
+            "captured_at": "2026-10-11T20:46:21Z"
           }
         ]
       },
@@ -128,7 +128,7 @@
           {
             "command": "<WORKDIR>/shop/docker-compose.yml",
             "output": "registries referenced: docker.io",
-            "captured_at": "2026-10-10T19:17:22Z"
+            "captured_at": "2026-10-11T20:46:21Z"
           }
         ]
       }
@@ -137,14 +137,14 @@
       {
         "collector": "ports",
         "status": "COLLECTOR_STATUS_PARTIAL",
-        "note": "325 processes were not readable, so some sockets have no owning process (run as root for full attribution); 21 of 145 listening sockets are bound to all interfaces",
-        "duration_ms": 32
+        "note": "338 processes were not readable, so some sockets have no owning process (run as root for full attribution); 14 of 146 listening sockets are bound to all interfaces",
+        "duration_ms": 30
       },
       {
         "collector": "witness",
         "status": "COLLECTOR_STATUS_PARTIAL",
         "note": "host: 17 mount point(s) could not be measured — usually a filesystem this account cannot enter; their capacity is absent from the report rather than assumed; docker is installed but its daemon could not be queried (docker exited 1: failed to connect to the docker API at unix:///nonexistent/docker.sock; check if the path is correct and if the daemon is running: dial unix /nonexistent/docker.sock: connect: no such…); the container, network, volume and image lists are unknown rather than empty. The usual cause is an unprivileged audit: /var/run/docker.sock is readable by root and the docker group only — re-run as root, or as a member of that group, for the container checks; panels: /var/lib/docker/volumes/portainer_data could not be examined (stat /var/lib/docker/volumes/portainer_data: permission denied), so Portainer could neither be confirmed nor ruled out; scheduled jobs: not running as root, so the per-user crontabs under /var/spool/cron are unreadable; only <USER>'s own crontab was collected. Jobs owned by other accounts exist on most hosts and are not in this report; certificates: skipped 122 CA certificate(s) reached through the system trust store (/etc/ssl/certs, /etc/pki/tls/certs) — they are the distribution's root certificates, not certificates this host serves",
-        "duration_ms": 445
+        "duration_ms": 396
       }
     ],
     "changes": [
@@ -156,12 +156,12 @@
       {
         "kind": "container",
         "target": "shop-shop-api-1",
-        "detail": "created from nginx:1.27-alpine"
+        "detail": "created from nginx:1.27-alpine, unless a container named shop-shop-api-1 already exists — the container engine did not answer, so that could not be checked"
       },
       {
         "kind": "disk-space",
         "target": "/",
-        "detail": "95.9 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
+        "detail": "95.1 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
       },
       {
         "kind": "file",
@@ -182,37 +182,37 @@
       },
       {
         "kind": "volume-backup",
-        "detail": "the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone"
+        "detail": "the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone from here"
       },
       {
         "kind": "proxy-config",
-        "detail": "apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
+        "detail": "unable to verify: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
       },
       {
         "kind": "snapshot",
-        "detail": "whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
+        "detail": "unable to verify: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
       }
     ],
     "command_journal": [
       "uname -m — ok (1ms)",
-      "docker version --format {{json .}} — ok (9ms)",
-      "docker compose version --short — ok (80ms)",
-      "docker info --format {{json .}} — failed (59ms)",
-      "docker ps -a --format {{json .}} — failed (15ms)",
-      "apachectl -v — ok (31ms)",
-      "apachectl -S — ok (49ms)",
+      "docker version --format {{json .}} — ok (11ms)",
+      "docker compose version --short — ok (51ms)",
+      "docker info --format {{json .}} — failed (41ms)",
+      "docker ps -a --format {{json .}} — failed (12ms)",
+      "apachectl -v — ok (32ms)",
+      "apachectl -S — ok (43ms)",
       "crontab -l -u <USER> — ok (2ms)",
-      "systemctl list-timers --all --no-pager --plain --no-legend — ok (14ms)",
-      "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service man-db.service systemd-tmpfiles-clean.service fstrim.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service — ok (34ms)",
-      "restic version — ok (17ms)",
-      "duplicity --version — ok (125ms)"
+      "systemctl list-timers --all --no-pager --plain --no-legend — ok (15ms)",
+      "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service fstrim.service man-db.service systemd-tmpfiles-clean.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service — ok (38ms)",
+      "restic version — ok (20ms)",
+      "duplicity --version — ok (115ms)"
     ]
   },
   "audit": {
-    "generatedAt": "2026-10-10T19:17:22.485779932Z",
+    "generatedAt": "2026-10-11T20:46:21.301970042Z",
     "hostname": "<HOSTNAME>",
     "tool": "deploy-witness",
-    "version": "1.2.0",
+    "version": "1.4.0",
     "mode": "compose-preflight",
     "system": null,
     "updates": null,
@@ -223,13 +223,13 @@
       {
         "section": "ports",
         "status": "partial",
-        "records": 145,
+        "records": 146,
         "critical": 0,
         "high": 0,
-        "duration": "32ms",
+        "duration": "30ms",
         "notes": [
-          "325 processes were not readable, so some sockets have no owning process (run as root for full attribution)",
-          "21 of 145 listening sockets are bound to all interfaces"
+          "338 processes were not readable, so some sockets have no owning process (run as root for full attribution)",
+          "14 of 146 listening sockets are bound to all interfaces"
         ]
       },
       {
@@ -238,7 +238,7 @@
         "records": 6,
         "critical": 2,
         "high": 2,
-        "duration": "445ms",
+        "duration": "396ms",
         "notes": [
           "host: 17 mount point(s) could not be measured — usually a filesystem this account cannot enter; their capacity is absent from the report rather than assumed",
           "docker is installed but its daemon could not be queried (docker exited 1: failed to connect to the docker API at unix:///nonexistent/docker.sock; check if the path is correct and if the daemon is running: dial unix /nonexistent/docker.sock: connect: no such…); the container, network, volume and image lists are unknown rather than empty. The usual cause is an unprivileged audit: /var/run/docker.sock is readable by root and the docker group only — re-run as root, or as a member of that group, for the container checks",
@@ -251,7 +251,7 @@
     "commands": [
       {
         "command": "uname -m",
-        "startedAt": "2026-10-10 19:17:22",
+        "startedAt": "2026-10-11 20:46:21",
         "duration": "1ms",
         "exitCode": 0,
         "outcome": "ok",
@@ -259,55 +259,55 @@
       },
       {
         "command": "docker version --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:22",
-        "duration": "9ms",
+        "startedAt": "2026-10-11 20:46:21",
+        "duration": "11ms",
         "exitCode": 1,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker compose version --short",
-        "startedAt": "2026-10-10 19:17:22",
-        "duration": "80ms",
+        "startedAt": "2026-10-11 20:46:21",
+        "duration": "51ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "docker info --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:22",
-        "duration": "59ms",
+        "startedAt": "2026-10-11 20:46:21",
+        "duration": "41ms",
         "exitCode": 1,
         "outcome": "failed",
         "network": ""
       },
       {
         "command": "docker ps -a --format {{json .}}",
-        "startedAt": "2026-10-10 19:17:22",
-        "duration": "15ms",
+        "startedAt": "2026-10-11 20:46:21",
+        "duration": "12ms",
         "exitCode": 1,
         "outcome": "failed",
         "network": ""
       },
       {
         "command": "apachectl -v",
-        "startedAt": "2026-10-10 19:17:22",
-        "duration": "31ms",
+        "startedAt": "2026-10-11 20:46:21",
+        "duration": "32ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "apachectl -S",
-        "startedAt": "2026-10-10 19:17:22",
-        "duration": "49ms",
+        "startedAt": "2026-10-11 20:46:21",
+        "duration": "43ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "crontab -l -u <USER>",
-        "startedAt": "2026-10-10 19:17:22",
+        "startedAt": "2026-10-11 20:46:21",
         "duration": "2ms",
         "exitCode": 1,
         "outcome": "ok",
@@ -315,32 +315,32 @@
       },
       {
         "command": "systemctl list-timers --all --no-pager --plain --no-legend",
-        "startedAt": "2026-10-10 19:17:22",
-        "duration": "14ms",
+        "startedAt": "2026-10-11 20:46:21",
+        "duration": "15ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
-        "command": "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service man-db.service systemd-tmpfiles-clean.service fstrim.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service",
-        "startedAt": "2026-10-10 19:17:22",
-        "duration": "34ms",
+        "command": "systemctl show --property=Id --property=MainPID --property=User --property=ActiveEnterTimestamp shadow.service logrotate.service fstrim.service man-db.service systemd-tmpfiles-clean.service pamac-mirrorlist.service archlinux-keyring-wkd-sync.service btrfs-balance.service btrfs-scrub.service btrfs-trim.service pamac-cleancache.service",
+        "startedAt": "2026-10-11 20:46:21",
+        "duration": "38ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "restic version",
-        "startedAt": "2026-10-10 19:17:22",
-        "duration": "17ms",
+        "startedAt": "2026-10-11 20:46:21",
+        "duration": "20ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
       },
       {
         "command": "duplicity --version",
-        "startedAt": "2026-10-10 19:17:22",
-        "duration": "125ms",
+        "startedAt": "2026-10-11 20:46:21",
+        "duration": "115ms",
         "exitCode": 0,
         "outcome": "ok",
         "network": ""
@@ -454,7 +454,7 @@
     "capabilities": {
       "arch": "x86_64",
       "memTotalBytes": 41654738944,
-      "memAvailableBytes": 19796434944,
+      "memAvailableBytes": 18800439296,
       "swapTotalBytes": 0,
       "filesystems": [
         {
@@ -462,10 +462,10 @@
           "device": "/dev/nvme0n1p2",
           "fsType": "ext4",
           "totalBytes": 502609965056,
-          "usedBytes": 374013681664,
-          "availableBytes": 102989832192,
+          "usedBytes": 374864297984,
+          "availableBytes": 102139215872,
           "inodesTotal": 31244288,
-          "inodesFree": 23233139,
+          "inodesFree": 23224151,
           "readOnly": false
         },
         {
@@ -545,13 +545,13 @@
             "command": "<WORKDIR>/shop/docker-compose.yml",
             "output": "volumes: aliased declared external",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:22Z"
+            "capturedAt": "2026-10-11T20:46:21Z"
           },
           {
             "command": "docker volume ls --format {{json .}}",
             "output": "no volume named aliased among the 0 volumes on this host",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:22Z"
+            "capturedAt": "2026-10-11T20:46:21Z"
           }
         ]
       },
@@ -572,13 +572,13 @@
             "command": "<WORKDIR>/shop/docker-compose.yml",
             "output": "volumes: dwkit-data declared external",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:22Z"
+            "capturedAt": "2026-10-11T20:46:21Z"
           },
           {
             "command": "docker volume ls --format {{json .}}",
             "output": "no volume named dwkit-data among the 0 volumes on this host",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:22Z"
+            "capturedAt": "2026-10-11T20:46:21Z"
           }
         ]
       },
@@ -587,19 +587,19 @@
         "collector": "rollback",
         "category": "missing",
         "severity": "warning",
-        "subject": "3 of 4",
-        "title": "There is no way back from this deployment",
-        "description": "The rollback plan for this host is incomplete. Missing: volume-backup: the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone; proxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
+        "subject": "1 of 4 missing",
+        "title": "Part of the way back from this deployment is missing",
+        "description": "The rollback plan for this host is incomplete. Missing: volume-backup: the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone from here. Unable to verify: proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one; snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying.",
         "whyItMatters": "Every other finding in this report is about whether the deployment will work. This one is about what happens when it does not, and it is the only one that cannot be fixed after the fact.",
-        "whatToDo": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and take a snapshot or a volume backup.",
+        "whatToDo": "Before deploying: note the image digests currently running, copy the web server configuration somewhere outside this host, and confirm a snapshot or a volume backup exists.",
         "confidence": "high",
         "sortOrder": 0,
         "evidence": [
           {
             "command": "the rollback section of this report",
-            "output": "volume-backup: the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone\nproxy-config: apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nsnapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
+            "output": "missing — volume-backup: the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone from here\nunable to verify — proxy-config: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one\nunable to verify — snapshot: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:22Z"
+            "capturedAt": "2026-10-11T20:46:21Z"
           }
         ]
       },
@@ -620,7 +620,7 @@
             "command": "docker info --format {{json .}}",
             "output": "docker is installed but its daemon could not be queried (docker exited 1: failed to connect to the docker API at unix:///nonexistent/docker.sock; check if the path is correct and if the daemon is running: dial unix /nonexistent/docker.sock: connect: no such…); the container, network, volume and image lists are unknown rather than empty. The usual cause is an unprivileged audit: /var/run/docker.sock is readable by root and the docker group only — re-run as root, or as a member of that group, for the container checks",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:22Z"
+            "capturedAt": "2026-10-11T20:46:21Z"
           }
         ]
       },
@@ -641,7 +641,7 @@
             "command": "<WORKDIR>/shop/docker-compose.yml (service shop-api)",
             "output": "image: nginx:1.27-alpine",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:22Z"
+            "capturedAt": "2026-10-11T20:46:21Z"
           }
         ]
       },
@@ -662,7 +662,7 @@
             "command": "<WORKDIR>/shop/docker-compose.yml",
             "output": "registries referenced: docker.io",
             "truncated": false,
-            "capturedAt": "2026-10-10T19:17:22Z"
+            "capturedAt": "2026-10-11T20:46:21Z"
           }
         ]
       }
@@ -676,12 +676,12 @@
       {
         "kind": "container",
         "target": "shop-shop-api-1",
-        "detail": "created from nginx:1.27-alpine"
+        "detail": "created from nginx:1.27-alpine, unless a container named shop-shop-api-1 already exists — the container engine did not answer, so that could not be checked"
       },
       {
         "kind": "disk-space",
         "target": "/",
-        "detail": "95.9 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
+        "detail": "95.1 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
       },
       {
         "kind": "file",
@@ -698,22 +698,26 @@
       {
         "kind": "image-tag",
         "available": true,
+        "state": "available",
         "detail": "shop-api is not running here yet, so undoing it means removing it — there is no previous version to return to"
       },
       {
         "kind": "volume-backup",
         "available": false,
-        "detail": "the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone"
+        "state": "unavailable",
+        "detail": "the deployment writes to volume dwkit-data (shop-api), volume aliased (shop-api) and no backup location was found on this host, so a bad migration cannot be undone from here"
       },
       {
         "kind": "proxy-config",
         "available": false,
-        "detail": "apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
+        "state": "unable-to-verify",
+        "detail": "unable to verify: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
       },
       {
         "kind": "snapshot",
         "available": false,
-        "detail": "whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
+        "state": "unable-to-verify",
+        "detail": "unable to verify: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying"
       }
     ]
   }

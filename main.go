@@ -140,36 +140,38 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	return statusCode(result)
 }
 
-// writeReport renders the report in the requested format and returns the contract
-// payload — the exact bytes --upload would send, taken from the same document that
-// was written to disk rather than built a second time.
+// writeReport renders the report in the requested format(s) and returns the
+// contract payload — the exact bytes --upload would send, taken from the same
+// document that was written to disk rather than built a second time. With
+// --format csv,json both outputs are rendered from this one result, so the CSV
+// tables and report.json carry the same timestamps, PIDs and findings.
 func writeReport(cfg *config.Config, log *logging.Logger, result *model.Report, stdout io.Writer) ([]byte, error) {
-	switch {
-	case cfg.WantsJSON() && cfg.ToStdout:
-		return report.WriteJSON(stdout, result)
+	if cfg.ToStdout {
+		if cfg.WantsJSON() {
+			return report.WriteJSON(stdout, result)
+		}
+		if err := report.WriteCombined(stdout, result); err != nil {
+			return nil, err
+		}
+		return contractPayload(cfg, result)
+	}
 
-	case cfg.WantsJSON():
+	if cfg.WantsCSV() {
+		paths, err := report.WriteDir(cfg.OutDir, result)
+		if err != nil {
+			return nil, err
+		}
+		log.Infof("wrote %d CSV files to %s", len(paths), cfg.OutDir)
+	}
+	if cfg.WantsJSON() {
 		path, payload, err := report.WriteJSONFile(cfg.OutDir, result)
 		if err != nil {
 			return nil, err
 		}
 		log.Infof("wrote %s", path)
 		return payload, nil
-
-	case cfg.ToStdout:
-		if err := report.WriteCombined(stdout, result); err != nil {
-			return nil, err
-		}
-		return contractPayload(cfg, result)
-
-	default:
-		paths, err := report.WriteDir(cfg.OutDir, result)
-		if err != nil {
-			return nil, err
-		}
-		log.Infof("wrote %d CSV files to %s", len(paths), cfg.OutDir)
-		return contractPayload(cfg, result)
 	}
+	return contractPayload(cfg, result)
 }
 
 // contractPayload builds the upload bytes for a CSV run, and only when an upload was
