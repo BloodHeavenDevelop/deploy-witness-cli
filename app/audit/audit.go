@@ -98,8 +98,8 @@ func (a *Auditor) Run() *model.Report {
 	case model.ModeComposePreflight:
 		a.log.Info(fmt.Sprintf("mode: %s of %s", a.cfg.Mode.Label(), a.cfg.Compose))
 	default:
-		a.log.Info(fmt.Sprintf("mode: %s — no --compose was given, so no planned deployment is compared "+
-			"with this host and the witness section is not run", a.cfg.Mode.Label()))
+		a.log.Info(fmt.Sprintf("mode: %s — no --compose was given; comparing a planned deployment with "+
+			"this host (the witness section) is outside the scope of this run", a.cfg.Mode.Label()))
 	}
 
 	osrel, err := model.ReadOSRelease()
@@ -150,14 +150,13 @@ func (a *Auditor) Run() *model.Report {
 			section, result.Status, result.Records, result.Duration))
 	}
 
-	// A host audit still carries a witness row, marked skipped and labelled as a host
-	// audit, in summary.csv, report.json and the upload alike. Leaving the row out
-	// would make the upload a collector list with nothing missing and no findings —
-	// which a receiver cannot tell from a preflight that found nothing wrong.
+	// A host audit carries a witness row marked not-applicable in summary.csv and
+	// report.json, so its scope is stated rather than left to an absent row. It is
+	// not a gap: no status count, the preflight row or the upload treats it as one.
 	if a.cfg.Mode == model.ModeHostAudit {
 		report.Sections = append(report.Sections, HostAuditWitness())
-		a.log.Info("host audit finished: no Compose preflight was run, so nothing in this report says " +
-			"whether a deployment fits this host")
+		a.log.Info("host audit finished: witness not applicable — a Compose preflight is outside the scope " +
+			"of a host audit, so this report does not say whether a deployment fits this host")
 	}
 
 	report.Commands = journal(a.runner)

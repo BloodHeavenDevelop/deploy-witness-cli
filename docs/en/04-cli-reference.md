@@ -30,7 +30,7 @@ only together with a typed `--upload`.
 |---|---|---|---|
 | `--out <dir>` | `AUDIT_OUT` | `./audit-<host>-<UTC timestamp>` | Directory to write the report into. Created if missing. |
 | `--stdout` | `AUDIT_STDOUT` | `false` | Write the report to stdout instead of a directory. Diagnostics go to stderr, so the stream is pipeable. |
-| `--format <csv\|json>` | `AUDIT_FORMAT` | `csv` | `csv` is a directory of tables for a person; `json` is one `report.json` for a machine. Anything else is rejected before the audit runs. |
+| `--format <csv\|json\|csv,json>` | `AUDIT_FORMAT` | `csv` | `csv` is a directory of tables for a person; `json` is one `report.json` for a machine; `csv,json` writes both into `--out` from the same run. Anything else — and `csv,json` with `--stdout` — is rejected before the audit runs. |
 | `--sections <list>` | `AUDIT_SECTIONS` | all the mode runs | Comma-separated subset of `system,updates,vulnerabilities,ports,services,witness`. Order is normalised — see below. `witness` is accepted only in a Compose preflight, and a Compose preflight must include it — see [Modes](#modes). |
 | `--services-all` | `AUDIT_SERVICES_ALL` | `false` | Include inactive service units, not only running ones. |
 
@@ -42,8 +42,11 @@ Selecting `witness` without `ports` is allowed and degrades the section with a
 note — port conflicts are the most useful thing it has, and a conflict list that
 was never populated must not read as a short one.
 
-`--format json` writes `report.json` **instead of** the CSV files, not alongside
-them.
+`--format json` writes `report.json` **instead of** the CSV files. To have both,
+use `--format csv,json`: the tables and `report.json` are rendered from one audit,
+so they carry the same `Checked at`, the same PIDs and the same evidence timestamps.
+Two separate runs — one per format — are two audits, seconds apart, and can
+disagree.
 
 ## Modes
 
@@ -52,10 +55,11 @@ them.
 | `--mode <host-audit\|compose-preflight>` | `AUDIT_MODE` | `compose-preflight` with `--compose`, `host-audit` without | Which kind of run this is. `host` and `preflight` are accepted as short forms. |
 
 - **`host-audit`** — the host on its own. No Compose file is read and the witness
-  section is not run. Default sections: all but `witness`. The report still
-  carries a `witness` row, `skipped`, with a note opening `host-audit:`, and the
-  `preflight` row of `summary.csv` says that no planned deployment was compared —
-  see [08](08-report-format.md#summarycsv).
+  section is not run: it is outside the scope of this mode. Default sections: all
+  but `witness`. The `witness` and `preflight` rows of `summary.csv` are
+  `not-applicable` with a note opening `host-audit:`, the upload carries no
+  `witness` collector, and nothing counts the absent comparison as a gap — see
+  [08](08-report-format.md#summarycsv).
 - **`compose-preflight`** — the host, plus a comparison of `--compose` with it.
   The witness section always runs.
 
@@ -75,6 +79,22 @@ A file that parses but has problems inside — one unparsable port, an `include:
 that is not followed — is not refused: the preflight runs and its `witness` row is
 `partial` with the reason.
 
+What an explicitly requested preflight (`--mode compose-preflight --compose <file>
+--out ./report`) prints for each broken input, verbatim from the 1.3.x binary; in
+every case the exit code is `2` and `./report` is not created:
+
+| Input | Output (stderr) |
+|---|---|
+| file missing | `deploy-witness: --compose "./missing.yml": the Compose preflight needs a readable Compose file: stat ./missing.yml: no such file or directory` |
+| file unreadable (mode `0000`, unprivileged) | `deploy-witness: --compose "./locked.yml": the Compose preflight needs a readable Compose file: open ./locked.yml: permission denied` |
+| a directory | `deploy-witness: --compose "./.": the Compose preflight needs a Compose file, and this is not a regular file` |
+| not YAML (`services: [unclosed`) | the `network: none …` line, then `ERROR the Compose preflight cannot start, the Compose file could not be parsed: <abs path>: yaml: line 1: did not find expected ',' or ']'; no report was written` |
+| top level is a list | same, ending `…: expected a compose file at the top level, got a sequence; no report was written` |
+| empty (comments only) | same, ending `…: the file declares nothing; no report was written` |
+
+The first three are refused while the flags are read, so nothing else is printed;
+the last three after the network plan and before the first section.
+
 ## Witness
 
 | Flag | Environment | Default | Meaning |
@@ -82,9 +102,9 @@ that is not followed — is not refused: the preflight runs and its `witness` ro
 | `--compose <path>` | `AUDIT_COMPOSE` | none | The `docker-compose.yml` the `witness` section compares this host against; giving it makes the run a Compose preflight. The file is checked at startup — missing, unreadable or unparseable is exit code `2` with no report, not a degraded section — and the path is resolved to an absolute one. Its directory is the project directory: `.env` is looked for there, relative `env_file` paths resolve against it, and its **name** becomes the Compose project name, which is how the section tells "this port is taken by something else" from "this port is taken by the previous version of this very deployment". |
 | `--egress` | — | `false` | Permit the one outbound check: a TCP connect to each registry the manifest pulls from — port 443, or the port the image reference names (`registry.local:5000/app`) — 5 s per registry. The address actually dialled is what the evidence and the section note name. No TLS handshake, no HTTP request, no authentication, no image manifest fetched. Without it the reachability rule reports "not checked" rather than concluding anything. |
 
-Without `--compose` the run is a host audit and the witness section is not run
-(see [Modes](#modes)); the report says so in its `report`, `preflight` and
-`witness` rows.
+Without `--compose` the run is a host audit and the witness section is out of its
+scope (see [Modes](#modes)); the report says so in its `report` row and in the
+`preflight` and `witness` rows, both `not-applicable`.
 
 ## Vulnerabilities
 

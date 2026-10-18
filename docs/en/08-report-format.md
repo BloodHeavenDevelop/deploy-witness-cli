@@ -70,20 +70,22 @@ The index. One row per section, preceded by three rows about the run itself:
 
 | Mode | `preflight` status | Meaning |
 |---|---|---|
-| host audit | `skipped` | No `--compose`: nothing was compared, and this report is not a preflight result |
+| host audit | `not-applicable` | No `--compose`: a comparison is outside the scope of this run — not a gap, and not a preflight result |
 | Compose preflight | `ok` | The Compose file was compared with the host |
 | Compose preflight | `partial` | Compared, but part of the comparison could not be made — the `witness` row says what |
 | Compose preflight | `failed` | The comparison did not complete — this is not a preflight result |
 
 The `preflight` row is never `ok` in a host audit. A host audit also carries a
-`witness` row, `skipped`, with a note opening `host-audit:` — the same row is in
-`report.json` and in the uploaded `collectors` list, so a host audit can never read
-as a preflight that found nothing.
+`witness` row, `not-applicable`, with a note opening `host-audit: not applicable` —
+the same row is in `report.json` (`audit.sections`). Neither counts against the
+report's completeness: a host audit whose sections are all `ok` has no `skipped`,
+`partial` or `failed` row, and the upload leaves the `witness` collector out (see
+[report.json](#reportjson), the `upload` half).
 
 | Column | Contents |
 |---|---|
 | `Section` | `report`, `network`, `preflight`, or the section name |
-| `Status` | `ok`, `partial`, `skipped` or `failed` |
+| `Status` | `ok`, `partial`, `skipped`, `failed` or `not-applicable` |
 | `Records` | Rows the section produced |
 | `Critical` | Critical findings (vulnerabilities only) |
 | `High` | High findings (vulnerabilities only) |
@@ -96,8 +98,9 @@ Statuses:
 |---|---|
 | `ok` | The section ran to completion |
 | `partial` | It produced rows but hit at least one problem — read `Notes` |
-| `skipped` | It did not run, and the note says why — e.g. `witness` in a host audit. A section that was not selected has no row |
+| `skipped` | It belonged to this run but did not run, and the note says why. A gap. A section that was not selected has no row |
 | `failed` | It produced nothing usable |
+| `not-applicable` | It is outside the scope of this kind of run — `witness` (and `preflight`) in a host audit. Not a gap: nothing was expected of it |
 
 `partial` is load-bearing. A section that collected some rows and then hit an
 error is never reported as `ok`, or the reader takes a truncated table for a
@@ -240,7 +243,7 @@ that the reader can check them.
 | `Command` | What to run to see the same thing: a command from the published allowlist, or a path on disk, or the manifest and the service (`docker-compose.yml (service db)`) |
 | `Output` | What was observed, rendered compactly from the parsed values |
 | `Truncated` | `true` when the capture was cut at 1500 characters. A shortened capture that does not admit it invites the reader to conclude too much from it |
-| `Captured at` | RFC 3339 UTC |
+| `Captured at` | RFC 3339 UTC: the moment the witness section compared the manifest with what it had collected. It is later than the run's `Checked at` in `summary.csv` (the start of the run) by however long the collection took, and earlier than the log's `wrote …` line. All three belong to the same run |
 
 **A finding with no evidence is never published.** The engine discards it and
 counts the discard in the section's notes, as a bug in `deploy-witness` rather than
@@ -261,9 +264,9 @@ be updated" is worth nothing to the person who has to answer for it.
 
 | Kind | Rows it produces |
 |---|---|
-| `container` | One per service (created, or replaced — naming what it replaces), plus one per non-external network the manifest declares |
+| `container` | One per service, plus one per non-external network the manifest declares. A service's row says one of: `created from <image>`; `replaced (currently <state>, image <image>) with <image>` — only for a container of **this** Compose project; `not created: a container named <name> already exists … and does not belong to this deployment` — another project's container, or one created by hand (running or not), on which `docker compose up` fails (`witness.container_name_conflict`); `created from <image>, but it cannot start: host port <port> is already held` (`witness.port_conflict`); or, with the engine unreachable, `created … unless a container named <name> already exists — … could not be checked` |
 | `command` | An image that has to be pulled, with the registry it comes from; or a service that is built locally, with its build context |
-| `firewall-port` | One per published host port, with how far it will be reachable — a port published without a host IP is on every interface, which is the part people do not expect |
+| `firewall-port` | One per published host port, with how far it will be reachable — a port published without a host IP is on every interface, which is the part people do not expect. When something else already holds the binding the row says `not opened: … already held by …`, and when that could not be decided it adds `if the binding is free, which could not be established` — the same matching as `witness.port_conflict`. Without the `ports` section it adds `if the binding is free, which was not checked` |
 | `file` | Every bind mount (with read/write or read only) and every named volume |
 | `disk-space` | Space available on the filesystem holding the container store, and how many images still have to be pulled |
 
@@ -281,18 +284,25 @@ value, and the reason this is not merely a list of instructions.
 | Column | Contents |
 |---|---|
 | `Kind` | `image-tag`, `volume-backup`, `proxy-config` or `snapshot` |
-| `Available` | Whether the thing exists **right now** |
-| `Detail` | What it is, or precisely what is missing |
+| `Available` | `true` — established to exist right now (or nothing is needed); `false` — established **not** to exist on this host; `unknown` — **unable to verify** from inside the host. `unknown` is never rendered as `false`: what the audit cannot see is not evidence of absence |
+| `Detail` | What it is, or precisely what is missing; an `unknown` row opens with `unable to verify:` |
 
 | Kind | What it checks |
 |---|---|
 | `image-tag` | Whether the digest of each currently running image is recorded on this host. A tag is not enough: the tag is what moved |
 | `volume-backup` | Whether a backup exists, and whether it is recent — a stale one would return the data to a state older than anyone expects |
-| `proxy-config` | Always `false`: this audit copies nobody's nginx configuration anywhere, and a proxy that fails to start takes every site on the host down, not only the new one |
-| `snapshot` | Always `false`: whether a hypervisor or provider snapshot exists cannot be seen from inside the machine, and saying so beats omitting the line |
+| `proxy-config` | Always `unknown`: whether a copy of the web server configuration is kept outside the host cannot be seen from inside it, and a proxy that fails to start takes every site on the host down, not only the new one |
+| `snapshot` | Always `unknown`: whether a hypervisor or provider snapshot exists cannot be seen from inside the machine, and saying so beats omitting the line — or calling it missing |
 
-`witness.no_rollback_plan` is raised from this table when any row is
-unavailable.
+In `report.json`, `audit.rollback[]` carries `state` (`available`,
+`unavailable`, `unable-to-verify`) next to the boolean `available`, which is `true`
+only for `available`. The upload's `rollback[]` has the boolean alone — the contract
+has no third value — so an unverified item goes out as `available: false` with its
+detail opening `unable to verify:`.
+
+`witness.no_rollback_plan` is raised from this table when any row is `false` or
+`unknown` — see [10](10-witness-rules.md#witnessno_rollback_plan) for how the two
+differ in the finding.
 
 ## commands.csv
 
@@ -394,11 +404,15 @@ Details worth knowing:
   `partial` maps to `PARTIAL` and not to `OK`: it first went out as `OK`, and the
   receiving service duly stored a run that had degraded on an unprivileged host as
   a complete audit of that machine.
-- **The contract has no mode field.** The mode reaches the receiver through the
-  `witness` collector: in a host audit it is `COLLECTOR_STATUS_SKIPPED` with a note
-  opening `host-audit:`; in a Compose preflight it carries the comparison's own
-  status. A host audit therefore never arrives as a run with every collector
-  complete and no findings.
+- **The contract has no mode field and no "not applicable" status.** Every
+  `CollectorStatus` other than `OK` counts against a run's completeness on the
+  receiving side, so a section outside the run's scope is not sent at all: a host
+  audit's upload has **no `witness` collector**, while a Compose preflight always
+  has one, carrying the comparison's own status (`OK`, `PARTIAL`, `FAILED`). That
+  presence is how the receiver tells the two modes apart. The `host-audit: not
+  applicable` note stays in `audit.sections` of `report.json`; carrying the mode or a
+  `NOT_APPLICABLE` status in the contract itself needs a change in the `contracts`
+  repository.
 - **The package inventory, the pending updates and the CVE list are not in
   `upload`.** The contract is a findings document, and sending them would be
   volunteering a full software inventory of somebody's production host to a

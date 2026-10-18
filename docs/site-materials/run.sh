@@ -108,8 +108,10 @@ stop_conflicts() {
 }
 
 # run <name> <project dir> <env assignments, or -> <deploy-witness args...>
-# The command is run twice in the same host state: once as CSV, once with
-# --format json (the tool writes one format per run).
+# One run per scenario: --format csv,json writes the CSV tables and report.json
+# from the same audit, so terminal.txt, the CSV files and report.json all describe
+# one run (DW-79; before 1.4.0 the tool wrote one format per run and the kit held
+# two runs a few seconds apart).
 run() {
 	local name=$1 dir=$2 envs=$3; shift 3
 	local raw="$WORK/raw/$name" env=()
@@ -120,14 +122,11 @@ run() {
 		printf '$ %sdeploy-witness %s --out ./report\n' "${env:+${env[*]} }" "$*"
 	} >"$raw/terminal.txt"
 	local rc=0
-	(cd "$WORK/$dir" && env "${env[@]}" "$BIN" "$@" --out "$raw/csv") 2>>"$raw/terminal.txt" || rc=$?
+	(cd "$WORK/$dir" && env "${env[@]}" "$BIN" "$@" --out "$raw/report") 2>>"$raw/terminal.txt" || rc=$?
 	echo "exit $rc" >>"$raw/terminal.txt"
-	rc=0
-	(cd "$WORK/$dir" && env "${env[@]}" "$BIN" "$@" --format json --out "$raw/json") 2>"$raw/terminal-json.txt" || rc=$?
-	echo "exit $rc" >>"$raw/terminal-json.txt"
 }
 
-PREFLIGHT=(--sections ports,witness --compose ./docker-compose.yml)
+PREFLIGHT=(--sections ports,witness --compose ./docker-compose.yml --format csv,json)
 
 # a — conflict: a foreign process holds 8080, a foreign container holds the name.
 start_conflicts
@@ -137,7 +136,7 @@ run a-conflict orders - "${PREFLIGHT[@]}"
 run c1-docker-unreachable orders "DOCKER_HOST=unix:///nonexistent/docker.sock" "${PREFLIGHT[@]}"
 
 # c2 — insufficient data: the same conflicts, but the ports section is not selected.
-run c2-ports-not-selected orders - --sections witness --compose ./docker-compose.yml
+run c2-ports-not-selected orders - --sections witness --compose ./docker-compose.yml --format csv,json
 
 # b — no conflict: the same file after both conflicts are gone.
 stop_conflicts
@@ -163,6 +162,7 @@ trap - EXIT
 # Sanitise into the kit.
 for raw in "$WORK"/raw/*/; do
 	name=$(basename "$raw")
+	rm -rf "${OUT:?}/$name"
 	python3 "$KIT/sanitize.py" "$WORK/context.json" "$raw" "$OUT/$name"
 done
 echo "raw (unsanitised) reports: $WORK/raw — delete them when done: rm -r $WORK"

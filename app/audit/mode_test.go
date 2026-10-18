@@ -54,14 +54,15 @@ func TestPrepareHasNothingToDoInAHostAudit(t *testing.T) {
 	}
 }
 
-// The witness row of a host audit is skipped and says it is a host audit, so the
-// upload — which carries only the collector rows — can be told from a preflight.
+// The witness row of a host audit is not applicable — outside the run's scope, not
+// skipped — and says it is a host audit.
 func TestHostAuditWitnessRow(t *testing.T) {
 	row := HostAuditWitness()
-	if row.Section != model.SectionWitness || row.Status != model.StatusSkipped {
-		t.Errorf("row = %+v, want a skipped witness row", row)
+	if row.Section != model.SectionWitness || row.Status != model.StatusNotApplicable {
+		t.Errorf("row = %+v, want a not-applicable witness row", row)
 	}
-	if len(row.Notes) != 1 || !strings.HasPrefix(row.Notes[0], "host-audit:") ||
+	if len(row.Notes) != 1 || !strings.HasPrefix(row.Notes[0], "host-audit: not applicable") ||
+		!strings.Contains(row.Notes[0], "not a gap") ||
 		!strings.Contains(row.Notes[0], "not a Compose preflight result") {
 		t.Errorf("notes = %v", row.Notes)
 	}

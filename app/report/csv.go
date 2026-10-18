@@ -91,7 +91,7 @@ func tables(r *model.Report) []table {
 			name:    "rollback",
 			headers: []string{"Kind", "Available", "Detail"},
 			paths:   []string{"kind", "available", "detail"},
-			rows:    anySlice(r.Rollback),
+			rows:    anySlice(rollbackRows(r)),
 		},
 		{
 			// Not a section: the journal is what the run did, not something it
@@ -170,6 +170,30 @@ func evidenceRows(r *model.Report) []evidenceRow {
 	return out
 }
 
+// rollbackRow is one rollback item as a CSV row. `Available` is `true`, `false` or
+// `unknown`: a boolean column would have to render an item that could not be
+// verified as `false`, which reads as "known to be missing".
+type rollbackRow struct {
+	Kind      string `json:"kind"`
+	Available string `json:"available"`
+	Detail    string `json:"detail"`
+}
+
+func rollbackRows(r *model.Report) []rollbackRow {
+	out := make([]rollbackRow, 0, len(r.Rollback))
+	for _, item := range r.Rollback {
+		available := "false"
+		switch {
+		case item.State == model.RollbackUnverified:
+			available = "unknown"
+		case item.Available:
+			available = "true"
+		}
+		out = append(out, rollbackRow{Kind: item.Kind, Available: available, Detail: item.Detail})
+	}
+	return out
+}
+
 func summaryRows(r *model.Report) []model.SummaryRow {
 	rows := []model.SummaryRow{{
 		Section: "report",
@@ -206,16 +230,21 @@ func summaryRows(r *model.Report) []model.SummaryRow {
 
 // preflightRow is the summary's answer to "was a deployment checked against this
 // host, and did the check complete?" — the question a reader must not have to infer
-// from the witness row. Its status is the comparison's: `skipped` for a host audit,
-// the witness section's own status for a Compose preflight. The note opens with the
+// from the witness row. Its status is the comparison's: `not-applicable` for a host
+// audit, whose scope never included one, and the witness section's own status for
+// a Compose preflight. The note opens with the
 // mode identifier (host-audit, compose-preflight) so a script can match on it.
 func preflightRow(r *model.Report) model.SummaryRow {
-	row := model.SummaryRow{Section: "preflight", Status: string(model.StatusSkipped)}
 	if r.Mode != model.ModeComposePreflight {
-		row.Notes = string(model.ModeHostAudit) + ": host audit only — no --compose was given, so no planned " +
-			"deployment was compared with this host; this report is not a Compose preflight result"
-		return row
+		return model.SummaryRow{
+			Section: "preflight",
+			Status:  string(model.StatusNotApplicable),
+			Notes: string(model.ModeHostAudit) + ": not applicable — this run is a host audit; comparing a " +
+				"planned deployment with this host is outside its scope, not missing from it, and this report " +
+				"is not a Compose preflight result",
+		}
 	}
+	row := model.SummaryRow{Section: "preflight"}
 
 	row.Status = string(model.StatusFailed)
 	var witness *model.SectionResult

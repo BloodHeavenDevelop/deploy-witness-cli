@@ -1,5 +1,5 @@
 Kind,Available,Detail
 image-tag,true,"rules-app is not running here yet, so undoing it means removing it — there is no previous version to return to"
-volume-backup,false,"the deployment writes to bind /var/run/docker.sock (rules-app) and no backup location was found on this host, so a bad migration cannot be undone"
-proxy-config,false,"apache configuration under /etc/httpd is not copied anywhere by this audit; take a copy before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
-snapshot,false,whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying
+volume-backup,false,"the deployment writes to bind /var/run/docker.sock (rules-app) and no backup location was found on this host, so a bad migration cannot be undone from here"
+proxy-config,unknown,"unable to verify: whether a copy of the apache configuration under /etc/httpd is kept outside this host cannot be seen from inside it; take one before changing it, since a proxy that fails to start takes every site on this host down, not only the new one"
+snapshot,unknown,unable to verify: whether a hypervisor or provider snapshot of this host exists cannot be seen from inside it — confirm with whoever runs the infrastructure before deploying

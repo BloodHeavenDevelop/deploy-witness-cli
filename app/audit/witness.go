@@ -71,6 +71,8 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 		Caps:     caps,
 		Now:      time.Now().UTC(),
 		Project:  projectName(a.cfg.Compose),
+		// Without the ports section the socket list is unknown, not empty.
+		PortsUnchecked: !a.cfg.Wants(model.SectionPorts),
 	}
 	if a.cfg.Egress {
 		in.EgressChecked = true
@@ -87,16 +89,20 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 }
 
 // HostAuditNote is the note a host audit's witness row carries. It starts with the
-// mode identifier so a consumer that sees only the collector note — the upload —
-// can still tell a host audit from a preflight that was skipped for another reason.
-const HostAuditNote = string(model.ModeHostAudit) + ": no --compose was given, so this run is a host audit — " +
-	"no planned deployment was compared with this host, and this report is not a Compose preflight result"
+// mode identifier so a script can match on it, and it says that the comparison is
+// outside this run's scope — not that a part of the run is missing.
+const HostAuditNote = string(model.ModeHostAudit) + ": not applicable — this run is a host audit, which " +
+	"compares no planned deployment with the host by design; the witness section is outside its scope, " +
+	"not a gap in it, and this report is not a Compose preflight result"
 
-// HostAuditWitness is the witness row of a host audit: skipped, and saying why.
+// HostAuditWitness is the witness row of a host audit: not applicable, and saying
+// why. It is kept in summary.csv and report.json so the reader sees the scope
+// stated rather than inferred from an absent row; it is left out of the upload
+// (see report.Contract), whose collector statuses all count against completeness.
 func HostAuditWitness() model.SectionResult {
 	return model.SectionResult{
 		Section:  model.SectionWitness,
-		Status:   model.StatusSkipped,
+		Status:   model.StatusNotApplicable,
 		Duration: "0s",
 		Notes:    []string{HostAuditNote},
 	}

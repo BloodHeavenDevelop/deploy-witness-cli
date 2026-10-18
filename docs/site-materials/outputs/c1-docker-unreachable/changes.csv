@@ -1,5 +1,5 @@
 Kind,Target,Detail
 command,nginx:1.27-alpine,pulled from docker.io
-container,orders-api,created from nginx:1.27-alpine
-disk-space,/,"95.9 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
-firewall-port,8080/tcp,opened by orders-api on all interfaces → container port 80
+container,orders-api,"created from nginx:1.27-alpine, unless a container named orders-api already exists — the container engine did not answer, so that could not be checked"
+disk-space,/,"95.1 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
+firewall-port,8080/tcp,"not opened: orders-api cannot bind it on all interfaces, because it is already held by python3 (pid 1767088), listening on port 8080/tcp on 0.0.0.0 (see witness.port_conflict)"

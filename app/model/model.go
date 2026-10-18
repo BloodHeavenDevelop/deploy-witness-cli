@@ -34,9 +34,9 @@ var AllSections = []Section{
 // Mode is what kind of run this was. There are exactly two, and the difference is
 // whether a planned deployment was compared with the host at all.
 //
-// The values are stable identifiers: they appear in report.json (`audit.mode`), at
-// the start of the `preflight` row of summary.csv and in the note of the `witness`
-// collector the upload carries, and a consumer may match on them.
+// The values are stable identifiers: they appear in report.json (`audit.mode`) and
+// at the start of the `preflight` and `witness` notes of summary.csv, and a
+// consumer may match on them.
 type Mode string
 
 const (
@@ -72,6 +72,12 @@ const (
 	StatusPartial Status = "partial"
 	StatusSkipped Status = "skipped"
 	StatusFailed  Status = "failed"
+	// StatusNotApplicable is a section that is outside the scope of this kind of
+	// run — the witness section in a host audit, which has no Compose file to
+	// compare by design. It is not a gap: `skipped` says a check that belonged to
+	// the run did not happen, `not-applicable` says the check was never part of it,
+	// and nothing that measures how complete a report is counts it.
+	StatusNotApplicable Status = "not-applicable"
 )
 
 // Fact is one observation about the host. The section is a flat key/value table

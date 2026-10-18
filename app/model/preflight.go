@@ -493,12 +493,39 @@ type ChangeItem struct {
 	Detail string `json:"detail"`
 }
 
+// RollbackState is what the audit established about one rollback item.
+//
+// Three values, because two lie. "Not available" is a claim that the thing does not
+// exist; for a provider snapshot, or a copy of a configuration kept on another
+// machine, the audit cannot see either way from inside the host, and turning that
+// unknown into an absence would be exactly the false negative the second promise
+// forbids.
+type RollbackState string
+
+const (
+	// RollbackAvailable: established to exist (or nothing is needed).
+	RollbackAvailable RollbackState = "available"
+	// RollbackUnavailable: established not to exist on this host.
+	RollbackUnavailable RollbackState = "unavailable"
+	// RollbackUnverified: could not be established from inside this host.
+	RollbackUnverified RollbackState = "unable-to-verify"
+)
+
 // RollbackItem is one line of the answer to "and how do we undo it".
 type RollbackItem struct {
 	// Kind is "snapshot", "image-tag", "proxy-config" or "volume-backup".
 	Kind string `json:"kind"`
-	// Available says whether the thing exists right now. False is the interesting
-	// case, and the reason this section is not merely a set of instructions.
-	Available bool   `json:"available"`
-	Detail    string `json:"detail"`
+	// Available is true only when the thing was established to exist. It is false
+	// both for "missing" and for "could not be verified" — State tells them apart,
+	// and is what anything presenting the plan should read. It stays because the
+	// audit contract carries a boolean.
+	Available bool `json:"available"`
+	// State is available, unavailable or unable-to-verify.
+	State  RollbackState `json:"state"`
+	Detail string        `json:"detail"`
+}
+
+// NewRollbackItem keeps Available consistent with State.
+func NewRollbackItem(kind string, state RollbackState, detail string) RollbackItem {
+	return RollbackItem{Kind: kind, Available: state == RollbackAvailable, State: state, Detail: detail}
 }

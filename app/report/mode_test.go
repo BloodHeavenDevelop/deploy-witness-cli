@@ -31,19 +31,26 @@ func summaryRow(rows []model.SummaryRow, section string) (model.SummaryRow, bool
 	return model.SummaryRow{}, false
 }
 
-// DW-70: summary.csv says which kind of run this was, and a host audit's preflight
-// row is skipped — never ok.
+// DW-70: summary.csv says which kind of run this was. In a host audit the preflight
+// and witness rows are not applicable — outside the run's scope — and no row of the
+// summary is skipped, partial or failed on account of the missing Compose file.
 func TestSummaryLabelsTheMode(t *testing.T) {
 	host := reportWith(model.ModeHostAudit, &model.SectionResult{
-		Section: model.SectionWitness, Status: model.StatusSkipped, Notes: []string{"host-audit: …"}})
+		Section: model.SectionWitness, Status: model.StatusNotApplicable, Notes: []string{"host-audit: …"}})
 	rows := summaryRows(host)
 
 	if !strings.HasPrefix(rows[0].Notes, "host audit:") {
 		t.Errorf("report row = %q, want it labelled host audit", rows[0].Notes)
 	}
 	pre, ok := summaryRow(rows, "preflight")
-	if !ok || pre.Status != string(model.StatusSkipped) || !strings.HasPrefix(pre.Notes, "host-audit:") {
-		t.Errorf("preflight row = %+v, want skipped host-audit", pre)
+	if !ok || pre.Status != string(model.StatusNotApplicable) || !strings.HasPrefix(pre.Notes, "host-audit: not applicable") {
+		t.Errorf("preflight row = %+v, want not-applicable host-audit", pre)
+	}
+	for _, row := range rows {
+		switch model.Status(row.Status) {
+		case model.StatusSkipped, model.StatusPartial, model.StatusFailed:
+			t.Errorf("host audit row %q is %s; nothing in it is incomplete", row.Section, row.Status)
+		}
 	}
 
 	cases := []struct {
@@ -69,21 +76,52 @@ func TestSummaryLabelsTheMode(t *testing.T) {
 	}
 }
 
-// The upload carries the host audit's witness row as a SKIPPED collector with the
-// mode in its note: without it, a host audit would arrive as a run with every
-// collector complete and no findings.
-func TestContractCarriesTheHostAuditWitnessRow(t *testing.T) {
+// The upload leaves a host audit's not-applicable witness row out: every contract
+// status but OK counts against completeness on the receiving side, and the receiver
+// reads "no witness collector" as a host audit. A preflight always sends one.
+func TestContractLeavesTheHostAuditWitnessOut(t *testing.T) {
 	r := reportWith(model.ModeHostAudit, &model.SectionResult{
-		Section: model.SectionWitness, Status: model.StatusSkipped, Duration: "0s",
-		Notes: []string{"host-audit: no --compose was given"}})
-	var witness *auditv1.CollectorResult
-	for _, c := range Contract(r).Collectors {
-		if c.Collector == string(model.SectionWitness) {
-			witness = c
+		Section: model.SectionWitness, Status: model.StatusNotApplicable, Duration: "0s",
+		Notes: []string{"host-audit: not applicable"}})
+	collectors := Contract(r).Collectors
+	if len(collectors) != 1 || collectors[0].Collector != string(model.SectionPorts) {
+		t.Fatalf("collectors = %v, want only ports", collectors)
+	}
+	for _, c := range collectors {
+		if c.Status != auditv1.CollectorStatus_COLLECTOR_STATUS_OK {
+			t.Errorf("collector %s = %s, want OK", c.Collector, c.Status)
 		}
 	}
-	if witness == nil || witness.Status != auditv1.CollectorStatus_COLLECTOR_STATUS_SKIPPED ||
-		!strings.HasPrefix(witness.Note, "host-audit:") {
-		t.Fatalf("witness collector = %+v, want SKIPPED with a host-audit note", witness)
+
+	for _, status := range []model.Status{model.StatusOk, model.StatusPartial, model.StatusFailed} {
+		r := reportWith(model.ModeComposePreflight, &model.SectionResult{Section: model.SectionWitness, Status: status})
+		found := false
+		for _, c := range Contract(r).Collectors {
+			found = found || c.Collector == string(model.SectionWitness)
+		}
+		if !found {
+			t.Errorf("preflight with witness %s: no witness collector in the upload", status)
+		}
+	}
+}
+
+// DW-79: rollback.csv renders an item that could not be verified as `unknown`, not
+// `false`.
+func TestRollbackCSVRendersUnknown(t *testing.T) {
+	r := reportWith(model.ModeComposePreflight, &model.SectionResult{Section: model.SectionWitness, Status: model.StatusOk})
+	r.Rollback = []model.RollbackItem{
+		model.NewRollbackItem("image-tag", model.RollbackAvailable, "a"),
+		model.NewRollbackItem("volume-backup", model.RollbackUnavailable, "b"),
+		model.NewRollbackItem("snapshot", model.RollbackUnverified, "unable to verify: c"),
+	}
+	rows := rollbackRows(r)
+	got := []string{rows[0].Available, rows[1].Available, rows[2].Available}
+	if strings.Join(got, ",") != "true,false,unknown" {
+		t.Errorf("Available = %v", got)
+	}
+	for _, item := range Contract(r).Rollback {
+		if item.Kind == "snapshot" && (item.Available || !strings.HasPrefix(item.Detail, "unable to verify:")) {
+			t.Errorf("contract snapshot = %+v", item)
+		}
 	}
 }

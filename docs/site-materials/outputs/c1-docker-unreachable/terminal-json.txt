@@ -1,7 +1,0 @@
-2026-10-10 19:17:07 INFO  network: none — --online, --egress and --upload were not given: deploy-witness opens no network connection and runs none of the commands that fetch data over the network
-2026-10-10 19:17:07 INFO  mode: Compose preflight of <WORKDIR>/orders/docker-compose.yml
-2026-10-10 19:17:07 INFO  package manager: pacman
-2026-10-10 19:17:07 INFO  section ports: partial, 146 rows in 39ms
-2026-10-10 19:17:08 INFO  section witness: partial, 5 rows in 427ms
-2026-10-10 19:17:08 INFO  wrote <WORKDIR>/raw/c1-docker-unreachable/json/report.json
-exit 0

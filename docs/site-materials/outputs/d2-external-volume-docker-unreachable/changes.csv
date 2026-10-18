@@ -1,6 +1,6 @@
 Kind,Target,Detail
 command,nginx:1.27-alpine,pulled from docker.io
-container,shop-shop-api-1,created from nginx:1.27-alpine
-disk-space,/,"95.9 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
+container,shop-shop-api-1,"created from nginx:1.27-alpine, unless a container named shop-shop-api-1 already exists — the container engine did not answer, so that could not be checked"
+disk-space,/,"95.1 GiB available before deploying; 1 image(s) still to pull, whose size cannot be known without contacting a registry"
 file,volume aliased,mounted into shop-api at /srv/aliased
 file,volume dwkit-data,mounted into shop-api at /srv/data

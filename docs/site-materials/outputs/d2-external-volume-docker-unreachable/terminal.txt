@@ -1,9 +1,10 @@
 $ cd shop
-$ DOCKER_HOST=unix:///nonexistent/docker.sock deploy-witness --sections ports,witness --compose ./docker-compose.yml --out ./report
-2026-10-10 19:17:21 INFO  network: none — --online, --egress and --upload were not given: deploy-witness opens no network connection and runs none of the commands that fetch data over the network
-2026-10-10 19:17:21 INFO  mode: Compose preflight of <WORKDIR>/shop/docker-compose.yml
-2026-10-10 19:17:21 INFO  package manager: pacman
-2026-10-10 19:17:22 INFO  section ports: partial, 145 rows in 47ms
-2026-10-10 19:17:22 INFO  section witness: partial, 6 rows in 429ms
-2026-10-10 19:17:22 INFO  wrote 12 CSV files to <WORKDIR>/raw/d2-external-volume-docker-unreachable/csv
+$ DOCKER_HOST=unix:///nonexistent/docker.sock deploy-witness --sections ports,witness --compose ./docker-compose.yml --format csv,json --out ./report
+2026-10-11 20:46:21 INFO  network: none — --online, --egress and --upload were not given: deploy-witness opens no network connection and runs none of the commands that fetch data over the network
+2026-10-11 20:46:21 INFO  mode: Compose preflight of <WORKDIR>/shop/docker-compose.yml
+2026-10-11 20:46:21 INFO  package manager: pacman
+2026-10-11 20:46:21 INFO  section ports: partial, 146 rows in 30ms
+2026-10-11 20:46:21 INFO  section witness: partial, 6 rows in 396ms
+2026-10-11 20:46:21 INFO  wrote 12 CSV files to <WORKDIR>/raw/d2-external-volume-docker-unreachable/report
+2026-10-11 20:46:21 INFO  wrote <WORKDIR>/raw/d2-external-volume-docker-unreachable/report/report.json
 exit 0
