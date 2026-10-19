@@ -4,6 +4,7 @@ situation: no-problem
 description: >-
   The plan is already deployed and holds 18080; deploying it again replaces its own container.
 critical: true
+regression: DW-81
 project: bench
 audit:
   user: root

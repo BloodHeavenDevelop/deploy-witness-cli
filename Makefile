@@ -17,7 +17,7 @@ CONTRACTS         ?= ../contracts
 
 .PHONY: development build run clean lint test vet fmt sync-shared \
         build-linux-amd64 build-linux-arm64 build-all install dist bench \
-        bench-score release-gate bench-baseline
+        bench-score release-gate bench-baseline regression
 
 # Run the audit straight from source. Pass flags with ARGS, e.g.
 #   make development ARGS="--sections ports,services --stdout"
@@ -104,6 +104,17 @@ bench-baseline:
 	go run ./bench/dwscore -gate -results "$${latest}results.json" && \
 	install -m 0644 "$${latest}results.json" bench/baseline/results.json && \
 	echo "bench/baseline/results.json <- $${latest}results.json"
+
+# Start a regression case for a confirmed defect (DW-90): make regression NAME=DW-123-short-slug
+# copies the template; fill case.yaml and input.json with artificial data, watch
+# `make test` fail, then fix the CLI. The cases run in every `make test`.
+regression:
+	@test -n "$(NAME)" || { echo "usage: make regression NAME=<TASK>-<short-slug>"; exit 2; }
+	@test ! -e app/witness/testdata/regressions/$(NAME) || { echo "$(NAME) exists"; exit 2; }
+	cp -r app/witness/testdata/regressions/_template app/witness/testdata/regressions/$(NAME)
+	sed -i 's/^id: TASK-short-slug/id: $(NAME)/; s/^task: TASK/task: $(firstword $(subst -, ,$(NAME)))-$(word 2,$(subst -, ,$(NAME)))/' \
+		app/witness/testdata/regressions/$(NAME)/case.yaml
+	@echo "app/witness/testdata/regressions/$(NAME)/: fill case.yaml and input.json"
 
 clean:
 	rm -rf $(BINARY) bin

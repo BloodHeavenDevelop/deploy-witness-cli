@@ -3,6 +3,7 @@ rule: witness.volume_name_conflict
 situation: unknown
 description: >-
   The external volume is missing, and the audit cannot reach the engine.
+regression: DW-80
 project: bench
 audit:
   user: unprivileged

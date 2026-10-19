@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Pilot errors become permanent tests** (DW-90, `docs/<lang>/13-pilot-regressions.md`):
+  a confirmed false alarm, miss or unjustified unknown goes error → cause → scenario
+  on artificial data → expected outcome → fix → permanent test, as a case under
+  `app/witness/testdata/regressions/<task>-<slug>/` (`case.yaml` + `input.json` in the
+  report's own manifest/capabilities shapes). `TestPilotRegressions` runs every case
+  in `make test` — so before every release — and names the defect that came back;
+  pilot cases record the minutes their manual recheck took.
+  `TestRegressionArchiveHoldsNoClientData` refuses a case with anything the
+  credential sweep masks, a public IP, a non-reserved domain, an e-mail address, or an
+  engine/machine/image id. `make regression NAME=<task>-<slug>` starts one from the
+  template. Seeded with the seven defects fixed so far (DW-24, DW-52, DW-79, DW-80,
+  DW-81, DW-83, DW-87); each was checked to fail with its fix reverted. Seven bench
+  scenarios carry the same tasks as `regression:`, which the release gate blocks on.
+
 - **Quality measurement and release criteria** (DW-84, [bench/score](bench/score/score.go),
   `docs/<lang>/12-quality-and-release.md`): `make bench-score` gives every rule its
   detected problems, misses, false findings, unknowns and situation coverage from a

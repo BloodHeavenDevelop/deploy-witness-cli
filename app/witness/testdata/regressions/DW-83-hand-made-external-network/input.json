@@ -1,0 +1,137 @@
+{
+  "project": "app",
+  "manifest": {
+    "path": "/srv/app/docker-compose.yml",
+    "services": [
+      {
+        "name": "web",
+        "image": {
+          "raw": "nginx:1.27",
+          "repository": "nginx",
+          "tag": "1.27"
+        },
+        "hasHealthcheck": true,
+        "networks": [
+          "edge"
+        ]
+      }
+    ],
+    "networks": [
+      {
+        "name": "edge",
+        "engineName": "edge",
+        "external": true
+      }
+    ]
+  },
+  "capabilities": {
+    "arch": "x86_64",
+    "memTotalBytes": 8589934592,
+    "memAvailableBytes": 6442450944,
+    "filesystems": [
+      {
+        "mount": "/",
+        "device": "/dev/vda1",
+        "fsType": "ext4",
+        "totalBytes": 107374182400,
+        "usedBytes": 21474836480,
+        "availableBytes": 85899345920,
+        "inodesTotal": 6000000,
+        "inodesFree": 5000000,
+        "readOnly": false
+      }
+    ],
+    "runtime": {
+      "kind": "docker",
+      "version": "27.5.1",
+      "composeKind": "plugin",
+      "composeVersion": "2.33.0",
+      "reachable": true,
+      "engineId": "00000000-0000-4000-8000-000000000001",
+      "engineName": "engine.example"
+    },
+    "rebootRequired": "no",
+    "observations": [
+      {
+        "source": "containers",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "source": "networks",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "source": "network-subnets",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "source": "volumes",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "source": "images",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "source": "sockets",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "source": "arch",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "source": "memory",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "source": "filesystems",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "source": "proxy",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      },
+      {
+        "source": "bind-sources",
+        "state": "complete",
+        "note": "",
+        "observedAt": "2026-10-19T12:00:00Z"
+      }
+    ],
+    "images": [
+      {
+        "reference": "nginx:1.27",
+        "architecture": "amd64",
+        "os": "linux"
+      }
+    ],
+    "containerNetworks": [
+      {
+        "name": "edge",
+        "driver": "bridge",
+        "scope": "local"
+      }
+    ]
+  }
+}

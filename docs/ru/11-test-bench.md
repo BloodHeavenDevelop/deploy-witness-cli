@@ -80,7 +80,8 @@ make bench BENCH_ARGS="-only port_conflict"  # сценарии, чей id с э
 `domain_conflict`, `database_version_mismatch`, `backup_gap`, `no_rollback_plan`,
 `certificate_expiring` и `reboot_required` читают ПО хоста (nginx, БД, certbot,
 пакетный менеджер), которого в Docker-in-Docker нет. Их покрывают тесты матрицы
-итогов (`app/witness/outcomes_test.go`), а не поведение Docker.
+итогов (`app/witness/outcomes_test.go`) и регрессии пилотов ([13](13-pilot-regressions.md)),
+а не поведение Docker.
 
 ## Что нашёл стенд
 
