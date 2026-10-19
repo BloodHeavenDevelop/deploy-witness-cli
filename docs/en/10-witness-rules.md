@@ -35,9 +35,8 @@ Three invariants hold for every finding here:
   mistake this product can make: it stops a deployment that would have been fine,
   and the next one goes out with the checks switched off.
 - **"Not checked" is never rendered as "fine".** A rule whose input was not
-  observed says so in its own `info` finding rather than staying quiet. Three codes
-  exist mostly to do this: `insufficient_memory`, `insufficient_disk` and
-  `registry_unreachable`.
+  observed ends `unknown` and says so in a finding of its own rather than staying
+  quiet — see [Outcomes](#outcomes-problem-no-problem-insufficient-data).
 
 Findings are sorted worst first, then by rule, then by the rule's own ordering,
 then by subject, so two runs of the same audit produce the same file.
@@ -57,6 +56,88 @@ wrong would turn every redeployment into a wall of false conflicts with itself.
 If you deploy with an explicit `-p`/`COMPOSE_PROJECT_NAME` that differs from the
 directory name, the "this is your own container" downgrades will not apply and
 those findings will read as conflicts with an unrelated stack.
+
+## Outcomes: problem, no problem, insufficient data
+
+A report answers three different questions, and each has its own vocabulary:
+
+| Question | Where | Values |
+|---|---|---|
+| Did the check **run** to completion? | section `Status` (`summary.csv`) | `ok`, `partial`, `skipped`, `failed`, `not-applicable` |
+| What did it **conclude**? | `Outcome` (`witness.csv`, `rules.csv`) | `problem`, `no-problem`, `unknown`, `manual-check`, `not-applicable` |
+| How much **attention** does it need? | `Severity` (`witness.csv`) | `blocker`, `warning`, `info` |
+
+The outcomes, as stable identifiers:
+
+| Outcome | Means |
+|---|---|
+| `problem` | The problem is proven by the evidence attached |
+| `no-problem` | The rule had everything it needs and found nothing wrong — or what it found is not a problem (this deployment's own container on its own port) |
+| `unknown` | The data the rule needs was not there: an engine that did not answer, a section that was not selected, a file that could not be parsed. **Never counted as a detected problem, and never as a clean result** |
+| `manual-check` | The question cannot be settled from inside the host by design — a provider snapshot, a protocol with no socket table, an intent only the owner knows. The finding says what to check by hand |
+| `not-applicable` | The plan gives the rule nothing to check — no external volume, no published port. Not a gap |
+
+**Every rule ends in exactly one outcome per run**, published in `rules.csv`
+whether or not the rule produced a finding. It is the most pressing outcome among
+the rule's findings and its own verdict, in the order `problem` → `unknown` →
+`manual-check` → `no-problem` → `not-applicable`. An `unknown` or `manual-check`
+that no finding states gets one of its own ("… could not be decided", "… needs a
+manual check", `info`, evidence naming the missing source), so what a rule could not
+decide reaches `witness.csv` and the upload, not only `rules.csv`.
+
+Two invariants tie severity to outcome, and the engine enforces them rather than
+trusting each rule: **only a `problem` can be a `blocker`**, and a `no-problem` or
+`not-applicable` finding is **`info`**. An undecided port, volume or network is at
+most a `warning`.
+
+**Absence is proven only by a list that was read in full.** Each source of host data
+records how completely it was read (`audit.capabilities.observations` in
+`report.json`: `complete`, `partial`, `failed`, `not-collected`). A rule that needs
+to conclude "it does not exist" from an engine list consults it first: a failed or
+partial list proves presence, never absence. A host with no container engine at all
+is the one case where an empty list is complete — nothing can exist in an engine
+that is not installed.
+
+**A host audit has no rule outcomes.** Without `--compose` there is no plan to
+compare, the `witness` section is `not-applicable` (see
+[04 — Modes](04-cli-reference.md#modes)), and the missing Compose file is not an
+error, a gap or an `unknown`.
+
+### The outcome matrix
+
+For every rule: what it needs, and what makes each outcome. Exceptions and limits
+are under each rule below; thresholds are in [Thresholds](#thresholds).
+
+| Code | Needs | `problem` when | `no-problem` when | `unknown` when | `not-applicable` / `manual-check` when |
+|---|---|---|---|---|---|
+| `port_conflict` | published ports; sockets (ports section); container publications | a binding is certainly held by something that is not this deployment's own container | nothing holds the bindings, or only this deployment's own container does | sockets not read; overlap undecidable offline (`[::]`, no `host_ip`, unresolved `host_ip`); a socket holds it and the engine's containers were not listed, so it may be our own `docker-proxy` | n/a: nothing published · manual: protocol with no socket table (`sctp`) |
+| `container_name_conflict` | `container_name`; container list | a container of that name exists and is not this project's | no container of that name, or it is this project's | the engine did not answer | n/a: no `container_name` |
+| `volume_name_conflict` | external volumes; volume list (complete) | an external volume is missing from a complete list, or carries another project's label | every external volume exists and is not someone else's | the volume list was not read in full | n/a: no external volume |
+| `bind_path_conflict` | bind mounts | a source is a sensitive host path (`/`, `/etc`, the runtime socket, `/var/lib/docker`, `/proc`, `/sys`, a home) | no source is sensitive | — (the plan is the whole input) | n/a: no bind mount |
+| `network_name_conflict` | external networks; network list (complete) | an external network is missing from a complete list | every external network exists | the network list was not read in full | n/a: no external network · manual: it is shared with another stack |
+| `subnet_overlap` | explicit IPAM subnets; every network's subnets | a requested subnet overlaps another project's network | no overlap with any network | networks not listed, or the subnets of some were not read | n/a: no explicit subnet |
+| `insufficient_memory` | reservations/limits; `/proc/meminfo` | the declared amount exceeds what is available | it fits | `/proc/meminfo` unreadable | n/a: nothing declared |
+| `insufficient_disk` | images to pull; image list; container-store filesystem | images must be pulled and less than 2 GiB is free | nothing to pull, or headroom | no filesystem measured; images not listed | — |
+| `insufficient_inodes` | container-store filesystem with a fixed inode count | ≥ 90% of inodes used | below that | no filesystem measured | n/a: no fixed inode count (btrfs, dynamic XFS) |
+| `architecture_mismatch` | `uname -m`; `platform:`; architecture of images present | a pinned platform or a present image is for another architecture | every pinned platform and present image matches | host architecture unread; an image is not on the host (its variant is chosen at pull time) | — |
+| `runtime_missing_or_old` | engine binary and answer; Compose implementation | no engine; no Compose; only Compose V1 | engine answers and Compose V2 is present | engine installed but did not answer | — |
+| `registry_unreachable` | registries; a TCP connect each (`--egress`) | a registry did not accept a connect | every registry accepted one | `--egress` not given | n/a: everything built locally |
+| `proxy_conflict` | 80/443 of the plan; web server and panel listen ports | a TCP publish of 80/443 meets a web server or panel holding it | none holds it | the publish is not TCP (protocol not recorded); web server configuration unreadable | n/a: neither 80 nor 443 published |
+| `domain_conflict` | domains in labels; server names | an existing vhost serves the domain | no vhost serves it, or no web server is installed | web server configuration unreadable | n/a: no domain in labels · manual: a catch-all vhost would answer |
+| `database_version_mismatch` | database images and tags; host databases | the image's major version differs from the host database's | they agree, or no database of that kind is on the host | the tag names no major version (`latest`) while one is installed | n/a: no database image |
+| `env_file_missing` | `env_file`; existence of each | a file is missing | every file exists | — | n/a: no `env_file` |
+| `no_healthcheck` | healthcheck of each service | a service has none | every service has one | — (the plan is the whole input) | n/a: no service |
+| `floating_image_tag` | image references | a pulled image is not pinned by digest | every pulled image is | — | n/a: everything built locally |
+| `privileged_container` | privileged, cap_add, devices, network_mode, socket mounts | any of them is set | none is | — | n/a: no service |
+| `backup_gap` | persistent data; backup tools, jobs, directories | no backup tooling or directory; only stale directories | a directory written to within 30 days | — | n/a: no persistent data · manual: a tool is installed but writes nowhere visible locally |
+| `no_rollback_plan` | the rollback section | an item is established missing | — (a provider snapshot is never visible from inside the host) | — | manual: only unverifiable items remain |
+| `certificate_expiring` | certificates found, parsed | ≤ 30 days left, or expired | none expiring, or none found | a certificate file could not be parsed | — |
+| `reboot_required` | `needs-restarting -r` / `/var/run/reboot-required` | a reboot is pending | none is | the answer is `unknown` (or the system section was not selected) | — |
+| `disk_at_limit` | capacity of every writable filesystem | one is ≥ 90% full | none is | no filesystem measured | — |
+
+The same table is executed as a test: `app/witness/outcomes_test.go` builds every
+situation in it and asserts the rule's outcome, so a rule cannot drift from what is
+written here without the build failing.
 
 ## Thresholds
 
@@ -90,6 +171,7 @@ or address range this deployment wants?
 | Own container | `info` | `high` | The binding is held by a container carrying this deployment's project label |
 | Taken | **blocker** | `high` | The binding is certainly held — by a listening socket from `ports.csv`, or by a container of another project |
 | Undecidable | **warning** | `medium` | Something is on that port and whether the two bindings overlap cannot be established offline |
+| Owner unknown | **warning** (`unknown`) | `medium` | A socket certainly holds the binding, but the engine's containers were not listed — the socket may be this deployment's own `docker-proxy`, which Compose replaces |
 | Not checked | **warning** | `low` | The publish uses a protocol the kernel has no socket table for (anything other than TCP or UDP) |
 | Evidence | | | The manifest line, plus `ss -lntupH` output and/or the `docker ps` row |
 
@@ -150,7 +232,7 @@ prefixing the project name, so the deployment fails outright.
 
 | | |
 |---|---|
-| Severity | **blocker** when the volume is missing; **warning** when it exists under another project |
+| Severity | **blocker** when the volume is missing from a complete volume list; **warning** when it exists under another project; **warning** (`unknown`) when the engine's volumes could not be listed — absence is not concluded from a list that was not read |
 | Fires when | A volume declared `external: true` is either absent from the host, or present with a different project label |
 
 Only external volumes are checked. Compose prefixes a project's own volumes with
@@ -176,7 +258,7 @@ layouts and teach the reader to skip the category.
 
 | | |
 |---|---|
-| Severity | **blocker** when the network is missing; `info` when it exists under another project |
+| Severity | **blocker** when the network is missing from a complete network list; `info` (`manual-check`) when it exists under another project; **warning** (`unknown`) when the engine's networks could not be listed |
 | Fires when | A network declared `external: true` is absent, or present and owned by another stack |
 
 The `info` case says the deployment will join a shared network: often the intent,

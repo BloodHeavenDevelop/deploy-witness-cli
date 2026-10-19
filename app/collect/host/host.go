@@ -23,7 +23,11 @@ import (
 func Collect(runner *run.Runner, caps *model.Capabilities, result *model.SectionResult) {
 	caps.Arch = arch(runner)
 	if caps.Arch == "" {
-		result.Degrade("host: the CPU architecture could not be read, so an image/host architecture mismatch cannot be detected")
+		note := "the CPU architecture could not be read, so an image/host architecture mismatch cannot be detected"
+		caps.Observe(model.SourceArch, model.ObservedFailed, "uname -m: "+note)
+		result.Degrade("host: " + note)
+	} else {
+		caps.Observe(model.SourceArch, model.ObservedComplete, "uname -m")
 	}
 
 	mem, err := meminfo("/proc/meminfo")
@@ -33,14 +37,30 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 	caps.MemTotalBytes = mem["MemTotal"] * 1024
 	caps.MemAvailableBytes = mem["MemAvailable"] * 1024
 	caps.SwapTotalBytes = mem["SwapTotal"] * 1024
+	switch {
+	case err != nil:
+		caps.Observe(model.SourceMemory, model.ObservedFailed, "/proc/meminfo unreadable: "+err.Error())
+	case caps.MemTotalBytes == 0:
+		caps.Observe(model.SourceMemory, model.ObservedFailed, "/proc/meminfo has no MemTotal")
+	default:
+		caps.Observe(model.SourceMemory, model.ObservedComplete, "/proc/meminfo")
+	}
 
 	filesystems, notes := Filesystems("/proc/mounts")
 	caps.Filesystems = filesystems
 	for _, note := range notes {
 		result.Degrade("host: " + note)
 	}
-	if len(filesystems) == 0 {
+	switch {
+	case len(filesystems) == 0:
 		result.Degrade("host: no filesystem capacity could be measured, so the disk and inode checks cannot run")
+		caps.Observe(model.SourceFilesystems, model.ObservedFailed,
+			"/proc/mounts + statfs: no filesystem could be measured")
+	case len(notes) > 0:
+		caps.Observe(model.SourceFilesystems, model.ObservedPartial,
+			"/proc/mounts + statfs: "+strings.Join(notes, "; "))
+	default:
+		caps.Observe(model.SourceFilesystems, model.ObservedComplete, "/proc/mounts + statfs")
 	}
 }
 

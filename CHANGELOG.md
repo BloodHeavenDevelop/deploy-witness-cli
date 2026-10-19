@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Every witness rule ends in exactly one outcome** (DW-80): `problem`,
+  `no-problem`, `unknown` (insufficient data), `manual-check` or `not-applicable`
+  ([app/witness/outcomes.go](app/witness/outcomes.go), `model.Outcome`). The outcome
+  is a third axis, kept apart from the section status (did the comparison run?) and
+  from the severity (does the reader have to stop?). New `rules.csv` — one row per
+  rule, finding or not, with the reason and the data the rule needs — and
+  `audit.rules` in `report.json`; `witness.csv` gains an appended `Outcome` column and
+  every finding an `outcome` field. A rule that ends `unknown` or `manual-check`
+  without a finding saying so gets one of its own, so the gap reaches the upload too.
+  `docs/<lang>/10-witness-rules.md` documents the three situations of every rule in
+  an outcome matrix, which `app/witness/outcomes_test.go` executes.
+- **Observation completeness** (DW-80): `audit.capabilities.observations` records,
+  per source (containers, networks, network subnets, volumes, images, sockets, arch,
+  memory, filesystems, proxy), whether it was read `complete`, `partial`, `failed` or
+  `not-collected`. Absence is concluded only from a list read in full.
+
+### Changed
+
+- **Only a proven problem can be a blocker; "no problem" is always `info`** (DW-80).
+  Enforced by the engine, and a correction is counted as a bug in the section notes.
+- **The `witness` row of `summary.csv` counts proven problems only** (DW-80):
+  `Critical`/`High` no longer include findings whose outcome is `unknown` or
+  `manual-check`. Its notes end with `rule outcomes: 24 rules — …`, which the upload's
+  `witness` collector note carries as well (the contract has no outcome field yet).
+  The `preflight` row adds `result: …` — counts per outcome — after its status.
+
+### Fixed
+
+- **An engine that did not answer no longer produces "does not exist" blockers**
+  (DW-80). An external volume or network missing from an engine list that was not
+  read is now `unknown` (warning), not a blocker; a port held by a socket while the
+  engine's containers could not be listed is `unknown` (it may be the deployment's
+  own `docker-proxy`), and `changes.csv` says the port may be taken instead of
+  promising it is.
+- **Silent rules now say why they are silent** (DW-80): an unknown host
+  architecture, an image not yet on the host, unparseable certificates, an unknown
+  reboot state, unmeasured filesystems and a backup tool with no visible backup
+  location used to produce nothing; each now ends `unknown` or `manual-check` with a
+  finding naming the missing source.
+
 ## [1.4.0] - 2026-10-11
 
 ### Fixed

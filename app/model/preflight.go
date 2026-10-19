@@ -202,6 +202,36 @@ type Capabilities struct {
 	// Notes is what could not be observed and why. A rule that depends on an
 	// unobserved capability must say so instead of concluding from the absence.
 	Notes []string `json:"notes"`
+	// Observations records, per source, whether it was read in full. An empty list
+	// from a source that was not read completely is "unknown", never "none".
+	Observations []Observation `json:"observations"`
+}
+
+// Observe records how completely a source was read, replacing an earlier record.
+func (c *Capabilities) Observe(source string, state ObservationState, note string) {
+	for i := range c.Observations {
+		if c.Observations[i].Source == source {
+			c.Observations[i] = Observation{Source: source, State: state, Note: note}
+			return
+		}
+	}
+	c.Observations = append(c.Observations, Observation{Source: source, State: state, Note: note})
+}
+
+// Observed returns how completely a source was read. A source nobody recorded is
+// not-collected: absence of a record is never read as completeness.
+func (c *Capabilities) Observed(source string) Observation {
+	for _, o := range c.Observations {
+		if o.Source == source {
+			return o
+		}
+	}
+	return Observation{Source: source, State: ObservedNotCollected}
+}
+
+// Complete reports whether a source was read in full.
+func (c *Capabilities) Complete(source string) bool {
+	return c.Observed(source).State == ObservedComplete
 }
 
 // Filesystem is one mounted filesystem, with inodes: a deployment that writes
@@ -415,6 +445,116 @@ type Finding struct {
 	Confidence   Confidence      `json:"confidence"`
 	SortOrder    int             `json:"sortOrder"`
 	Evidence     []Evidence      `json:"evidence"`
+	// Outcome is what the finding concludes: a proven problem, no problem, or that
+	// the data to decide was not there. It is a separate axis from Severity, which
+	// says how much attention the finding deserves — see Outcome.
+	Outcome Outcome `json:"outcome"`
+}
+
+// Outcome is the result of one check, kept apart from how the check ran (the
+// section Status) and from how much it matters (FindingSeverity). Three questions,
+// three vocabularies: "did the check run to completion?", "what did it conclude?",
+// "does the reader have to stop?".
+//
+// Every rule ends in exactly one outcome per run (see RuleResult), and every rule is
+// documented with the three situations that matter: a problem is proven, no problem
+// is proven, the data is insufficient. The values are stable identifiers.
+type Outcome string
+
+const (
+	// OutcomeProblem: the problem is proven by the evidence attached.
+	OutcomeProblem Outcome = "problem"
+	// OutcomeNoProblem: the rule had everything it needs and found nothing wrong —
+	// or what it found is not a problem (this deployment's own container on its own
+	// port).
+	OutcomeNoProblem Outcome = "no-problem"
+	// OutcomeUnknown: the data the rule needs was not there (an engine that did not
+	// answer, a section that was not selected, a value the host does not publish).
+	// It is never counted as a detected problem, and never as a clean result.
+	OutcomeUnknown Outcome = "unknown"
+	// OutcomeManualCheck: the question cannot be settled from this host by design —
+	// a provider snapshot, a protocol with no socket table, an intent only the
+	// owner knows. The finding says what to check by hand.
+	OutcomeManualCheck Outcome = "manual-check"
+	// OutcomeNotApplicable: the plan gives the rule nothing to check (no external
+	// volume, no published port). Not a gap.
+	OutcomeNotApplicable Outcome = "not-applicable"
+)
+
+// Outcomes lists the values in the order a reader is shown them: what needs action
+// first, what is settled last.
+var Outcomes = []Outcome{OutcomeProblem, OutcomeUnknown, OutcomeManualCheck, OutcomeNoProblem, OutcomeNotApplicable}
+
+// Rank orders outcomes, the one that needs the most attention first. The outcome
+// of a rule is the lowest-ranked outcome among its findings and its own verdict.
+func (o Outcome) Rank() int {
+	for i, value := range Outcomes {
+		if value == o {
+			return i
+		}
+	}
+	return len(Outcomes)
+}
+
+// Decided reports whether the outcome settles the question either way.
+func (o Outcome) Decided() bool { return o == OutcomeProblem || o == OutcomeNoProblem }
+
+// RuleResult is the outcome of one rule on one run. Every rule produces exactly one,
+// whether or not it produced a finding — which is what lets "no problem" be a line
+// the reader can point at rather than an absence they have to trust.
+type RuleResult struct {
+	// Code is the rule's finding code, e.g. witness.port_conflict.
+	Code string `json:"code"`
+	// Rule is the rule's short name, the Collector of its findings.
+	Rule string `json:"rule"`
+	// Outcome is problem, no-problem, unknown, manual-check or not-applicable.
+	Outcome Outcome `json:"outcome"`
+	// Findings counts the findings the rule published on this run.
+	Findings int `json:"findings"`
+	// Reason says why the rule ended where it did, in one sentence.
+	Reason string `json:"reason"`
+	// Requires names the data the rule cannot decide without.
+	Requires string `json:"requires"`
+}
+
+// ─────────────────────────────────────────────────────── what was observed
+
+// ObservationState says how completely one source of host data was read. It is
+// what a rule consults before it concludes anything from an empty list.
+type ObservationState string
+
+const (
+	// ObservedComplete: the source answered in full.
+	ObservedComplete ObservationState = "complete"
+	// ObservedPartial: the source answered, but part of it is missing (a capped
+	// inspect, a subset of networks that would not answer).
+	ObservedPartial ObservationState = "partial"
+	// ObservedFailed: the source was asked and did not answer.
+	ObservedFailed ObservationState = "failed"
+	// ObservedNotCollected: the source was not asked — no engine installed, a
+	// section not selected.
+	ObservedNotCollected ObservationState = "not-collected"
+)
+
+// Observation sources, as Capabilities.Observations names them.
+const (
+	SourceContainers     = "containers"
+	SourceNetworks       = "networks"
+	SourceNetworkSubnets = "network-subnets"
+	SourceVolumes        = "volumes"
+	SourceImages         = "images"
+	SourceSockets        = "sockets"
+	SourceArch           = "arch"
+	SourceMemory         = "memory"
+	SourceFilesystems    = "filesystems"
+	SourceProxy          = "proxy"
+)
+
+// Observation is one source of host data and how completely it was read.
+type Observation struct {
+	Source string           `json:"source"`
+	State  ObservationState `json:"state"`
+	Note   string           `json:"note"`
 }
 
 // FindingSeverity is how much attention a finding deserves.

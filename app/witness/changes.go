@@ -222,6 +222,9 @@ func portState(in Input, mapping model.PortMapping, port int) (portAvailability,
 	own := ownHolder(in, holders)
 	certain := certainHolders(holders)
 	switch {
+	case len(certain) > 0 && (own == nil || foreignContainer(in, certain)) && !ownershipKnown(in, certain):
+		return portMaybeTaken, describeHolders(certain) + " — which may be this deployment's own container: the " +
+			"engine's containers were not listed"
 	case len(certain) > 0 && (own == nil || foreignContainer(in, certain)):
 		return portTaken, describeHolders(certain)
 	case own != nil:

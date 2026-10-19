@@ -2,7 +2,7 @@
 
 ## Files
 
-By default the tool writes one directory containing twelve files:
+By default the tool writes one directory containing thirteen files:
 
 ```
 audit-<host>-<UTC timestamp>/
@@ -13,6 +13,7 @@ audit-<host>-<UTC timestamp>/
 ├── ports.csv
 ├── services.csv
 ├── witness.csv         the findings
+├── rules.csv             one outcome per rule, finding or not
 ├── evidence.csv          what each finding rests on
 ├── changes.csv           what deploying will actually do
 ├── rollback.csv          and how to undo it
@@ -23,6 +24,7 @@ audit-<host>-<UTC timestamp>/
 The last five are new in 0.2.0. Four of them belong to the `witness` section;
 `commands.csv` belongs to the run itself and is written on every run, whatever
 `--sections` said. So does `network.csv`, added in the release after 1.2.0.
+`rules.csv`, added in the release after 1.4.0, belongs to `witness`.
 
 **A section that produced no rows still gets a file containing its header row.**
 An absent file is indistinguishable from a section that was never run, and the
@@ -32,7 +34,7 @@ audit ran no commands at all" should be a visible claim, not a missing file.
 
 With `--stdout` the same tables are written to one stream, each preceded by a
 `# <name>` line and separated by a blank line. Spreadsheets and `csvkit` both
-read this; a single flat table cannot hold twelve different column sets.
+read this; a single flat table cannot hold thirteen different column sets.
 
 With `--format json` one `report.json` is written *instead of* the CSV files. See
 [report.json](#reportjson) below.
@@ -74,6 +76,13 @@ The index. One row per section, preceded by three rows about the run itself:
 | Compose preflight | `ok` | The Compose file was compared with the host |
 | Compose preflight | `partial` | Compared, but part of the comparison could not be made — the `witness` row says what |
 | Compose preflight | `failed` | The comparison did not complete — this is not a preflight result |
+
+The status says whether the comparison **ran**; what it **concluded** is a second
+statement, at the end of the note: `result: N rule(s) found a problem, N could not
+decide (unknown), N need a manual check, N found no problem, N not applicable
+(rules.csv)`. The two are never folded into each other — an `ok` comparison whose
+rules could not decide is not a clean preflight, and a `partial` one that proved a
+blocker still proved it. See [10 — Outcomes](10-witness-rules.md#outcomes-problem-no-problem-insufficient-data).
 
 The `preflight` row is never `ok` in a host audit. A host audit also carries a
 `witness` row, `not-applicable`, with a note opening `host-audit: not applicable` —
@@ -211,6 +220,7 @@ ordering, then by subject — so two runs of the same audit produce the same fil
 | `What to do` | The next action |
 | `Confidence` | `high`, `medium` or `low` |
 | `Evidence` | `N in evidence.csv, first: <command>`, or `none` |
+| `Outcome` | `problem`, `no-problem`, `unknown`, `manual-check` or `not-applicable` — what the finding concludes, a separate axis from `Severity` (appended in the release after 1.4.0; see [10 — Outcomes](10-witness-rules.md#outcomes-problem-no-problem-insufficient-data)) |
 
 Three severities, not the six of the CVE scale used in `vulnerabilities.csv`. A
 vulnerability feed grades how bad a flaw is in the abstract; a witness finding
@@ -225,9 +235,36 @@ answers a different question — whether the person reading it has to stop:
 `Confidence` is `high` only for a direct observation. Anything inferred from a
 fingerprint, an index or a parse of free-form text is at most `medium`.
 
+`Severity` and `Outcome` are tied by two invariants the engine enforces: only a
+`problem` can be a `blocker`, and a `no-problem` or `not-applicable` finding is
+`info`. A finding that breaks either is downgraded and the downgrade is counted in
+the section's notes as a bug in `deploy-witness`.
+
 In `summary.csv` the `witness` row reuses the two counters: `Critical` holds the
-blocker count and `High` the warning count, so a reader scanning the index sees
-the blockers without opening the section.
+blocker count and `High` the warning count **of proven problems only** — a finding
+whose outcome is `unknown` or `manual-check` is never counted, so a run that could
+not look does not read as one that found. The row's notes end with
+`rule outcomes: 24 rules — N problem (codes); N unknown (codes); …`.
+
+## rules.csv
+
+One row per witness rule, **whether or not it published a finding**. "No problem"
+and "not applicable" are lines a reader can point at rather than absences they have
+to trust.
+
+| Column | Contents |
+|---|---|
+| `Code` | The rule's finding code |
+| `Rule` | The rule's short name — the `Collector` of its findings |
+| `Outcome` | `problem`, `no-problem`, `unknown`, `manual-check` or `not-applicable` — the rule's single result on this run |
+| `Findings` | How many findings it published |
+| `Reason` | Why it ended there, in one sentence: what was checked, or what was missing |
+| `Requires` | The data the rule cannot decide without |
+
+A rule's outcome is the most pressing one among its findings and its own verdict,
+in the order `problem` → `unknown` → `manual-check` → `no-problem` →
+`not-applicable`. A rule that ends `unknown` or `manual-check` always has a finding
+saying so in `witness.csv`, so the gap travels with the upload too.
 
 ## evidence.csv
 
@@ -372,7 +409,7 @@ the naming is the point:
 |---|---|---|
 | `schemaVersion` | The contract version of the `upload` half. A receiver checks it first, so an agent built months ago is told its report is not understood rather than having it half-read | — |
 | `upload` | The shared `bloodheaven.audit.v1` contract, rendered as protojson: `findings` with their evidence, `collectors` (the section outcomes), `changes`, `rollback`, `command_journal`, plus `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` and `producer` | **Yes** — these are the exact bytes `--upload` sends |
-| `audit` | Everything that stays local: the run's `mode` (`host-audit` or `compose-preflight`), the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities, the network record (`network`, as in `network.csv`), and the same findings in this tool's own shape | No |
+| `audit` | Everything that stays local: the run's `mode` (`host-audit` or `compose-preflight`), the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities (with `observations`: how completely each source — containers, volumes, sockets, memory… — was read), the network record (`network`, as in `network.csv`), the same findings in this tool's own shape (each with its `outcome`) and `rules`, as in `rules.csv` | No |
 
 A client can read the file, see which half would leave their machine, and diff it
 against what actually arrives. That is a good deal more convincing than a promise
@@ -413,6 +450,13 @@ Details worth knowing:
   applicable` note stays in `audit.sections` of `report.json`; carrying the mode or a
   `NOT_APPLICABLE` status in the contract itself needs a change in the `contracts`
   repository.
+- **The contract has no outcome field.** A finding goes out with its severity,
+  and the receiver cannot tell a proven problem from a question this run could not
+  settle by the finding alone. Two things carry it until the contract does: the
+  `witness` collector's `note` ends with `rule outcomes: 24 rules — N problem
+  (codes); N unknown (codes); …`, and an undecided finding's title says so ("…
+  could not be established", "… could not be decided", "… needs a manual check").
+  Carrying `outcome` on each finding needs a change in the `contracts` repository.
 - **The package inventory, the pending updates and the CVE list are not in
   `upload`.** The contract is a findings document, and sending them would be
   volunteering a full software inventory of somebody's production host to a

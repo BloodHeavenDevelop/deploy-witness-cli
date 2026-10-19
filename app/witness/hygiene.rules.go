@@ -25,6 +25,7 @@ func missingEnvFiles(in Input) []model.Finding {
 				Category:   model.CategoryMissing,
 				Severity:   model.FindingBlocker,
 				Confidence: model.ConfidenceHigh,
+				Outcome:    model.OutcomeProblem,
 				Subject:    ref.Path,
 				Title:      fmt.Sprintf("env_file %s does not exist", ref.Path),
 				Description: fmt.Sprintf(
@@ -67,6 +68,7 @@ func missingHealthchecks(in Input) []model.Finding {
 		Category:    model.CategoryMissing,
 		Severity:    model.FindingWarning,
 		Confidence:  model.ConfidenceHigh,
+		Outcome:     model.OutcomeProblem,
 		Subject:     strings.Join(without, ", "),
 		Title:       fmt.Sprintf("%d of %d services define no healthcheck", len(without), len(in.Manifest.Services)),
 		Description: fmt.Sprintf("These services have no healthcheck: %s.", strings.Join(without, ", ")),
@@ -113,6 +115,7 @@ func floatingTags(in Input) []model.Finding {
 			Category:    model.CategoryMissing,
 			Severity:    severity,
 			Confidence:  model.ConfidenceHigh,
+			Outcome:     model.OutcomeProblem,
 			Subject:     svc.Image.Raw,
 			Title:       title,
 			Description: description,
@@ -165,6 +168,7 @@ func securityFlags(in Input) []model.Finding {
 			Category:    model.CategorySecurity,
 			Severity:    severity,
 			Confidence:  model.ConfidenceHigh,
+			Outcome:     model.OutcomeProblem,
 			Subject:     svc.Name,
 			Title:       fmt.Sprintf("Service %q is granted authority over the host", svc.Name),
 			Description: fmt.Sprintf("Service %q declares: %s.", svc.Name, strings.Join(reasons, "; ")),
@@ -203,6 +207,7 @@ func backupGap(in Input) []model.Finding {
 			Category:   model.CategoryMissing,
 			Severity:   model.FindingWarning,
 			Confidence: model.ConfidenceMedium,
+			Outcome:    model.OutcomeProblem,
 			Title:      "No backup tooling or backup directory was found on this host",
 			Description: fmt.Sprintf(
 				"The deployment declares persistent data (%s), and nothing on this host looks like a backup: no "+
@@ -236,6 +241,7 @@ func backupGap(in Input) []model.Finding {
 			Severity:   model.FindingWarning,
 			Confidence: model.ConfidenceMedium,
 			Subject:    strings.Join(stale, ", "),
+			Outcome:    model.OutcomeProblem,
 			Title:      "The backup directories on this host are stale",
 			Description: fmt.Sprintf(
 				"These backup locations exist but have not been written to recently: %s. Tools installed: %s.",
@@ -347,6 +353,7 @@ func rollbackGap(in Input) []model.Finding {
 		},
 	}
 	if len(missing) > 0 {
+		finding.Outcome = model.OutcomeProblem
 		finding.Severity = model.FindingWarning
 		finding.Subject = fmt.Sprintf("%d of %d missing", len(missing), len(plan))
 		finding.Title = "Part of the way back from this deployment is missing"
@@ -355,6 +362,7 @@ func rollbackGap(in Input) []model.Finding {
 			"This one is about what happens when it does not, and it is the only one that cannot be fixed after " +
 			"the fact."
 	} else {
+		finding.Outcome = model.OutcomeManualCheck
 		finding.Severity = model.FindingInfo
 		finding.Subject = fmt.Sprintf("%d of %d unverified", len(unverified), len(plan))
 		finding.Title = "The way back could not be fully verified"
@@ -412,6 +420,7 @@ func certificateExpiry(in Input) []model.Finding {
 			Category:   model.CategoryExpiry,
 			Severity:   severity,
 			Confidence: model.ConfidenceHigh,
+			Outcome:    model.OutcomeProblem,
 			Subject:    cert.Path,
 			SortOrder:  cert.DaysLeft,
 			Title:      title,
@@ -469,6 +478,7 @@ func rebootPending(in Input) []model.Finding {
 		Category:    model.CategoryMissing,
 		Severity:    model.FindingWarning,
 		Confidence:  model.ConfidenceHigh,
+		Outcome:     model.OutcomeProblem,
 		Title:       "This host is waiting for a reboot",
 		Description: "The running kernel or libraries are older than the ones installed, so a reboot is pending.",
 		WhyItMatters: "Deploying now means the next reboot — whenever it happens, possibly not chosen by you — " +
