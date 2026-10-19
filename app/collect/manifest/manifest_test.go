@@ -511,7 +511,7 @@ services:
 		},
 		"long": {
 			{Path: "app.env", Exists: true},
-			{Path: "nowhere.env", Exists: false},
+			{Path: "nowhere.env", Exists: false, Optional: true},
 		},
 		"absolute": {{Path: "/definitely/not/here.env", Exists: false}},
 	}

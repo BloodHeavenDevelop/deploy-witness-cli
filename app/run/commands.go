@@ -137,6 +137,36 @@ var commands = []Spec{
 		Binary: "docker", Args: []string{"compose", "version", "--short"},
 		Section: "witness", Purpose: "the Compose V2 plugin version",
 	},
+	// The plan itself. `docker compose config` is what Compose will run: it merges
+	// the files in order, applies the env files, the profiles and the project name,
+	// interpolates the variables and resolves every relative path — and it does all
+	// of that from local files, without the daemon and without the network. Its
+	// output is parsed in memory into the requirements this audit compares and is
+	// never written anywhere: it carries interpolated values. --no-env-resolution
+	// keeps the contents of env_file out of it; the second form is for a Compose
+	// older than that flag. A plan with a remote `include:` is refused before this
+	// runs, because resolving it would fetch it.
+	{
+		Binary: "docker", Args: []string{"compose", OptionsToken, "config", "--format", "json", "--no-env-resolution"},
+		Options: composeOptions, MaxRepeat: 64,
+		Section: "witness", Purpose: "the final model of the planned run, exactly as Compose resolves it",
+	},
+	{
+		Binary: "docker", Args: []string{"compose", OptionsToken, "config", "--format", "json"},
+		Options: composeOptions, MaxRepeat: 64,
+		Section: "witness", Purpose: "the same, on a Compose too old for --no-env-resolution",
+	},
+	// Which engine the engineer's own `docker compose up` would talk to. Both read
+	// the CLI's local context store only; neither contacts an engine.
+	{
+		Binary: "docker", Args: []string{"context", "show"},
+		Section: "witness", Purpose: "the name of the active docker context",
+	},
+	{
+		Binary: "docker", Args: []string{"context", "inspect", "--format", "{{json .Endpoints.docker.Host}}"},
+		Section: "witness",
+		Purpose: "the endpoint of the active context, to refuse a preflight of a remote engine from this host",
+	},
 	{
 		Binary: "docker-compose", Args: []string{"version", "--short"},
 		Section: "witness", Purpose: "the standalone Compose V1 version, on hosts that still have it",
@@ -348,4 +378,15 @@ var commands = []Spec{
 		Binary: "apk", Args: []string{"version", "-l", "<"},
 		Section: "updates", Purpose: "packages with a newer version available",
 	},
+}
+
+// composeOptions are the project flags `docker compose` accepts before its
+// subcommand, each with the class its value must match. They are exactly the
+// parameters of the planned run the audit has to reproduce.
+var composeOptions = map[string]ArgKind{
+	"--file":              ArgPath,
+	"--env-file":          ArgPath,
+	"--profile":           ArgName,
+	"--project-name":      ArgName,
+	"--project-directory": ArgPath,
 }

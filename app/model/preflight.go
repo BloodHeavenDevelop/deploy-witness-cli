@@ -23,8 +23,12 @@ package model
 
 // Manifest is one parsed docker-compose file: the requirements side of witness.
 type Manifest struct {
-	// Path is where the file was read from, as given on the command line.
+	// Path is where the file was read from, as given on the command line — the
+	// first file when the plan merges several.
 	Path string `json:"path"`
+	// Name is the project name the file declares with a top-level `name:`, or the
+	// one Compose resolved.
+	Name string `json:"name"`
 	// Version is the `version:` key when the file still declares one. Absent is
 	// normal for Compose V2 and is not a problem.
 	Version  string            `json:"version"`
@@ -36,6 +40,65 @@ type Manifest struct {
 	// guess at. They surface in the report, because a requirement that was not
 	// understood is not a requirement that was met.
 	Warnings []string `json:"warnings"`
+}
+
+// LaunchPlan is the exact run a Compose preflight checks: the `docker compose`
+// invocation the engineer is about to make, the model Compose resolves from it, and
+// the engine it would be sent to. A preflight of a different file order, a missing
+// profile or another engine is a preflight of a different deployment.
+type LaunchPlan struct {
+	// Files are the Compose files in the order they are merged (`-f`).
+	Files []string `json:"files"`
+	// ProjectDirectory is where relative paths and the default `.env` resolve.
+	ProjectDirectory string `json:"projectDirectory"`
+	// ProjectName is the name Compose will use, and ProjectNameSource where it came
+	// from: --project-name, COMPOSE_PROJECT_NAME, the files' `name:`, or the
+	// project directory.
+	ProjectName       string   `json:"projectName"`
+	ProjectNameSource string   `json:"projectNameSource"`
+	EnvFiles          []string `json:"envFiles"`
+	Profiles          []string `json:"profiles"`
+	// Services are the services named on the planned command line; empty means
+	// every service of the active profiles. Started is what that starts: the named
+	// services and everything they depend on.
+	Services []string `json:"services"`
+	Started  []string `json:"started"`
+	// Resolver is how the model was obtained: "docker compose config" (Compose's
+	// own resolution) or "built-in parser" (an approximation, when Compose is not
+	// available here). ResolverVersion is the Compose version that resolved it.
+	Resolver        string `json:"resolver"`
+	ResolverVersion string `json:"resolverVersion"`
+	// Environment names the variables present in this run's environment that change
+	// what Compose resolves (COMPOSE_*, DOCKER_HOST, DOCKER_CONTEXT). Names only —
+	// a value is never read into the report.
+	Environment []string `json:"environment"`
+	// Engine is the engine the planned run would reach, and whether it is the one
+	// this audit inspected.
+	Engine EngineTarget `json:"engine"`
+	// Notes say what the resolution could not reproduce.
+	Notes []string `json:"notes"`
+}
+
+// Plan resolvers.
+const (
+	ResolverCompose = "docker compose config"
+	ResolverBuiltin = "built-in parser"
+)
+
+// EngineTarget ties the plan to one container engine.
+type EngineTarget struct {
+	// Context is the active docker context of the CLI that would run the
+	// deployment, and Endpoint its engine address.
+	Context  string `json:"context"`
+	Endpoint string `json:"endpoint"`
+	// Local is true when the endpoint is a unix socket on this host — the only kind
+	// of engine an audit of this host can speak for.
+	Local bool `json:"local"`
+	// ID, Name and Version identify the engine the audit inspected, from
+	// `docker info`. Two hosts with the same container names are told apart by ID.
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 // ManifestService is one service block.
@@ -148,6 +211,10 @@ type VolumeMount struct {
 type EnvFileRef struct {
 	Path   string `json:"path"`
 	Exists bool   `json:"exists"`
+	// Optional is `required: false`: Compose skips a missing file instead of failing.
+	Optional bool `json:"optional"`
+	// StatError is set when whether the file exists could not be established.
+	StatError string `json:"statError,omitempty"`
 }
 
 // ManifestNetwork is one declared network.
@@ -259,6 +326,11 @@ type ContainerRuntime struct {
 	ComposeKind    string `json:"composeKind"`
 	ComposeVersion string `json:"composeVersion"`
 	StorageDriver  string `json:"storageDriver"`
+	// EngineID and EngineName identify the engine that answered (`docker info` ID
+	// and Name). Two servers can hold containers, volumes and networks of the same
+	// names; the ID is what tells one engine's answer from another's.
+	EngineID   string `json:"engineId"`
+	EngineName string `json:"engineName"`
 	// Reachable is false when the engine is installed but its socket could not be
 	// queried — usually a permission problem, and the reason every container list
 	// below would otherwise look empty.

@@ -2,7 +2,7 @@
 
 ## Files
 
-By default the tool writes one directory containing thirteen files:
+By default the tool writes one directory containing fourteen files:
 
 ```
 audit-<host>-<UTC timestamp>/
@@ -14,6 +14,7 @@ audit-<host>-<UTC timestamp>/
 ├── services.csv
 ├── witness.csv         the findings
 ├── rules.csv             one outcome per rule, finding or not
+├── plan.csv              the exact Compose run the preflight checked
 ├── evidence.csv          what each finding rests on
 ├── changes.csv           what deploying will actually do
 ├── rollback.csv          and how to undo it
@@ -24,7 +25,7 @@ audit-<host>-<UTC timestamp>/
 The last five are new in 0.2.0. Four of them belong to the `witness` section;
 `commands.csv` belongs to the run itself and is written on every run, whatever
 `--sections` said. So does `network.csv`, added in the release after 1.2.0.
-`rules.csv`, added in the release after 1.4.0, belongs to `witness`.
+`rules.csv` and `plan.csv`, added in the release after 1.4.0, belong to `witness`.
 
 **A section that produced no rows still gets a file containing its header row.**
 An absent file is indistinguishable from a section that was never run, and the
@@ -34,7 +35,7 @@ audit ran no commands at all" should be a visible claim, not a missing file.
 
 With `--stdout` the same tables are written to one stream, each preceded by a
 `# <name>` line and separated by a blank line. Spreadsheets and `csvkit` both
-read this; a single flat table cannot hold thirteen different column sets.
+read this; a single flat table cannot hold fourteen different column sets.
 
 With `--format json` one `report.json` is written *instead of* the CSV files. See
 [report.json](#reportjson) below.
@@ -266,6 +267,29 @@ in the order `problem` → `unknown` → `manual-check` → `no-problem` →
 `not-applicable`. A rule that ends `unknown` or `manual-check` always has a finding
 saying so in `witness.csv`, so the gap travels with the upload too.
 
+## plan.csv
+
+The exact run a Compose preflight checked, as `Key`,`Value` rows — a list as one row
+per item, so the order of the Compose files stays visible. Header only in a host
+audit. See [04 — The planned run](04-cli-reference.md#the-planned-run).
+
+| Key | Value |
+|---|---|
+| `file` | A Compose file, in merge order |
+| `project-directory` | Where `.env` is read and relative paths resolve |
+| `project-name`, `project-name-source` | The name Compose uses, and where it came from: `--project-name`, `COMPOSE_PROJECT_NAME`, `name: in the Compose file`, `the project directory` |
+| `env-file`, `profile`, `service` | The plan's `--env-file`, `--profile` and `--compose-service` values |
+| `starts` | What the plan starts: the named services and their dependencies, or every service of the active profiles |
+| `resolver`, `resolver-version` | `docker compose config` and its version, or `built-in parser` |
+| `environment` | Names of the `COMPOSE_*`, `DOCKER_HOST`, `DOCKER_CONTEXT` variables present — never their values |
+| `engine-context`, `engine-endpoint`, `engine-local` | The docker context the run would use, its endpoint, and whether it is this host's |
+| `engine-id`, `engine-name`, `engine-version` | The engine that answered, from `docker info` |
+| `note` | What the resolution could not reproduce |
+
+The `witness` notes carry the same in one line (`plan: project shop (from
+--project-name), 2 Compose file(s), …`), so the upload's `witness` collector has it
+too.
+
 ## evidence.csv
 
 Every piece of evidence behind every finding, one row each. It is a file of its
@@ -409,7 +433,7 @@ the naming is the point:
 |---|---|---|
 | `schemaVersion` | The contract version of the `upload` half. A receiver checks it first, so an agent built months ago is told its report is not understood rather than having it half-read | — |
 | `upload` | The shared `bloodheaven.audit.v1` contract, rendered as protojson: `findings` with their evidence, `collectors` (the section outcomes), `changes`, `rollback`, `command_journal`, plus `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` and `producer` | **Yes** — these are the exact bytes `--upload` sends |
-| `audit` | Everything that stays local: the run's `mode` (`host-audit` or `compose-preflight`), the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities (with `observations`: how completely each source — containers, volumes, sockets, memory… — was read), the network record (`network`, as in `network.csv`), the same findings in this tool's own shape (each with its `outcome`) and `rules`, as in `rules.csv` | No |
+| `audit` | Everything that stays local: the run's `mode` (`host-audit` or `compose-preflight`), the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities (with `observations`: how completely each source — containers, volumes, sockets, memory… — was read), the network record (`network`, as in `network.csv`), the same findings in this tool's own shape (each with its `outcome`), `rules`, as in `rules.csv`, and `plan`, as in `plan.csv` | No |
 
 A client can read the file, see which half would leave their machine, and diff it
 against what actually arrives. That is a good deal more convincing than a promise

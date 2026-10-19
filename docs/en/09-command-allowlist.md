@@ -62,8 +62,29 @@ A repeated argument (`<unit>...`) is bounded too — 256 by default, 128 for
 many units. A placeholder naming a kind that does not exist is a typo in
 `commands.go`, and it refuses rather than becoming a wildcard.
 
-As of 0.2.0 only `unit`, `suite`, `container`, `image` and `user` are actually used
-by an entry; `path` and `name` are defined and unused.
+`path` and `name` are used by the Compose option pairs below; `unit`, `suite`,
+`container`, `image` and `user` by the entries that take one value.
+
+One entry has a shape of its own: `docker compose <options> config …`, which
+resolves the planned run (see [04 — The planned run](04-cli-reference.md#the-planned-run)).
+Compose takes its project flags before the subcommand, repeated and in an order
+that matters (`-f a -f b` is not `-f b -f a`), which a fixed vector cannot express.
+So the entry carries an explicit table of **option pairs** — a literal flag and one
+value of a fixed kind — and `<options>` stands for zero or more of them, at most 64:
+
+| Flag | Value kind |
+|---|---|
+| `--file` | `path` |
+| `--env-file` | `path` |
+| `--project-directory` | `path` |
+| `--profile` | `name` |
+| `--project-name` | `name` |
+
+Nothing else may stand in their place: an unlisted flag (`--host`), a relative path,
+or a flag missing its value refuses the whole command, and the literal subcommand and
+its arguments after the options (`config --format json [--no-env-resolution]`) are
+matched exactly — `docker compose -f … up` is not on the list. `--commands` prints
+the pairs: `docker compose [--env-file <path> | --file <path> | …]... config --format json`.
 
 ### The arguments that make a read a read
 
@@ -115,8 +136,8 @@ deploy-witness --commands
 ```
 
 It prints the list it enforces, grouped by the section that needs it, with the
-reason each entry is read for. What follows is that output as of 0.2.0 —
-**68 commands**. Where two entries share a purpose line reading "the same, …", the
+reason each entry is read for. What follows is that output as of the release after
+1.4.0 — **72 commands**. Where two entries share a purpose line reading "the same, …", the
 line above it is the one being described.
 
 ```
@@ -127,7 +148,7 @@ line above it is the one being described.
   ss -lntupH                        listening sockets with the owning process, when /proc/net
                                     alone cannot attribute them
 
-[witness]                         33 entries
+[witness]                         37 entries
   nginx -T                          the effective nginx configuration — server names, ports and
                                     certificate paths already in use, with includes resolved
   nginx -v                          the nginx version
@@ -137,6 +158,14 @@ line above it is the one being described.
   docker version --format {{json .}}
   docker info --format {{json .}}
   docker compose version --short
+  docker compose [--env-file <path> | --file <path> | --profile <name> |
+                  --project-directory <path> | --project-name <name>]...
+                 config --format json [--no-env-resolution]
+                                    the final model of the planned run, exactly as Compose
+                                    resolves it (two entries: with and without the flag)
+  docker context show               the name of the active docker context
+  docker context inspect --format {{json .Endpoints.docker.Host}}
+                                    its endpoint, to refuse a preflight of a remote engine
   docker-compose version --short
   docker ps -a --format {{json .}}
   docker network ls --format {{json .}}
@@ -186,7 +215,7 @@ line above it is the one being described.
 ```
 
 The grouping above collapses the near-identical Podman and yum entries for
-readability; `--commands` prints every one of the 68 separately, and it is the
+readability; `--commands` prints every one of the 72 separately, and it is the
 list that is enforced. **If this page and `--commands` ever disagree, `--commands`
 is right.**
 

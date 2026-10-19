@@ -292,3 +292,45 @@ func TestFormatBoth(t *testing.T) {
 		t.Error("--format json must not write CSV")
 	}
 }
+
+// DW-81: the planned run is reproduced flag for flag: several files in order, env
+// files, profiles, project name and directory, services — paths made absolute.
+func TestPlannedRunFlags(t *testing.T) {
+	dir := t.TempDir()
+	first, second := writeComposeAt(t, dir, "compose.yml"), writeComposeAt(t, dir, "compose.prod.yml")
+	envFile := writeComposeAt(t, dir, ".env.prod")
+	cfg, err := Load([]string{"--compose", first, "--compose", second, "--env-file", envFile,
+		"--profile", "web", "--profile", "jobs", "--project-name", "shop", "--project-directory", dir,
+		"--compose-service", "web"}, "test", io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(cfg.ComposeFiles, ",") != first+","+second || cfg.Compose != first ||
+		strings.Join(cfg.EnvFiles, ",") != envFile || strings.Join(cfg.Profiles, ",") != "web,jobs" ||
+		cfg.ProjectName != "shop" || cfg.ProjectDirectory != dir || strings.Join(cfg.ComposeServices, ",") != "web" {
+		t.Errorf("cfg = %+v", cfg)
+	}
+
+	t.Setenv("AUDIT_COMPOSE", first+string(os.PathListSeparator)+second)
+	cfg, err = Load(nil, "test", io.Discard)
+	if err != nil || len(cfg.ComposeFiles) != 2 {
+		t.Errorf("AUDIT_COMPOSE list: %v %v", cfg, err)
+	}
+	cfg, err = Load([]string{"--compose", second}, "test", io.Discard)
+	if err != nil || strings.Join(cfg.ComposeFiles, ",") != second {
+		t.Errorf("a typed --compose replaces AUDIT_COMPOSE: %v %v", cfg.ComposeFiles, err)
+	}
+
+	if _, err := Load([]string{"--compose", first, "--env-file", filepath.Join(dir, "missing")}, "test", io.Discard); err == nil {
+		t.Error("a missing --env-file must be refused before the audit")
+	}
+}
+
+func writeComposeAt(t *testing.T, dir, name string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("services:\n  web:\n    image: nginx:1.27\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}

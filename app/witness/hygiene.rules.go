@@ -17,7 +17,28 @@ func missingEnvFiles(in Input) []model.Finding {
 	var out []model.Finding
 	for _, svc := range in.Manifest.Services {
 		for _, ref := range svc.EnvFiles {
-			if ref.Exists {
+			if ref.Exists || ref.Optional {
+				// An optional file that is absent is skipped by Compose: not a problem.
+				continue
+			}
+			if ref.StatError != "" {
+				out = append(out, model.Finding{
+					Code:       "witness.env_file_missing",
+					Category:   model.CategoryMissing,
+					Severity:   model.FindingWarning,
+					Confidence: model.ConfidenceHigh,
+					Outcome:    model.OutcomeUnknown,
+					Subject:    ref.Path,
+					Title:      fmt.Sprintf("Whether env_file %s exists could not be established", ref.Path),
+					Description: fmt.Sprintf("Service %q reads its environment from %s, and checking for that file "+
+						"failed: %s.", svc.Name, ref.Path, ref.StatError),
+					WhyItMatters: "If the file is missing, Compose refuses to start the service. The audit could not tell.",
+					WhatToDo:     "Re-run the audit as the account that deploys, or check the file by hand.",
+					Evidence: []model.Evidence{
+						manifestEvidence(in, svc.Name, "env_file: "+ref.Path),
+						evidence(in, "stat "+ref.Path, ref.StatError+" (the file's contents are never read by this audit)"),
+					},
+				})
 				continue
 			}
 			out = append(out, model.Finding{

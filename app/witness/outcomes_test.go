@@ -260,6 +260,12 @@ var situations = map[string][]situation{
 		{"present", func(in *Input) {
 			in.Manifest.Services[0].EnvFiles = []model.EnvFileRef{{Path: "/srv/app/.env", Exists: true}}
 		}, model.OutcomeNoProblem},
+		{"missing but optional (required: false)", func(in *Input) {
+			in.Manifest.Services[0].EnvFiles = []model.EnvFileRef{{Path: "/srv/app/.env", Optional: true}}
+		}, model.OutcomeNoProblem},
+		{"stat failed", func(in *Input) {
+			in.Manifest.Services[0].EnvFiles = []model.EnvFileRef{{Path: "/srv/app/.env", StatError: "permission denied"}}
+		}, model.OutcomeUnknown},
 		{"no env_file", nil, model.OutcomeNotApplicable},
 	},
 	"witness.no_healthcheck": {

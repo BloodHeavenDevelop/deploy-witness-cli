@@ -7,7 +7,7 @@ main.go
   └─ config.Load(argv, env)          flags → Config, or an error before anything runs
   └─ --commands? print run.Commands() and exit         (the enforced allowlist itself)
   └─ logging.New(stderr, level)      diagnostics never touch stdout
-  └─ audit.New(cfg, log).Prepare()   Compose preflight only: parse --compose, or exit 2, no report
+  └─ audit.New(cfg, log).Prepare()   Compose preflight only: resolve the planned run (plan.go: engine, docker compose config), or exit 2, no report
   └─ auditor.Run()
        ├─ model.ReadOSRelease()      /etc/os-release → distribution identity
        ├─ pkgmgr.Detect(os, runner)  which package manager this host actually has
@@ -66,7 +66,7 @@ process command line, a proxy directive — and this report may be uploaded.
 | `app/collect/system` | Host inventory and hardening posture. |
 | `app/collect/ports` | Listening sockets from `/proc/net`. |
 | `app/collect/services` | Service units from systemd, OpenRC, SysV or the process table. |
-| `app/collect/manifest` | The compose-file parser: the *requirements* side of witness. Reads one user-supplied file and the `.env` beside it. Observes nothing about the host. |
+| `app/collect/manifest` | The requirements side of witness: `resolved.go` reads the model `docker compose config` printed for the planned run (names only of environment variables); the built-in parser reads one user-supplied file and the `.env` beside it when Compose is not installed. Observes nothing about the host. |
 | `app/collect/host` | Architecture, memory, filesystems with inodes, and the databases already installed — as numbers, not prose. |
 | `app/collect/docker` | The container runtime: engine, compose implementation, containers, networks, volumes, images. |
 | `app/collect/proxy` | nginx / Apache: the effective configuration, server names with file and line, listen ports, certificate paths. |

@@ -43,8 +43,20 @@ type Config struct {
 	// section; a host audit has neither. See resolveMode.
 	Mode model.Mode
 	// Compose is the deployment manifest the witness section compares the host
-	// against. It is set exactly when Mode is compose-preflight.
+	// against. It is set exactly when Mode is compose-preflight, and it is the first
+	// of ComposeFiles.
 	Compose string
+	// The planned run, as `docker compose` would be invoked: the files in order
+	// (`-f`), the env files, the profiles, the project name, the project directory
+	// and the services named on the command line. All paths are absolute. A
+	// preflight compares the run the engineer is about to make, and a different
+	// file order or a missing profile is a different run.
+	ComposeFiles     []string
+	EnvFiles         []string
+	Profiles         []string
+	ProjectName      string
+	ProjectDirectory string
+	ComposeServices  []string
 	// Egress permits the one outbound check in the witness section: whether the
 	// registries the manifest pulls from are reachable. Off by default, like every
 	// other network path in this tool.
@@ -125,8 +137,22 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		"log every probe, including the ones that found nothing")
 	fs.BoolVar(&quiet, "quiet", envBool("AUDIT_QUIET", false),
 		"log errors only")
-	fs.StringVar(&cfg.Compose, "compose", env("AUDIT_COMPOSE", ""),
-		"path to the docker-compose.yml to check this host against; makes the run a Compose preflight")
+	composeFiles := listFlag(splitPathList(env("AUDIT_COMPOSE", "")))
+	envFiles := listFlag(splitPathList(env("AUDIT_ENV_FILE", "")))
+	profiles := listFlag(splitComma(env("AUDIT_PROFILE", "")))
+	services := listFlag(splitComma(env("AUDIT_COMPOSE_SERVICES", "")))
+	fs.Var(&composeFiles, "compose",
+		"a Compose file to check this host against, as docker compose -f; repeat it for several, in the order you deploy with; makes the run a Compose preflight")
+	fs.Var(&envFiles, "env-file",
+		"an env file the planned run uses, as docker compose --env-file; repeatable")
+	fs.Var(&profiles, "profile",
+		"a profile the planned run activates, as docker compose --profile; repeatable")
+	fs.StringVar(&cfg.ProjectName, "project-name", env("AUDIT_PROJECT_NAME", ""),
+		"the project name the planned run uses, as docker compose -p (default: what Compose derives)")
+	fs.StringVar(&cfg.ProjectDirectory, "project-directory", env("AUDIT_PROJECT_DIRECTORY", ""),
+		"the project directory of the planned run, as docker compose --project-directory (default: the first file's directory)")
+	fs.Var(&services, "compose-service",
+		"a service the planned run starts, as in docker compose up <service>; repeatable (default: every service)")
 	fs.StringVar(&mode, "mode", env("AUDIT_MODE", ""),
 		"host-audit (the host on its own) or compose-preflight (needs --compose); default: compose-preflight when --compose is given, host-audit otherwise")
 	fs.BoolVar(&cfg.Egress, "egress", false,
@@ -156,6 +182,11 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 
 	typed := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { typed[f.Name] = true })
+	cfg.ComposeFiles, cfg.EnvFiles = composeFiles.values(), envFiles.values()
+	cfg.Profiles, cfg.ComposeServices = profiles.values(), services.values()
+	if len(cfg.ComposeFiles) > 0 {
+		cfg.Compose = cfg.ComposeFiles[0]
+	}
 
 	// Network-enabling variables are ignored, and named, rather than honoured.
 	for _, name := range []string{"AUDIT_ONLINE", "AUDIT_EGRESS", "AUDIT_UPLOAD", "AUDIT_OSV_URL"} {
@@ -234,13 +265,36 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 	}
 
 	if cfg.Compose != "" {
-		if err := checkComposeFile(cfg.Compose); err != nil {
-			return nil, err
+		for i, file := range cfg.ComposeFiles {
+			if err := checkComposeFile(file); err != nil {
+				return nil, err
+			}
+			if cfg.ComposeFiles[i], err = filepath.Abs(file); err != nil {
+				return nil, err
+			}
 		}
-		cfg.Compose, err = filepath.Abs(cfg.Compose)
-		if err != nil {
-			return nil, err
+		cfg.Compose = cfg.ComposeFiles[0]
+		for i, file := range cfg.EnvFiles {
+			if err := checkPlanFile("--env-file", file); err != nil {
+				return nil, err
+			}
+			if cfg.EnvFiles[i], err = filepath.Abs(file); err != nil {
+				return nil, err
+			}
 		}
+		if cfg.ProjectDirectory != "" {
+			info, statErr := os.Stat(cfg.ProjectDirectory)
+			if statErr != nil || !info.IsDir() {
+				return nil, fmt.Errorf("--project-directory %q: the planned run needs an existing directory", cfg.ProjectDirectory)
+			}
+			if cfg.ProjectDirectory, err = filepath.Abs(cfg.ProjectDirectory); err != nil {
+				return nil, err
+			}
+		}
+	} else if len(cfg.EnvFiles) > 0 || len(cfg.Profiles) > 0 || cfg.ProjectName != "" ||
+		cfg.ProjectDirectory != "" || len(cfg.ComposeServices) > 0 {
+		return nil, fmt.Errorf("--env-file, --profile, --project-name, --project-directory and --compose-service " +
+			"describe a planned Compose run and need --compose; a host audit has none")
 	}
 
 	// The two upload flags are useless apart, and a partially configured upload that
@@ -362,6 +416,69 @@ func checkComposeFile(path string) error {
 		return fmt.Errorf("--compose %q: the Compose preflight needs a readable Compose file: %w", path, err)
 	}
 	return file.Close()
+}
+
+// checkPlanFile refuses a file of the planned run that does not exist or cannot be
+// read, before anything is collected.
+func checkPlanFile(flagName, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("%s %q: the planned run names a file that cannot be read: %w", flagName, path, err)
+	}
+	return file.Close()
+}
+
+// listFlag is a repeatable string flag. Values given on the command line replace
+// the environment default rather than adding to it.
+type listFlag []string
+
+func (l *listFlag) String() string { return strings.Join(*l, ",") }
+
+func (l *listFlag) Set(value string) error {
+	// The first typed value replaces whatever the environment supplied.
+	if len(*l) > 0 && (*l)[0] == envMarker {
+		*l = nil
+	}
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("empty value")
+	}
+	*l = append(*l, value)
+	return nil
+}
+
+func (l listFlag) values() []string {
+	out := make([]string, 0, len(l))
+	for _, v := range l {
+		if v != envMarker {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// envMarker leads a list that came from the environment, so a typed flag knows to
+// replace it rather than add to it.
+const envMarker = "\x00env"
+
+func splitPathList(raw string) []string {
+	return markEnv(strings.Split(raw, string(os.PathListSeparator)))
+}
+
+func splitComma(raw string) []string {
+	return markEnv(strings.Split(raw, ","))
+}
+
+func markEnv(parts []string) []string {
+	var out []string
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return append([]string{envMarker}, out...)
 }
 
 func withoutSection(sections []model.Section, drop model.Section) []model.Section {

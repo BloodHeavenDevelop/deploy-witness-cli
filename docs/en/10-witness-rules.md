@@ -48,14 +48,14 @@ with the previous version of the same deployment is information, not a conflict 
 so several rules ask whether the thing in the way carries this deployment's own
 project label, and downgrade to `info` when it does.
 
-The project name is derived, not guessed: it is the **name of the directory holding
-the compose file**, which is Compose's own default, normalised the way Compose
-normalises it (lowercased, everything outside `[a-z0-9_-]` dropped). Getting this
-wrong would turn every redeployment into a wall of false conflicts with itself.
-
-If you deploy with an explicit `-p`/`COMPOSE_PROJECT_NAME` that differs from the
-directory name, the "this is your own container" downgrades will not apply and
-those findings will read as conflicts with an unrelated stack.
+The project name is resolved, not guessed: it is the name **Compose itself resolves
+for the planned run** — `--project-name`, then `COMPOSE_PROJECT_NAME`, then a
+top-level `name:` in the files, then the project directory, normalised the way
+Compose normalises it (lowercased, everything outside `[a-z0-9_-]` dropped). Where it
+came from is in `plan.csv` (`project-name-source`). Getting this wrong would turn
+every redeployment into a wall of false conflicts with itself, so pass the same
+`--project-name` (or the same environment) you deploy with — see
+[04 — The planned run](04-cli-reference.md#the-planned-run).
 
 ## Outcomes: problem, no problem, insufficient data
 

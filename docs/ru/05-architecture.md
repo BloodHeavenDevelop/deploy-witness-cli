@@ -7,7 +7,7 @@ main.go
   └─ config.Load(argv, env)          флаги → Config, либо ошибка до любого действия
   └─ --commands? напечатать run.Commands() и выйти      (сам применяемый список)
   └─ logging.New(stderr, level)      диагностика никогда не попадает в stdout
-  └─ audit.New(cfg, log).Prepare()   только Compose preflight: разбор --compose, иначе код 2 без отчёта
+  └─ audit.New(cfg, log).Prepare()   только Compose preflight: разрешение планируемого запуска (plan.go: движок, docker compose config), иначе код 2 без отчёта
   └─ auditor.Run()
        ├─ model.ReadOSRelease()      /etc/os-release → идентичность дистрибутива
        ├─ pkgmgr.Detect(os, runner)  какой пакетный менеджер реально есть на хосте
@@ -67,7 +67,7 @@ main.go
 | `app/collect/system` | Инвентарь хоста и его защищённость. |
 | `app/collect/ports` | Слушающие сокеты из `/proc/net`. |
 | `app/collect/services` | Службы из systemd, OpenRC, SysV или таблицы процессов. |
-| `app/collect/manifest` | Парсер compose-файла: сторона *требований* witness. Читает один переданный файл и `.env` рядом с ним. О хосте не наблюдает ничего. |
+| `app/collect/manifest` | Сторона *требований* witness: `resolved.go` читает модель, которую `docker compose config` напечатал для планируемого запуска (у переменных окружения — только имена); встроенный парсер читает один переданный файл и `.env` рядом с ним, когда Compose не установлен. О хосте не наблюдает ничего. |
 | `app/collect/host` | Архитектура, память, файловые системы вместе с inode и уже установленные базы данных — числами, а не прозой. |
 | `app/collect/docker` | Движок контейнеров: сам движок, реализация compose, контейнеры, сети, тома, образы. |
 | `app/collect/proxy` | nginx / Apache: эффективная конфигурация, имена серверов с файлом и строкой, порты, пути сертификатов. |

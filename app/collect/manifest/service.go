@@ -337,10 +337,17 @@ func (w *warner) envFiles(node *yaml.Node, where, dir string) []model.EnvFileRef
 				w.add("%s: no path", at)
 				continue
 			}
-			// `required: false` says the deployment tolerates the file being absent.
-			// It changes what a missing file means, not whether it is there, so it is
-			// not recorded: EnvFileRef has Path and Exists and nothing else.
-			out = append(out, w.envFile(text, dir))
+			// `required: false` says the deployment tolerates the file being absent:
+			// Compose skips it, so a missing optional file is not a failure.
+			ref := w.envFile(text, dir)
+			if required := field(item, "required"); required != nil && !isNull(required) {
+				if value, ok := parseBool(required); ok {
+					ref.Optional = !value
+				} else {
+					w.add("%s.required: expected true or false", at)
+				}
+			}
+			out = append(out, ref)
 		default:
 			w.add("%s: expected a path or a mapping, got %s", at, kindName(item))
 		}
@@ -368,6 +375,9 @@ func (w *warner) envFile(declared, dir string) model.EnvFileRef {
 	case errors.Is(err, fs.ErrNotExist):
 		// Absent is an ordinary answer, and Exists already says it.
 	default:
+		// Neither present nor absent: the stat itself failed (a directory this
+		// account cannot enter). That is an unknown, not a missing file.
+		ref.StatError = err.Error()
 		w.add("env_file %q: %v", declared, err)
 	}
 	return ref

@@ -124,6 +124,15 @@ The rules themselves, with every finding code, are
 
 ### The requirements side: `app/collect/manifest`
 
+**When Compose is installed, the requirements are Compose's own model of the
+planned run**: `docker compose <plan flags> config --format json
+--no-env-resolution` (see [04 — The planned run](04-cli-reference.md#the-planned-run)),
+decoded by `resolved.go` into the same manifest types. The decoder has no field for
+an environment value, a command or a secret, so those never leave it, and the raw
+output is not kept. Everything below describes the **built-in parser**, which reads
+the plan when Compose is not installed (one file, no env files, no profiles) and
+which checks every file of the plan for parse errors before Compose is asked.
+
 One file on disk, the one named by `--compose`. No command is run, no socket is
 opened and no registry is contacted, so this collector is as offline as the rest
 of the tool.

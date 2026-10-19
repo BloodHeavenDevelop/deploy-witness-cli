@@ -95,11 +95,65 @@ every case the exit code is `2` and `./report` is not created:
 The first three are refused while the flags are read, so nothing else is printed;
 the last three after the network plan and before the first section.
 
+### The planned run
+
+A Compose preflight checks **the run you are about to make**, not a reading of one
+file. The plan flags mirror `docker compose` itself, and the model is resolved by
+Compose:
+
+```
+deploy-witness --compose compose.yml --compose compose.prod.yml \
+  --env-file .env.prod --profile web --project-name shop --compose-service api
+```
+
+checks exactly what `docker compose -f compose.yml -f compose.prod.yml --env-file
+.env.prod --profile web -p shop up api` would start. Before anything is collected
+the tool runs `docker compose <the same flags> config --format json
+--no-env-resolution` (on the [allowlist](09-command-allowlist.md)): the files are
+merged in order, the env files and profiles applied, `${VARIABLE}` interpolated from
+this run's environment, relative paths resolved against the project directory, and
+the project name decided by Compose's own precedence. `config` works from local
+files only — no daemon, no network. Its output carries interpolated values; it is
+parsed in memory into the requirements the rules compare (environment variable
+**names** only) and never written anywhere. `plan.csv` and `audit.plan` in
+`report.json` record what was checked: the files in order, the project name and
+where it came from, the env files, profiles and services, the resolver and its
+version, the names of the `COMPOSE_*`/`DOCKER_*` variables present, and the engine.
+
+**The plan is tied to one engine.** The tool reads the docker CLI's active context
+(`docker context show`/`inspect`) and `DOCKER_HOST`. A plan that would go to a
+remote engine (`ssh://`, `tcp://`) is refused: this audit inspects the host it runs
+on and cannot speak for another machine. The engine that answered is recorded by its
+`docker info` ID and name, so two servers with the same container names cannot be
+mistaken for each other.
+
+If Compose is not installed here, a plan of **one file** with no `--env-file` and no
+`--profile` is read by the built-in parser instead; the report says so and the
+`witness` and `preflight` rows are `partial` — an approximation is never presented as
+Compose's own resolution. A plan the built-in parser cannot reproduce is refused.
+
+**A failure to prepare the plan is never a preflight result.** Each case below is
+exit `2`, reported after the network plan and before the first section, with no
+report written:
+
+| Plan | Why it is refused |
+|---|---|
+| `docker compose config` rejects it (a `${VAR:?}` with no value, an unknown key, a missing required `env_file`, an inactive profile's service named by a dependency) | Compose would reject the run too; its message is quoted, credentials masked |
+| A file `include:`s a remote source (`https://`, `git@`, `oci://`) | Resolving it would fetch it; vendor the file and include it by path |
+| `DOCKER_HOST` or the active docker context points at a remote engine | The plan is for another machine |
+| `--compose-service` names a service that is not in the resolved plan | No such service, or its profile is not activated |
+| Compose is not installed and the plan has several files, `--env-file` or `--profile` | The built-in parser cannot reproduce it |
+
 ## Witness
 
 | Flag | Environment | Default | Meaning |
 |---|---|---|---|
-| `--compose <path>` | `AUDIT_COMPOSE` | none | The `docker-compose.yml` the `witness` section compares this host against; giving it makes the run a Compose preflight. The file is checked at startup — missing, unreadable or unparseable is exit code `2` with no report, not a degraded section — and the path is resolved to an absolute one. Its directory is the project directory: `.env` is looked for there, relative `env_file` paths resolve against it, and its **name** becomes the Compose project name, which is how the section tells "this port is taken by something else" from "this port is taken by the previous version of this very deployment". |
+| `--compose <path>` | `AUDIT_COMPOSE` (several paths separated by `:`, like `COMPOSE_FILE`) | none | A Compose file of the planned run, as `docker compose -f`; repeat it for several, **in the order you deploy with**. Giving it makes the run a Compose preflight. Every file is checked at startup — missing, unreadable or unparseable is exit code `2` with no report, not a degraded section — and the paths are made absolute. See [The planned run](#the-planned-run). |
+| `--env-file <path>` | `AUDIT_ENV_FILE` (`:`-separated) | none | An env file of the planned run, as `docker compose --env-file`; repeatable. Read by Compose for interpolation; its values never reach the report. |
+| `--profile <name>` | `AUDIT_PROFILE` (comma-separated) | none — `COMPOSE_PROFILES` applies, as for Compose | A profile the planned run activates; repeatable. |
+| `--project-name <name>` | `AUDIT_PROJECT_NAME` | what Compose derives | The project name, as `docker compose -p`. The name decides which existing containers, networks and volumes are this deployment's own — see [10 — The project name](10-witness-rules.md#the-project-name-and-why-it-matters). |
+| `--project-directory <dir>` | `AUDIT_PROJECT_DIRECTORY` | the first file's directory | As `docker compose --project-directory`: where `.env` is read and relative paths resolve. |
+| `--compose-service <name>` | `AUDIT_COMPOSE_SERVICES` (comma-separated) | every service of the active profiles | A service the planned run starts, as `docker compose up <service>`; repeatable. Its dependencies are included, as Compose includes them. |
 | `--egress` | — | `false` | Permit the one outbound check: a TCP connect to each registry the manifest pulls from — port 443, or the port the image reference names (`registry.local:5000/app`) — 5 s per registry. The address actually dialled is what the evidence and the section note name. No TLS handshake, no HTTP request, no authentication, no image manifest fetched. Without it the reachability rule reports "not checked" rather than concluding anything. |
 
 Without `--compose` the run is a host audit and the witness section is out of its
@@ -198,9 +252,11 @@ Child processes:
 - `DOCKER_HOST` or `CONTAINER_HOST` pointing anywhere but a `unix://` socket is
   removed from the environment of every command the audit runs, with a warning: the
   docker and podman commands on the allowlist are asked about this host's local
-  engine only. **Not covered:** a docker *context* selected in `~/.docker/config.json`
-  that points at a remote engine — the docker CLI follows it. Check
-  `docker context show` before auditing a host where that may be set.
+  engine only. A docker *context* that points at a remote engine is covered too: the
+  audit reads it (`docker context inspect`) and pins every docker command to the
+  local default context (`DOCKER_CONTEXT=default`), with a warning. In a Compose
+  preflight neither is worked around — a plan aimed at a remote engine is refused,
+  see [The planned run](#the-planned-run).
 - `--commands` marks the commands that reach the network themselves
   (`network: yes — runs only with --online`), and the Runner refuses them on a run
   without that flag.
@@ -266,6 +322,10 @@ sudo deploy-witness --compose /srv/app/docker-compose.yml
 
 # The same, for a scheduled job that must never degrade into a host audit.
 sudo deploy-witness --mode compose-preflight --compose /srv/app/docker-compose.yml
+
+# The exact run of a layered deployment: two files, an env file, a profile, one service.
+sudo deploy-witness --compose /srv/app/compose.yml --compose /srv/app/compose.prod.yml \
+  --env-file /srv/app/.env.prod --profile web --project-name shop --compose-service api
 
 # The witness section only, and test whether the registries are reachable.
 sudo deploy-witness --sections ports,services,witness \

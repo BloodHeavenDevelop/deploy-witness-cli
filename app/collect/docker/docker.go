@@ -82,6 +82,7 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 	info, infoErr := runner.Output(kind, "info", "--format", "{{json .}}")
 	if infoErr == nil {
 		runtime.StorageDriver = parseStorageDriver(info)
+		runtime.EngineID, runtime.EngineName = parseEngineIdentity(info)
 	}
 
 	// `ps` is the reachability probe: it cannot be answered without the daemon,

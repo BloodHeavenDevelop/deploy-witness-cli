@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -207,5 +208,64 @@ func TestFormatBothWritesOneRun(t *testing.T) {
 	stamp := strings.Replace(strings.TrimSuffix(doc.Audit.GeneratedAt, "Z"), "T", " ", 1)
 	if len(stamp) < 19 || !strings.Contains(string(summary), "at "+stamp[:19]+" UTC") {
 		t.Errorf("summary.csv does not carry report.json's generatedAt %q:\n%s", doc.Audit.GeneratedAt, summary)
+	}
+}
+
+// DW-81: a plan Compose would reject stops the preflight — exit 2, Compose's own
+// reason, no report. A failed preparation must never yield a preflight result.
+func TestPreflightOfAPlanComposeRejects(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil || exec.Command("docker", "compose", "version").Run() != nil {
+		t.Skip("docker compose is not installed; the plan is resolved by the built-in parser here")
+	}
+	dir := t.TempDir()
+	out := filepath.Join(dir, "report")
+	compose := writeFile(t, dir, "docker-compose.yml",
+		"services:\n  app:\n    image: nginx:1.27\n    ports: [\"${DW_TEST_REQUIRED_PORT:?set the port}:80\"]\n", 0o600)
+	t.Setenv("DW_TEST_REQUIRED_PORT", "")
+	code, log := cli(t, "--compose", compose, "--sections", "witness", "--out", out)
+
+	if code != exitUsage || !strings.Contains(log, "docker compose config rejected the planned run") ||
+		!strings.Contains(log, "set the port") {
+		t.Errorf("exit = %d, log = %q", code, log)
+	}
+	noReport(t, out)
+}
+
+// DW-81: a plan that includes a remote file is refused rather than resolved,
+// because resolving it would fetch it.
+func TestPreflightRefusesARemoteInclude(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "report")
+	compose := writeFile(t, dir, "docker-compose.yml",
+		"include:\n  - https://example.com/base.yml\nservices:\n  app:\n    image: nginx:1.27\n", 0o600)
+	code, log := cli(t, "--compose", compose, "--sections", "witness", "--out", out)
+
+	if code != exitUsage || !strings.Contains(log, "from a remote source") {
+		t.Errorf("exit = %d, log = %q", code, log)
+	}
+	noReport(t, out)
+}
+
+// DW-81: a plan aimed at a remote engine is a plan for another machine; checking it
+// against this one would answer the wrong question.
+func TestPreflightRefusesARemoteEngine(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "report")
+	compose := writeFile(t, dir, "docker-compose.yml", "services:\n  app:\n    image: nginx:1.27\n", 0o600)
+	t.Setenv("DOCKER_HOST", "ssh://deploy@192.0.2.10")
+	code, log := cli(t, "--compose", compose, "--sections", "witness", "--out", out)
+
+	if code != exitUsage || !strings.Contains(log, "cannot speak for that engine") {
+		t.Errorf("exit = %d, log = %q", code, log)
+	}
+	noReport(t, out)
+}
+
+// DW-81: the plan's flags describe a Compose run and are refused without one.
+func TestPlanFlagsNeedACompose(t *testing.T) {
+	dir := t.TempDir()
+	code, log := cli(t, "--profile", "web", "--out", filepath.Join(dir, "r"))
+	if code != exitUsage || !strings.Contains(log, "need --compose") {
+		t.Errorf("exit = %d, log = %q", code, log)
 	}
 }

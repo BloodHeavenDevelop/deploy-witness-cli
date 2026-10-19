@@ -264,7 +264,9 @@ type Report struct {
 	// The witness section's output. Manifest and Capabilities are the two sides
 	// it compared; keeping them in the report is what lets a reader check a finding
 	// rather than take it on faith.
-	Manifest     *Manifest     `json:"manifest,omitempty"`
+	Manifest *Manifest `json:"manifest,omitempty"`
+	// Plan is the exact run the preflight checked; nil in a host audit.
+	Plan         *LaunchPlan   `json:"plan,omitempty"`
 	Capabilities *Capabilities `json:"capabilities,omitempty"`
 	Findings     []Finding     `json:"findings"`
 	// Rules is one outcome per witness rule, including the rules that published no

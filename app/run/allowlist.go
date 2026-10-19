@@ -102,6 +102,13 @@ type Spec struct {
 	Section string
 	// MaxRepeat bounds a trailing `<kind>...` argument. Zero means the default.
 	MaxRepeat int
+	// Options are the option pairs an `<options>` element of Args stands for: each
+	// one a literal flag followed by one free-form value of the kind given, in any
+	// order and number up to MaxRepeat pairs. It exists for `docker compose`, whose
+	// project flags (`--file`, `--env-file`, `--profile`, …) must precede the
+	// subcommand and repeat in an order that matters. Every flag is still a literal
+	// and every value still matches its class; nothing else may stand in their place.
+	Options map[string]ArgKind
 	// Network names the flag that permits this command, for a command that opens
 	// network connections of its own (debsecan and arch-audit download their
 	// advisory data on every call). Empty means the command works from local data
@@ -127,9 +134,31 @@ func (s Spec) String() string {
 	}
 	args := make([]string, len(s.Args))
 	for i, arg := range s.Args {
+		if arg == OptionsToken {
+			args[i] = s.renderOptions()
+			continue
+		}
 		args[i] = escapeControl(arg)
 	}
 	return s.Binary + " " + strings.Join(args, " ")
+}
+
+// OptionsToken is the Args element that stands for zero or more Options pairs.
+const OptionsToken = "<options>"
+
+// renderOptions prints the option pairs the way --commands shows them:
+// `[--env-file <path> | --file <path> | …]...`.
+func (s Spec) renderOptions() string {
+	flags := make([]string, 0, len(s.Options))
+	for flag := range s.Options {
+		flags = append(flags, flag)
+	}
+	sort.Strings(flags)
+	parts := make([]string, 0, len(flags))
+	for _, flag := range flags {
+		parts = append(parts, fmt.Sprintf("%s <%s>", flag, s.Options[flag]))
+	}
+	return "[" + strings.Join(parts, " | ") + "]..."
 }
 
 // NetworkCommands returns the specs that reach the network, sorted like Commands.
@@ -159,12 +188,38 @@ func (s Spec) matches(argv []string) bool {
 		maxRepeat = defaultMaxRepeat
 	}
 
-	for i, want := range s.Args {
+	at := 0 // the next element of argv to match
+	for _, want := range s.Args {
+		if want == OptionsToken {
+			// Zero or more `<flag> <value>` pairs, each flag a literal from Options
+			// and each value of that flag's class. A flag never equals the literal
+			// that follows the options (the subcommand), so consuming greedily is
+			// unambiguous.
+			pairs := 0
+			for at+1 < len(argv) {
+				kind, isOption := s.Options[argv[at]]
+				if !isOption {
+					break
+				}
+				pattern, known := argPatterns[kind]
+				if !known || !pattern.MatchString(argv[at+1]) {
+					return false
+				}
+				at += 2
+				pairs++
+				if pairs > maxRepeat {
+					return false
+				}
+			}
+			continue
+		}
+
 		kind, repeat, isPlaceholder := placeholder(want)
 		if !isPlaceholder {
-			if i >= len(argv) || argv[i] != want {
+			if at >= len(argv) || argv[at] != want {
 				return false
 			}
+			at++
 			continue
 		}
 
@@ -176,15 +231,16 @@ func (s Spec) matches(argv []string) bool {
 		}
 
 		if !repeat {
-			if i >= len(argv) || !pattern.MatchString(argv[i]) {
+			if at >= len(argv) || !pattern.MatchString(argv[at]) {
 				return false
 			}
+			at++
 			continue
 		}
 
 		// A repeated placeholder is only ever the last element, and it must
 		// consume at least one argument.
-		rest := argv[i:]
+		rest := argv[at:]
 		if len(rest) == 0 || len(rest) > maxRepeat {
 			return false
 		}
@@ -197,7 +253,7 @@ func (s Spec) matches(argv []string) bool {
 	}
 
 	// No repeat consumed the tail, so the lengths have to agree exactly.
-	return len(argv) == len(s.Args)
+	return at == len(argv)
 }
 
 // placeholder decodes `<kind>` and `<kind>...`.

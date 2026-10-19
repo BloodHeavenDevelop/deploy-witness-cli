@@ -4,9 +4,9 @@ package audit
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/manifest"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/ports"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/services"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/system"
@@ -39,6 +39,8 @@ type Auditor struct {
 	// section to carry.
 	manifest   *model.Manifest
 	parseNotes model.SectionResult
+	// plan is the exact run the preflight checks, resolved by Prepare.
+	plan *model.LaunchPlan
 
 	// What the network paths actually did, for network.csv: requests sent to the
 	// OSV API, and the host:port of every registry --egress dialled.
@@ -72,12 +74,7 @@ func (a *Auditor) Prepare() error {
 		return nil
 	}
 	a.parseNotes = model.SectionResult{Section: model.SectionWitness, Status: model.StatusOk}
-	parsed, err := manifest.Parse(a.cfg.Compose, &a.parseNotes)
-	if err != nil {
-		return fmt.Errorf("the Compose preflight cannot start, the Compose file could not be parsed: %w", err)
-	}
-	a.manifest = parsed
-	return nil
+	return a.preparePlan()
 }
 
 // Run executes every selected section. It returns a report even when sections
@@ -96,8 +93,13 @@ func (a *Auditor) Run() *model.Report {
 
 	switch a.cfg.Mode {
 	case model.ModeComposePreflight:
-		a.log.Info(fmt.Sprintf("mode: %s of %s", a.cfg.Mode.Label(), a.cfg.Compose))
+		a.log.Info(fmt.Sprintf("mode: %s of %s", a.cfg.Mode.Label(), strings.Join(a.cfg.ComposeFiles, " + ")))
+		if a.plan != nil {
+			a.log.Info(fmt.Sprintf("plan: project %q (from %s), resolved by %s, starting %s",
+				a.plan.ProjectName, a.plan.ProjectNameSource, a.plan.Resolver, strings.Join(a.plan.Started, ", ")))
+		}
 	default:
+		a.pinLocalEngine()
 		a.log.Info(fmt.Sprintf("mode: %s — no --compose was given; comparing a planned deployment with "+
 			"this host (the witness section) is outside the scope of this run", a.cfg.Mode.Label()))
 	}

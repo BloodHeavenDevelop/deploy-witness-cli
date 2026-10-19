@@ -90,6 +90,14 @@ func tables(r *model.Report) []table {
 			rows:    anySlice(evidenceRows(r)),
 		},
 		{
+			// The exact run the preflight checked. Header only in a host audit, which
+			// checks no run.
+			name:    "plan",
+			headers: []string{"Key", "Value"},
+			paths:   []string{"key", "value"},
+			rows:    anySlice(planRows(r.Plan)),
+		},
+		{
 			name:    "changes",
 			headers: []string{"Kind", "Target", "Detail"},
 			paths:   []string{"kind", "target", "detail"},
@@ -283,6 +291,52 @@ func preflightRow(r *model.Report) model.SummaryRow {
 			" with this host did not complete (see the witness row); this is not a preflight result"
 	}
 	return row
+}
+
+// planRow is one line of plan.csv.
+type planRow struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// planRows renders the launch plan as key/value rows, a list as one row per item so
+// the order of the Compose files stays visible.
+func planRows(plan *model.LaunchPlan) []planRow {
+	if plan == nil {
+		return nil
+	}
+	var rows []planRow
+	add := func(key, value string) { rows = append(rows, planRow{Key: key, Value: value}) }
+	list := func(key string, values []string, none string) {
+		if len(values) == 0 {
+			add(key, none)
+			return
+		}
+		for _, v := range values {
+			add(key, v)
+		}
+	}
+	list("file", plan.Files, "")
+	add("project-directory", plan.ProjectDirectory)
+	add("project-name", plan.ProjectName)
+	add("project-name-source", plan.ProjectNameSource)
+	list("env-file", plan.EnvFiles, "none")
+	list("profile", plan.Profiles, "none (or COMPOSE_PROFILES)")
+	list("service", plan.Services, "all of the active profiles")
+	list("starts", plan.Started, "none")
+	add("resolver", plan.Resolver)
+	add("resolver-version", plan.ResolverVersion)
+	list("environment", plan.Environment, "none")
+	add("engine-context", plan.Engine.Context)
+	add("engine-endpoint", plan.Engine.Endpoint)
+	add("engine-local", fmt.Sprint(plan.Engine.Local))
+	add("engine-id", plan.Engine.ID)
+	add("engine-name", plan.Engine.Name)
+	add("engine-version", plan.Engine.Version)
+	for _, note := range plan.Notes {
+		add("note", note)
+	}
+	return rows
 }
 
 // resultSummary is the preflight row's account of what the comparison concluded,

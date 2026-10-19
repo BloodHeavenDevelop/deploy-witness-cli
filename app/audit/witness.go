@@ -36,6 +36,10 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 	result.Status = a.parseNotes.Status
 	result.Notes = append(result.Notes, a.parseNotes.Notes...)
 	report.Manifest = parsed
+	report.Plan = a.plan
+	if a.plan != nil {
+		result.Note(LaunchSummary(a.plan))
+	}
 
 	caps := &model.Capabilities{
 		Ports:          report.Ports,
@@ -66,12 +70,16 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 	caps.Databases = host.Databases(caps, result)
 
 	report.Capabilities = caps
+	if a.plan != nil && caps.Runtime != nil {
+		a.plan.Engine.ID, a.plan.Engine.Name, a.plan.Engine.Version =
+			caps.Runtime.EngineID, caps.Runtime.EngineName, caps.Runtime.Version
+	}
 
 	in := witness.Input{
 		Manifest: parsed,
 		Caps:     caps,
 		Now:      time.Now().UTC(),
-		Project:  projectName(a.cfg.Compose),
+		Project:  a.projectName(),
 		// Without the ports section the socket list is unknown, not empty.
 		PortsUnchecked: !a.cfg.Wants(model.SectionPorts),
 	}
@@ -138,12 +146,15 @@ func HostAuditWitness() model.SectionResult {
 	}
 }
 
-// projectName is the Compose project the deployment will use: the name of the
-// directory holding the manifest, which is Compose's own default. Getting this
-// wrong turns every redeployment into a wall of false conflicts with itself, so it
-// is derived rather than guessed.
-func projectName(composePath string) string {
-	return filepath.Base(filepath.Dir(composePath))
+// projectName is the Compose project the deployment will use, as the plan resolved
+// it (--project-name, COMPOSE_PROJECT_NAME, `name:`, or the project directory).
+// Getting this wrong turns every redeployment into a wall of false conflicts with
+// itself, so it is resolved rather than guessed.
+func (a *Auditor) projectName() string {
+	if a.plan != nil && a.plan.ProjectName != "" {
+		return a.plan.ProjectName
+	}
+	return normaliseName(filepath.Base(filepath.Dir(a.cfg.Compose)))
 }
 
 // rebootRequired reads the answer the system section already established, rather
@@ -231,4 +242,29 @@ func findingCounts(findings []model.Finding) (blockers, warnings int) {
 		}
 	}
 	return blockers, warnings
+}
+
+// LaunchSummary is the one line the witness notes give the plan: what was checked,
+// how it was resolved, and against which engine. It reaches summary.csv and the
+// upload's witness collector.
+func LaunchSummary(plan *model.LaunchPlan) string {
+	engine := "the local engine"
+	if plan.Engine.Context != "" {
+		engine = "docker context " + plan.Engine.Context
+	}
+	if plan.Engine.Endpoint != "" {
+		engine += " (" + plan.Engine.Endpoint + ")"
+	}
+	resolver := plan.Resolver
+	if plan.ResolverVersion != "" {
+		resolver += " " + plan.ResolverVersion
+	}
+	profiles := "no profile"
+	if len(plan.Profiles) > 0 {
+		profiles = "profiles " + strings.Join(plan.Profiles, ", ")
+	}
+	return fmt.Sprintf("plan: project %s (from %s), %d Compose file(s), %d env file(s), %s, starting %s; "+
+		"resolved by %s; engine %s (plan.csv)",
+		plan.ProjectName, plan.ProjectNameSource, len(plan.Files), len(plan.EnvFiles), profiles,
+		strings.Join(plan.Started, ", "), resolver, engine)
 }

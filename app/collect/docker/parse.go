@@ -664,6 +664,27 @@ func parseStorageDriver(out string) string {
 	return strings.TrimSpace(info.Store.GraphDriverName)
 }
 
+// parseEngineIdentity reads which engine answered from `info`: docker's ID and
+// Name (the daemon's host name); podman has no daemon ID and is identified by its
+// host name alone.
+func parseEngineIdentity(out string) (id, name string) {
+	var info struct {
+		ID   string `json:"ID"`
+		Name string `json:"Name"`
+		Host struct {
+			Hostname string `json:"hostname"`
+		} `json:"host"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &info); err != nil {
+		return "", ""
+	}
+	name = strings.TrimSpace(info.Name)
+	if name == "" {
+		name = strings.TrimSpace(info.Host.Hostname)
+	}
+	return strings.TrimSpace(info.ID), name
+}
+
 // parseEngineVersion reads `version --format {{json .}}`. The server version is
 // the engine's own and is preferred; the client version is the fallback, and it
 // is all there is when the daemon did not answer.

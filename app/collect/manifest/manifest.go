@@ -68,6 +68,14 @@ func Parse(path string, result *model.SectionResult) (*model.Manifest, error) {
 	}
 	interpolate(root, environment{dotenv: dotenv}, w)
 
+	if name := field(root, "name"); name != nil && !isNull(name) {
+		if text, ok := str(name); ok {
+			manifest.Name = text
+		} else {
+			w.add("name: expected a string, got %s", kindName(name))
+		}
+	}
+
 	if version := field(root, "version"); version != nil && !isNull(version) {
 		if text, ok := str(version); ok {
 			manifest.Version = text

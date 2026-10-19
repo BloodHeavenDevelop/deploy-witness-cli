@@ -193,6 +193,11 @@ func Report(report *model.Report) int {
 	for i := range report.Rules {
 		sweep(&report.Rules[i].Reason)
 	}
+	if plan := report.Plan; plan != nil {
+		for i := range plan.Notes {
+			sweep(&plan.Notes[i])
+		}
+	}
 
 	if caps := report.Capabilities; caps != nil {
 		for i := range caps.Jobs {

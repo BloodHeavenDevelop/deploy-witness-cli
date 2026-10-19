@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A Compose preflight checks the exact planned run** (DW-81): `--compose` is
+  repeatable (merge order kept), plus `--env-file`, `--profile`, `--project-name`,
+  `--project-directory` and `--compose-service`, mirroring `docker compose`
+  (`AUDIT_COMPOSE` takes a `:`-separated list). The model is resolved by
+  `docker compose <the same flags> config --format json --no-env-resolution`
+  ([app/audit/plan.go](app/audit/plan.go),
+  [app/collect/manifest/resolved.go](app/collect/manifest/resolved.go)) — merge,
+  profiles, interpolation, relative paths and the project name exactly as Compose
+  does them, offline and without the daemon; its output is parsed in memory and
+  never written (environment variable names only). New `plan.csv` / `audit.plan`
+  record the files, project name and its source, env files, profiles, services and
+  what they start, the resolver and its version, the `COMPOSE_*`/`DOCKER_*` variable
+  names present, and the engine (context, endpoint, `docker info` ID and name).
+  `--compose-service` narrows the plan to the named services and their
+  dependencies.
+- **Allowlist** (DW-81): `docker compose <options> config --format json
+  [--no-env-resolution]`, with `<options>` an explicit table of option pairs
+  (`--file`, `--env-file`, `--project-directory`: path; `--profile`,
+  `--project-name`: name); `docker context show`; `docker context inspect --format
+  {{json .Endpoints.docker.Host}}`. 72 commands.
+
 - **Every witness rule ends in exactly one outcome** (DW-80): `problem`,
   `no-problem`, `unknown` (insufficient data), `manual-check` or `not-applicable`
   ([app/witness/outcomes.go](app/witness/outcomes.go), `model.Outcome`). The outcome
@@ -27,6 +48,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The project name is the one Compose resolves** (DW-81) — `--project-name`,
+  `COMPOSE_PROJECT_NAME`, a top-level `name:`, then the project directory — instead
+  of always the directory name, which made a deployment with `-p` or `name:` read
+  its own containers as foreign.
+- **A plan that cannot be prepared is exit 2 with no report** (DW-81): `docker
+  compose config` rejecting the plan (its reason quoted, credentials masked), a
+  remote `include:` (resolving it would fetch it), a plan aimed at a remote engine
+  (`DOCKER_HOST` or the active context over `ssh://`/`tcp://`), a
+  `--compose-service` not in the resolved plan, or a plan the built-in parser cannot
+  reproduce when Compose is not installed. Without Compose a one-file plan is read
+  by the built-in parser and the preflight is `partial`, never presented as
+  Compose's own resolution.
+
 - **Only a proven problem can be a blocker; "no problem" is always `info`** (DW-80).
   Enforced by the engine, and a correction is counted as a bug in the section notes.
 - **The `witness` row of `summary.csv` counts proven problems only** (DW-80):
@@ -36,6 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   The `preflight` row adds `result: …` — counts per outcome — after its status.
 
 ### Fixed
+
+- **A docker context pointing at a remote engine no longer makes a host audit
+  connect to it** (DW-81): the context is read and every docker command is pinned to
+  `DOCKER_CONTEXT=default`, with a warning. This was a documented gap of the offline
+  promise.
+- **`env_file` with `required: false` is not a missing file** (DW-81), and an
+  env file whose existence could not be checked is `unknown`, not missing.
 
 - **An engine that did not answer no longer produces "does not exist" blockers**
   (DW-80). An external volume or network missing from an engine list that was not
