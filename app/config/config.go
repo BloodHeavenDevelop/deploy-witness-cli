@@ -75,6 +75,10 @@ type Config struct {
 	// environment and ignored, so the run can say so instead of silently doing
 	// something other than what the operator may expect.
 	IgnoredEnv []string
+	// Recheck is a report.json to confirm against the current plan and engine
+	// instead of running an audit; MaxAge is how old it may be. See audit.Recheck.
+	Recheck string
+	MaxAge  time.Duration
 	// ShowCommands prints the allowlist and exits. It is meant to be the first
 	// thing somebody runs: the answer to "what will this do to my server?" should
 	// be available without running the audit itself.
@@ -163,6 +167,11 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		"https:// base URL of a witness service to send the report to (off unless given; flag only, no AUDIT_UPLOAD; needs a token)")
 	fs.StringVar(&cfg.UploadToken, "upload-token", "",
 		"one-time token authorising the upload; prefer AUDIT_UPLOAD_TOKEN, which keeps it out of the process list")
+	var maxAge string
+	fs.StringVar(&cfg.Recheck, "recheck", "",
+		"confirm that a report.json still describes this plan on this engine, instead of auditing; needs the same --compose flags (exit 0 confirmed, 4 re-run the audit)")
+	fs.StringVar(&maxAge, "max-age", env("AUDIT_MAX_AGE", "1h"),
+		"with --recheck: how old a report may be and still confirm the plan")
 	fs.BoolVar(&cfg.ShowVersion, "version", false, "print the version and exit")
 	fs.BoolVar(&cfg.ShowCommands, "commands", false,
 		"print every command this binary is able to run, and exit — the tool cannot execute anything outside that list")
@@ -226,6 +235,19 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		return nil, fmt.Errorf("invalid --timeout %q: must be positive", timeout)
 	}
 	cfg.Timeout = parsed
+
+	if cfg.MaxAge, err = time.ParseDuration(maxAge); err != nil || cfg.MaxAge <= 0 {
+		return nil, fmt.Errorf("invalid --max-age %q: expected a positive duration such as 30m or 2h", maxAge)
+	}
+	if cfg.Recheck != "" {
+		if err := checkPlanFile("--recheck", cfg.Recheck); err != nil {
+			return nil, err
+		}
+		if cfg.Compose == "" {
+			return nil, fmt.Errorf("--recheck confirms a report against the planned run, and needs the same " +
+				"--compose (and --env-file, --profile, … ) flags the report was made with")
+		}
+	}
 
 	cfg.Sections, err = parseSections(sections)
 	if err != nil {

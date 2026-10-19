@@ -1,10 +1,7 @@
 package report
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -195,26 +192,6 @@ func contractStatus(status model.Status) auditv1.CollectorStatus {
 	}
 }
 
-// fingerprintSalt keeps the fingerprint from being reversible into the machine-id it
-// derives from. A bare hash of a 32-hex-character machine-id is a rainbow-table
-// lookup away from the original for anybody who has a list of the ids they care
-// about; a constant salt makes the digest specific to this purpose.
-const fingerprintSalt = "deploy-witness/witness/level-2"
-
-// fingerprint identifies this machine to the receiving service, stably and without
-// telling it anything it should not know.
-//
-// It is a hash of /etc/machine-id, never the id itself. The receiver needs to
-// recognise the same host across two uploads; it does not need an identifier that
-// works as a key into anything else about the machine, and /etc/machine-id is not
-// ours to publish. When the id is unreadable the answer is empty rather than
-// substituted with something weaker, and the receiver stores the report without a
-// host identity.
-func fingerprint() string {
-	raw, err := os.ReadFile("/etc/machine-id")
-	if err != nil || len(strings.TrimSpace(string(raw))) == 0 {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(fingerprintSalt + ":" + strings.TrimSpace(string(raw))))
-	return hex.EncodeToString(sum[:])
-}
+// fingerprint identifies this machine to the receiving service; see
+// model.MachineFingerprint. The provenance of the local report carries the same value.
+func fingerprint() string { return model.MachineFingerprint() }

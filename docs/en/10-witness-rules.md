@@ -38,6 +38,15 @@ Three invariants hold for every finding here:
   observed ends `unknown` and says so in a finding of its own rather than staying
   quiet — see [Outcomes](#outcomes-problem-no-problem-insufficient-data).
 
+**The evidence is the observation; the description is the interpretation.** Each
+piece of evidence says what it observed (`Origin`: the `plan`, the `host`, or a
+`rule` about the run itself), from which source, and **when that source was read** —
+not when the rules compared. The report's `provenance.csv` ties all of it to one
+build, one rule set (`rules-version`, which changes whenever a rule's logic does),
+one resolved plan (`plan-digest`), one server and one engine (`engine-id`), with the
+run's timeline and its consistency. A report confirms only that plan on that engine
+while it is fresh — see [04 — Recheck before deploying](04-cli-reference.md#recheck-before-deploying).
+
 Findings are sorted worst first, then by rule, then by the rule's own ordering,
 then by subject, so two runs of the same audit produce the same file.
 

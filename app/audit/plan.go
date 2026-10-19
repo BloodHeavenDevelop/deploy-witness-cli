@@ -1,6 +1,8 @@
 package audit
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/manifest"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
@@ -80,6 +83,9 @@ func (a *Auditor) preparePlan() error {
 	if err := selectServices(plan, parsed); err != nil {
 		return err
 	}
+	plan.Digest = PlanDigest(plan, parsed)
+	plan.FileDigests = fileDigests(plan.Files)
+	plan.ResolvedAt = time.Now().UTC().Format(time.RFC3339)
 
 	a.manifest = parsed
 	a.plan = plan
@@ -354,5 +360,43 @@ func composeEnvironment(environ []string) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// PlanDigest identifies a resolved plan by what the rules compare: the resolved
+// manifest (without its path and parser warnings, which do not change the run), the
+// project name, the profiles and what the plan starts. Two plans with the same
+// digest are the same run as far as this audit is concerned; a report never
+// confirms a plan with another one.
+func PlanDigest(plan *model.LaunchPlan, parsed *model.Manifest) string {
+	requirements := *parsed
+	requirements.Path, requirements.Warnings = "", nil
+	canonical := struct {
+		Manifest model.Manifest `json:"manifest"`
+		Project  string         `json:"project"`
+		Profiles []string       `json:"profiles"`
+		Started  []string       `json:"started"`
+	}{requirements, plan.ProjectName, plan.Profiles, plan.Started}
+	encoded, err := json.Marshal(canonical)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// fileDigests hashes the Compose files of the plan. The env files are not hashed:
+// their contents are values this tool does not read, and what they change in the
+// plan is already in the resolved model the digest covers.
+func fileDigests(files []string) []model.FileDigest {
+	var out []model.FileDigest
+	for _, file := range files {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		sum := sha256.Sum256(raw)
+		out = append(out, model.FileDigest{Path: file, SHA256: hex.EncodeToString(sum[:])})
+	}
 	return out
 }

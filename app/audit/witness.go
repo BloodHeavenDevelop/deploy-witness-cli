@@ -53,7 +53,12 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 	if !a.cfg.Wants(model.SectionPorts) {
 		result.Degrade("the ports section was not selected, so port conflicts could not be checked")
 	}
-	caps.Observe(socketState(a.cfg.Wants(model.SectionPorts), report.Sections))
+	source, state, note := socketState(a.cfg.Wants(model.SectionPorts), report.Sections)
+	if a.portsAt.IsZero() {
+		caps.Observe(source, state, note)
+	} else {
+		caps.ObserveAt(source, state, note, a.portsAt)
+	}
 
 	// The order is a dependency order, not a preference. panels reads the service
 	// units, scheduler fills the job inventory that certs needs to tell an installed
@@ -75,13 +80,19 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 			caps.Runtime.EngineID, caps.Runtime.EngineName, caps.Runtime.Version
 	}
 
+	a.comparedAt = time.Now().UTC()
 	in := witness.Input{
 		Manifest: parsed,
 		Caps:     caps,
-		Now:      time.Now().UTC(),
+		Now:      a.comparedAt,
 		Project:  a.projectName(),
 		// Without the ports section the socket list is unknown, not empty.
 		PortsUnchecked: !a.cfg.Wants(model.SectionPorts),
+	}
+	if a.plan != nil {
+		if at, err := time.Parse(time.RFC3339, a.plan.ResolvedAt); err == nil {
+			in.PlanResolvedAt = at
+		}
 	}
 	if a.cfg.Egress {
 		in.EgressChecked = true

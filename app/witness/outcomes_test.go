@@ -474,3 +474,24 @@ func TestEveryRuleEndsInExactlyOneOutcome(t *testing.T) {
 		t.Errorf("summary: %s", summary)
 	}
 }
+
+// DW-82: evidence is an observation with its own time and origin — the moment its
+// source was read, or the moment the plan was resolved — not the time the rules ran.
+func TestEvidenceCarriesItsObservation(t *testing.T) {
+	in := cleanInput()
+	in.PlanResolvedAt = fixedNow.Add(-time.Minute)
+	in.Caps.ObserveAt(model.SourceSockets, model.ObservedComplete, "/proc/net", fixedNow.Add(-30*time.Second))
+	in.Caps.Ports = []model.Port{{Protocol: "tcp", Address: "0.0.0.0", Port: 8080, State: "LISTEN", Pid: 7, Process: "python3"}}
+
+	f, ok := find(portConflicts(in), "witness.port_conflict")
+	if !ok || len(f.Evidence) != 2 {
+		t.Fatalf("finding = %+v", f)
+	}
+	plan, socket := f.Evidence[0], f.Evidence[1]
+	if plan.Origin != model.OriginPlan || plan.CapturedAt != "2026-08-17T11:59:00Z" {
+		t.Errorf("plan evidence = %+v", plan)
+	}
+	if socket.Origin != model.OriginHost || socket.Source != model.SourceSockets || socket.CapturedAt != "2026-08-17T11:59:30Z" {
+		t.Errorf("socket evidence = %+v", socket)
+	}
+}

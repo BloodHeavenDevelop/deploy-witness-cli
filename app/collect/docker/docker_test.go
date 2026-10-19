@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
 )
@@ -614,3 +615,17 @@ func TestShortenKeepsOneLine(t *testing.T) {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+func TestParseEngineClock(t *testing.T) {
+	at, ok := parseEngineClock(`{"ID":"x","SystemTime":"2026-10-19T17:20:01.123456789+03:00"}`)
+	if !ok || at.UTC().Format(time.RFC3339) != "2026-10-19T14:20:01Z" {
+		t.Errorf("clock = %v, %v", at, ok)
+	}
+	if _, ok := parseEngineClock(`{"host":{"hostname":"p"}}`); ok {
+		t.Error("podman reports no SystemTime")
+	}
+	id, name := parseEngineIdentity(`{"ID":"d2da8027","Name":"build-01"}`)
+	if id != "d2da8027" || name != "build-01" {
+		t.Errorf("identity = %q %q", id, name)
+	}
+}

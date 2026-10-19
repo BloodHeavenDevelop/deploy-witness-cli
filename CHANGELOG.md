@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Evidence provenance** (DW-82): every report carries `provenance.csv` /
+  `audit.provenance` — tool and rules version (`witness.RulesVersion`, `2`), host and
+  server fingerprint, engine and its `docker info` ID, Compose, the plan's resolver
+  and digest, the run's timeline (started, plan resolved, observed from/until,
+  compared, finished), NTP state, the engine's clock skew, completeness per source,
+  and `recheck-after`. The timeline is checked: a clock going backwards, an
+  observation or evidence timed outside the run, an unsynchronised clock, an engine
+  clock more than 5 s off and observations more than 10 min apart are each a
+  `time-check` row and a `time:` note. The `witness` notes carry a `provenance: …`
+  line, so the upload has it too.
+- **Evidence separates observation from interpretation** (DW-82): `evidence.csv`
+  gains `Origin` (`plan`, `host`, `rule`) and `Source` (the observation source), and
+  `Captured at` is now the moment the source was read or the plan resolved — no longer
+  the comparison time for every row ([app/witness/preflight.go](app/witness/preflight.go)).
+- **`--recheck <report.json>`** (DW-82, [app/audit/recheck.go](app/audit/recheck.go)):
+  before deploying, confirm that a report still describes this plan (plan digest),
+  on this engine (engine ID), within `--max-age` (default 1 h), under the same rules
+  and with a consistent timeline. Prints `ok:`/`re-run:` lines, exits `0` or the new
+  `4`; collects and writes nothing. A changed plan is never confirmed by an old report.
+
 - **A Compose preflight checks the exact planned run** (DW-81): `--compose` is
   repeatable (merge order kept), plus `--env-file`, `--profile`, `--project-name`,
   `--project-directory` and `--compose-service`, mirroring `docker compose`

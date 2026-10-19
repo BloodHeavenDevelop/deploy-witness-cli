@@ -51,7 +51,19 @@ type Input struct {
 	// ports section was not selected), so an empty Caps.Ports means "not looked
 	// at", not "nothing listening".
 	PortsUnchecked bool
+	// PlanResolvedAt is when the plan was resolved: the time of every piece of
+	// evidence quoting the manifest. Zero means Now.
+	PlanResolvedAt time.Time
 }
+
+// RulesVersion identifies the rule set a report was produced with. It changes
+// whenever any rule's logic, threshold or outcome changes — independently of the
+// tool version, so a report states which judgement it rests on and --recheck can
+// tell that an older one was made under rules that have since changed.
+//
+//	1  the rule set up to 1.4.0
+//	2  one outcome per rule; the exact planned run; evidence provenance
+const RulesVersion = "2"
 
 // rule is one check. Rules never observe and never mutate their input.
 //
@@ -258,18 +270,63 @@ const maxEvidenceOutput = 1500
 // always a command from the published allowlist or a path on disk, never a
 // paraphrase. output is what was observed, rendered compactly from the values that
 // were parsed.
+//
+// The evidence is an observation, and it carries the time of that observation: the
+// moment its source was read on the host (Capabilities.Observations), not the
+// moment the rules compared. A source with no recorded time falls back to the
+// comparison time, which is never earlier than the observation.
 func evidence(in Input, command, output string) model.Evidence {
 	truncated := false
 	if len(output) > maxEvidenceOutput {
 		output = output[:maxEvidenceOutput]
 		truncated = true
 	}
-	return model.Evidence{
+	e := model.Evidence{
 		Command:    command,
 		Output:     output,
 		Truncated:  truncated,
 		CapturedAt: in.Now.UTC().Format(time.RFC3339),
+		Origin:     model.OriginHost,
+		Source:     sourceOf(command),
 	}
+	if strings.HasPrefix(command, "deploy-witness rule ") || strings.HasPrefix(command, "the rollback section") {
+		e.Origin = model.OriginRule
+	}
+	if e.Source != "" && in.Caps != nil {
+		if o := in.Caps.Observed(e.Source); o.ObservedAt != "" {
+			e.CapturedAt = o.ObservedAt
+		}
+	}
+	return e
+}
+
+// sourceOf names the observation source a piece of evidence was read from, from the
+// command a reader would run to see the same thing.
+func sourceOf(command string) string {
+	c := " " + command + " "
+	switch {
+	case strings.Contains(c, " ps -a ") || strings.Contains(c, " info "):
+		return model.SourceContainers
+	case strings.Contains(c, " volume "):
+		return model.SourceVolumes
+	case strings.Contains(c, " network inspect "):
+		return model.SourceNetworkSubnets
+	case strings.Contains(c, " network "):
+		return model.SourceNetworks
+	case strings.Contains(c, " image "):
+		return model.SourceImages
+	case strings.HasPrefix(command, "ss ") || strings.Contains(c, "/proc/net"):
+		return model.SourceSockets
+	case strings.Contains(c, "/proc/meminfo"):
+		return model.SourceMemory
+	case strings.Contains(c, "/proc/mounts"):
+		return model.SourceFilesystems
+	case strings.HasPrefix(command, "uname"):
+		return model.SourceArch
+	case strings.HasPrefix(command, "nginx") || strings.HasPrefix(command, "apache") || strings.HasPrefix(command, "httpd"):
+		return model.SourceProxy
+	}
+	return ""
 }
 
 // manifestEvidence points at the requirement side of a comparison. The manifest is
@@ -284,7 +341,12 @@ func manifestEvidence(in Input, service, detail string) model.Evidence {
 	if service != "" {
 		command = path + " (service " + service + ")"
 	}
-	return evidence(in, command, detail)
+	e := evidence(in, command, detail)
+	e.Origin, e.Source = model.OriginPlan, ""
+	if !in.PlanResolvedAt.IsZero() {
+		e.CapturedAt = in.PlanResolvedAt.UTC().Format(time.RFC3339)
+	}
+	return e
 }
 
 // ─────────────────────────────────────────────────────────────── helpers

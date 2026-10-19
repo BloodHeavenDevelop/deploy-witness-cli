@@ -198,6 +198,11 @@ func Report(report *model.Report) int {
 			sweep(&plan.Notes[i])
 		}
 	}
+	if p := report.Provenance; p != nil {
+		for i := range p.TimeChecks {
+			sweep(&p.TimeChecks[i])
+		}
+	}
 
 	if caps := report.Capabilities; caps != nil {
 		for i := range caps.Jobs {

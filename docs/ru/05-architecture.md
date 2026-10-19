@@ -8,6 +8,8 @@ main.go
   └─ --commands? напечатать run.Commands() и выйти      (сам применяемый список)
   └─ logging.New(stderr, level)      диагностика никогда не попадает в stdout
   └─ audit.New(cfg, log).Prepare()   только Compose preflight: разрешение планируемого запуска (plan.go: движок, docker compose config), иначе код 2 без отчёта
+  └─ --recheck? auditor.Recheck()    заново разрешить план, спросить ID движка, сравнить с
+                                     отчётом (recheck.go); напечатать ok/re-run, код 0 или 4, ничего не писать
   └─ auditor.Run()
        ├─ model.ReadOSRelease()      /etc/os-release → идентичность дистрибутива
        ├─ pkgmgr.Detect(os, runner)  какой пакетный менеджер реально есть на хосте
@@ -25,6 +27,7 @@ main.go
             каждый даёт model.SectionResult: статус, счётчики, длительность, замечания
        └─ аудит хоста: строка `witness` not-applicable с пометкой host-audit (вне рамок, не пробел)
        └─ report.Commands = runner.Journal()   каждая команда, включая отклонённые
+       └─ report.Provenance = provenance()     сборка, правила, дайджест плана, движок, хронология + проверки времени
   └─ redact.Report(result)           последнее действие перед любой записью
   └─ report.WriteDir() | WriteCombined() | WriteJSONFile() | WriteJSON()
   └─ report.Upload()                 только при --upload и --upload-token

@@ -8,6 +8,8 @@ main.go
   └─ --commands? print run.Commands() and exit         (the enforced allowlist itself)
   └─ logging.New(stderr, level)      diagnostics never touch stdout
   └─ audit.New(cfg, log).Prepare()   Compose preflight only: resolve the planned run (plan.go: engine, docker compose config), or exit 2, no report
+  └─ --recheck? auditor.Recheck()    resolve the plan again, ask the engine its ID, compare with
+                                     the report (recheck.go); print ok/re-run, exit 0 or 4, write nothing
   └─ auditor.Run()
        ├─ model.ReadOSRelease()      /etc/os-release → distribution identity
        ├─ pkgmgr.Detect(os, runner)  which package manager this host actually has
@@ -25,6 +27,7 @@ main.go
             each producing a model.SectionResult: status, counts, duration, notes
        └─ host audit: a `not-applicable` `witness` row labelled host-audit (out of scope, not a gap)
        └─ report.Commands = runner.Journal()   every command, including refusals
+       └─ report.Provenance = provenance()     build, rules, plan digest, engine, timeline + time checks
   └─ redact.Report(result)           the last thing before anything is written
   └─ report.WriteDir() | WriteCombined() | WriteJSONFile() | WriteJSON()
   └─ report.Upload()                 only with --upload and --upload-token

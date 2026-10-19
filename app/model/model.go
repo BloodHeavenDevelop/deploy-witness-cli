@@ -266,7 +266,9 @@ type Report struct {
 	// rather than take it on faith.
 	Manifest *Manifest `json:"manifest,omitempty"`
 	// Plan is the exact run the preflight checked; nil in a host audit.
-	Plan         *LaunchPlan   `json:"plan,omitempty"`
+	Plan *LaunchPlan `json:"plan,omitempty"`
+	// Provenance is what every conclusion of this report rests on.
+	Provenance   *Provenance   `json:"provenance,omitempty"`
 	Capabilities *Capabilities `json:"capabilities,omitempty"`
 	Findings     []Finding     `json:"findings"`
 	// Rules is one outcome per witness rule, including the rules that published no

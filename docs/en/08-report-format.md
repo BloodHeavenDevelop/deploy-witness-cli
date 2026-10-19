@@ -2,7 +2,7 @@
 
 ## Files
 
-By default the tool writes one directory containing fourteen files:
+By default the tool writes one directory containing fifteen files:
 
 ```
 audit-<host>-<UTC timestamp>/
@@ -15,6 +15,7 @@ audit-<host>-<UTC timestamp>/
 ├── witness.csv         the findings
 ├── rules.csv             one outcome per rule, finding or not
 ├── plan.csv              the exact Compose run the preflight checked
+├── provenance.csv        build, rules, plan, server, engine, timeline, completeness
 ├── evidence.csv          what each finding rests on
 ├── changes.csv           what deploying will actually do
 ├── rollback.csv          and how to undo it
@@ -25,7 +26,9 @@ audit-<host>-<UTC timestamp>/
 The last five are new in 0.2.0. Four of them belong to the `witness` section;
 `commands.csv` belongs to the run itself and is written on every run, whatever
 `--sections` said. So does `network.csv`, added in the release after 1.2.0.
-`rules.csv` and `plan.csv`, added in the release after 1.4.0, belong to `witness`.
+`rules.csv` and `plan.csv`, added in the release after 1.4.0, belong to `witness`;
+`provenance.csv`, added in the same release, to the run (it is written in a host
+audit too).
 
 **A section that produced no rows still gets a file containing its header row.**
 An absent file is indistinguishable from a section that was never run, and the
@@ -35,7 +38,7 @@ audit ran no commands at all" should be a visible claim, not a missing file.
 
 With `--stdout` the same tables are written to one stream, each preceded by a
 `# <name>` line and separated by a blank line. Spreadsheets and `csvkit` both
-read this; a single flat table cannot hold fourteen different column sets.
+read this; a single flat table cannot hold fifteen different column sets.
 
 With `--format json` one `report.json` is written *instead of* the CSV files. See
 [report.json](#reportjson) below.
@@ -290,6 +293,29 @@ The `witness` notes carry the same in one line (`plan: project shop (from
 --project-name), 2 Compose file(s), …`), so the upload's `witness` collector has it
 too.
 
+## provenance.csv
+
+What every conclusion of the report rests on, as `Key`,`Value` rows. Written on every
+run; in a host audit the plan rows are empty.
+
+| Key | Value |
+|---|---|
+| `tool`, `rules-version` | The build, and the rule set (`witness.RulesVersion`), which changes whenever a rule's logic does — independently of the tool version |
+| `host`, `server-fingerprint` | The host name, and the salted hash of `/etc/machine-id` the upload carries |
+| `engine`, `engine-id`, `compose` | The engine and its `docker info` ID, the Compose implementation |
+| `plan-source`, `plan-digest` | The plan's resolver and its digest — what `--recheck` compares |
+| `started-at`, `plan-resolved-at`, `observed-from`, `observed-until`, `compared-at`, `finished-at` | The run's timeline, RFC 3339 UTC |
+| `clock-synchronized` | `yes`, `no` or `unknown` (timedatectl `NTPSynchronized`) |
+| `engine-clock-skew` | The engine's clock minus this host's, measured when `docker info` answered |
+| `completeness` | `N of M sources read in full; partial: …; failed: …` |
+| `recheck-after` | `finished-at` + 1 h: past it, `--recheck` (or a new audit) before deploying — see [04](04-cli-reference.md#recheck-before-deploying) |
+| `observation` | One row per source: `<source>: <state> at <time> — <how it was read>` |
+| `time-check` | `consistent`, or one row per inconsistency: the clock going backwards, an observation or evidence timed outside the run, an unsynchronised clock, an engine clock more than 5 s off, observations more than 10 min apart |
+
+The `witness` notes carry it in one line (`provenance: deploy-witness 1.5.0, rules
+2; engine docker 29.7.2 (id …); …`) and each time inconsistency as a `time:` note, so
+the upload has it too — the contract has no field for it.
+
 ## evidence.csv
 
 Every piece of evidence behind every finding, one row each. It is a file of its
@@ -304,7 +330,9 @@ that the reader can check them.
 | `Command` | What to run to see the same thing: a command from the published allowlist, or a path on disk, or the manifest and the service (`docker-compose.yml (service db)`) |
 | `Output` | What was observed, rendered compactly from the parsed values |
 | `Truncated` | `true` when the capture was cut at 1500 characters. A shortened capture that does not admit it invites the reader to conclude too much from it |
-| `Captured at` | RFC 3339 UTC: the moment the witness section compared the manifest with what it had collected. It is later than the run's `Checked at` in `summary.csv` (the start of the run) by however long the collection took, and earlier than the log's `wrote …` line. All three belong to the same run |
+| `Captured at` | RFC 3339 UTC: **when what `Output` shows was observed** — the moment its source was read on the host (`provenance.csv`, `observation` rows), or, for the manifest, the moment the plan was resolved. Not the moment the rules compared (that is `compared-at`). Between the run's `started-at` and `finished-at`; one that is not is a time check in `provenance.csv` (since the release after 1.4.0 — before it, every row carried the comparison time) |
+| `Origin` | `plan` (the resolved Compose model), `host` (the machine and its engine) or `rule` (what a rule established about the run, such as a check it could not make). The evidence is the observation; the finding's `Description` is the interpretation (appended in the release after 1.4.0) |
+| `Source` | The observation source the evidence came from — `containers`, `volumes`, `networks`, `network-subnets`, `images`, `sockets`, `arch`, `memory`, `filesystems`, `proxy` — or empty (appended in the release after 1.4.0) |
 
 **A finding with no evidence is never published.** The engine discards it and
 counts the discard in the section's notes, as a bug in `deploy-witness` rather than
@@ -433,7 +461,7 @@ the naming is the point:
 |---|---|---|
 | `schemaVersion` | The contract version of the `upload` half. A receiver checks it first, so an agent built months ago is told its report is not understood rather than having it half-read | — |
 | `upload` | The shared `bloodheaven.audit.v1` contract, rendered as protojson: `findings` with their evidence, `collectors` (the section outcomes), `changes`, `rollback`, `command_journal`, plus `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` and `producer` | **Yes** — these are the exact bytes `--upload` sends |
-| `audit` | Everything that stays local: the run's `mode` (`host-audit` or `compose-preflight`), the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities (with `observations`: how completely each source — containers, volumes, sockets, memory… — was read), the network record (`network`, as in `network.csv`), the same findings in this tool's own shape (each with its `outcome`), `rules`, as in `rules.csv`, and `plan`, as in `plan.csv` | No |
+| `audit` | Everything that stays local: the run's `mode` (`host-audit` or `compose-preflight`), the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities (with `observations`: how completely each source — containers, volumes, sockets, memory… — was read), the network record (`network`, as in `network.csv`), the same findings in this tool's own shape (each with its `outcome`, evidence with `origin` and `source`), `rules`, as in `rules.csv`, `plan`, as in `plan.csv`, and `provenance`, as in `provenance.csv` | No |
 
 A client can read the file, see which half would leave their machine, and diff it
 against what actually arrives. That is a good deal more convincing than a promise

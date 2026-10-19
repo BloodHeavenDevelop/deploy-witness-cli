@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/run"
@@ -80,7 +81,13 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 	// driver, but reachability is not decided from it: some docker versions print
 	// the client half of `info` and exit 0 even when the daemon is unreachable.
 	info, infoErr := runner.Output(kind, "info", "--format", "{{json .}}")
+	answered := time.Now()
 	if infoErr == nil {
+		if clock, ok := parseEngineClock(info); ok {
+			// Measured against the moment the answer arrived: the skew is at most
+			// off by the command's own run time, which is what a reader is told.
+			runtime.ClockSkew = fmt.Sprintf("%+.1fs", clock.Sub(answered).Seconds())
+		}
 		runtime.StorageDriver = parseStorageDriver(info)
 		runtime.EngineID, runtime.EngineName = parseEngineIdentity(info)
 	}

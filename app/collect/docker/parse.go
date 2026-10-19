@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
 )
@@ -683,6 +684,22 @@ func parseEngineIdentity(out string) (id, name string) {
 		name = strings.TrimSpace(info.Host.Hostname)
 	}
 	return strings.TrimSpace(info.ID), name
+}
+
+// parseEngineClock reads the engine's own clock from `info` (docker's SystemTime,
+// RFC 3339 with nanoseconds). Podman reports none, and false says so.
+func parseEngineClock(out string) (time.Time, bool) {
+	var info struct {
+		SystemTime string `json:"SystemTime"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &info); err != nil || info.SystemTime == "" {
+		return time.Time{}, false
+	}
+	at, err := time.Parse(time.RFC3339Nano, info.SystemTime)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return at, true
 }
 
 // parseEngineVersion reads `version --format {{json .}}`. The server version is

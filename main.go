@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/audit"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/config"
@@ -45,6 +46,7 @@ const (
 	exitSectionFail = 1 // the report was written but at least one section failed
 	exitUsage       = 2 // bad arguments, or the report could not be written
 	exitUploadFail  = 3 // the report was written but --upload could not deliver it
+	exitRecheck     = 4 // --recheck: the report does not confirm this plan on this engine now
 )
 
 func main() {
@@ -95,6 +97,9 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 
 	auditor := audit.New(cfg, log, version)
+	if cfg.Recheck != "" {
+		return recheck(auditor, cfg, log, stdout)
+	}
 	// A Compose preflight whose input cannot be parsed stops here, before anything
 	// is collected and with no report written: there is no preflight to report, and
 	// a report without one must not be mistaken for a clean preflight.
@@ -209,6 +214,25 @@ func printCommands(w io.Writer) {
 			fmt.Fprintf(w, "      network: yes — runs only with %s\n", spec.Network)
 		}
 	}
+}
+
+// recheck confirms a report against the plan and engine of right now, writing
+// nothing. The verdict lines go to stdout, so a deployment script can keep them.
+func recheck(auditor *audit.Auditor, cfg *config.Config, log *logging.Logger, stdout io.Writer) int {
+	result, err := auditor.Recheck(cfg.Recheck, cfg.MaxAge, time.Now().UTC())
+	if err != nil {
+		log.Error(err)
+		return exitUsage
+	}
+	for _, line := range result.Lines {
+		fmt.Fprintln(stdout, line)
+	}
+	if !result.Confirmed {
+		log.Error("the report does not confirm this deployment: run the preflight again before deploying")
+		return exitRecheck
+	}
+	log.Info("the report confirms this plan on this engine")
+	return exitOK
 }
 
 func statusCode(result *model.Report) int {

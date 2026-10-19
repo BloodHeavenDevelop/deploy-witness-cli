@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 // This file holds the three vocabularies the witness section is built from, and
 // they are deliberately separate:
 //
@@ -75,8 +77,63 @@ type LaunchPlan struct {
 	// Engine is the engine the planned run would reach, and whether it is the one
 	// this audit inspected.
 	Engine EngineTarget `json:"engine"`
+	// Digest identifies the resolved plan: a SHA-256 over the requirements the
+	// rules compare (the resolved manifest, project name, profiles, services). A
+	// report proves nothing about a plan with another digest. FileDigests are the
+	// SHA-256 of each Compose and env file's bytes, for the reader; an env file's
+	// hash says it changed, never what it holds.
+	Digest      string       `json:"digest"`
+	FileDigests []FileDigest `json:"fileDigests"`
+	// ResolvedAt is when the plan was resolved, RFC 3339 UTC.
+	ResolvedAt string `json:"resolvedAt"`
 	// Notes say what the resolution could not reproduce.
 	Notes []string `json:"notes"`
+}
+
+// FileDigest is the SHA-256 of one file of the plan.
+type FileDigest struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+}
+
+// Provenance is what every conclusion of a report rests on: which build and which
+// rules produced it, from which plan, on which server and engine, when each source
+// was read, and how completely. DeployWitness keeps none of it between runs — it is
+// in the report, which stays with whoever ran the audit.
+type Provenance struct {
+	Tool         string `json:"tool"`
+	ToolVersion  string `json:"toolVersion"`
+	RulesVersion string `json:"rulesVersion"`
+	// Host is the host name; ServerFingerprint the salted hash of /etc/machine-id
+	// the upload also carries.
+	Host              string `json:"host"`
+	ServerFingerprint string `json:"serverFingerprint"`
+	Engine            string `json:"engine"`
+	EngineID          string `json:"engineId"`
+	Compose           string `json:"compose"`
+	// PlanSource and PlanDigest are the plan's resolver and digest (empty in a
+	// host audit).
+	PlanSource string `json:"planSource"`
+	PlanDigest string `json:"planDigest"`
+	// The run's timeline, RFC 3339 UTC: started, plan resolved, the earliest and
+	// latest observation of the host, rules compared, finished.
+	StartedAt      string `json:"startedAt"`
+	PlanResolvedAt string `json:"planResolvedAt"`
+	ObservedFrom   string `json:"observedFrom"`
+	ObservedUntil  string `json:"observedUntil"`
+	ComparedAt     string `json:"comparedAt"`
+	FinishedAt     string `json:"finishedAt"`
+	// ClockSynchronized is yes, no or unknown (timedatectl NTPSynchronized);
+	// EngineClockSkew the engine's clock minus this host's.
+	ClockSynchronized string `json:"clockSynchronized"`
+	EngineClockSkew   string `json:"engineClockSkew"`
+	// TimeChecks lists every inconsistency in the timeline; empty when consistent.
+	TimeChecks []string `json:"timeChecks"`
+	// Completeness summarises the observations: how many sources were read in full.
+	Completeness string `json:"completeness"`
+	// RecheckAfter is when this report stops confirming the plan: past it, re-run
+	// `deploy-witness --recheck` (or the audit) before deploying.
+	RecheckAfter string `json:"recheckAfter"`
 }
 
 // Plan resolvers.
@@ -276,13 +333,20 @@ type Capabilities struct {
 
 // Observe records how completely a source was read, replacing an earlier record.
 func (c *Capabilities) Observe(source string, state ObservationState, note string) {
+	c.ObserveAt(source, state, note, time.Now().UTC())
+}
+
+// ObserveAt is Observe with the time of the observation given — for a source read
+// earlier than it is recorded, such as the sockets the ports section read.
+func (c *Capabilities) ObserveAt(source string, state ObservationState, note string, at time.Time) {
+	o := Observation{Source: source, State: state, Note: note, ObservedAt: at.UTC().Format(time.RFC3339)}
 	for i := range c.Observations {
 		if c.Observations[i].Source == source {
-			c.Observations[i] = Observation{Source: source, State: state, Note: note}
+			c.Observations[i] = o
 			return
 		}
 	}
-	c.Observations = append(c.Observations, Observation{Source: source, State: state, Note: note})
+	c.Observations = append(c.Observations, o)
 }
 
 // Observed returns how completely a source was read. A source nobody recorded is
@@ -331,6 +395,9 @@ type ContainerRuntime struct {
 	// names; the ID is what tells one engine's answer from another's.
 	EngineID   string `json:"engineId"`
 	EngineName string `json:"engineName"`
+	// ClockSkew is the engine's clock minus this host's, measured when `info`
+	// answered ("+0.3s"), or "" when the engine did not report its time.
+	ClockSkew string `json:"clockSkew"`
 	// Reachable is false when the engine is installed but its socket could not be
 	// queried — usually a permission problem, and the reason every container list
 	// below would otherwise look empty.
@@ -627,6 +694,9 @@ type Observation struct {
 	Source string           `json:"source"`
 	State  ObservationState `json:"state"`
 	Note   string           `json:"note"`
+	// ObservedAt is when the source was read, RFC 3339 UTC. Evidence drawn from the
+	// source carries this time, not the time the rules ran.
+	ObservedAt string `json:"observedAt"`
 }
 
 // FindingSeverity is how much attention a finding deserves.
@@ -691,9 +761,26 @@ type Evidence struct {
 	Output  string `json:"output"`
 	// Truncated says the fragment was cut. A shortened capture that does not admit
 	// it invites the reader to conclude too much from it.
-	Truncated  bool   `json:"truncated"`
+	Truncated bool `json:"truncated"`
+	// CapturedAt is when what Output shows was observed — the time its source was
+	// read on the host, or the time the plan was resolved — RFC 3339 UTC.
 	CapturedAt string `json:"capturedAt"`
+	// Origin says what the evidence is an observation of: "plan" (the resolved
+	// Compose model), "host" (the machine, its engine included) or "rule" (what a
+	// rule established about the run itself, such as a check it could not make).
+	// It is the observation; the finding's Description is the interpretation.
+	Origin string `json:"origin"`
+	// Source is the observation source the evidence came from (containers,
+	// sockets, memory…), when there is one.
+	Source string `json:"source"`
 }
+
+// Evidence origins.
+const (
+	OriginPlan = "plan"
+	OriginHost = "host"
+	OriginRule = "rule"
+)
 
 // ChangeItem is one line of "what the deployment will actually do" — the section
 // somebody shows their own client when asked what they changed.
