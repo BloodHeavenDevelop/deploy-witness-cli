@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-19
+
 ### Added
 
 - **Pilot errors become permanent tests** (DW-90, `docs/<lang>/13-pilot-regressions.md`):
