@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Port conflicts decided from the binding, not the number** (DW-86): whether an
+  IPv6 wildcard socket also answers IPv4 is now read per socket from `ss` (`*:port`
+  dual-stack, `[::]:port` IPv6-only) into a new appended `V6 only` column of
+  `ports.csv`, and whether the host has IPv6 (`/proc/sys/net/ipv6`) decides whether a
+  publish without `host_ip` also lands on `[::]` — both used to be `unknown` on
+  every host. A host range to one container port (`8000-8010:80`) binds one free
+  port of it and is a conflict only when all are held; a publish with no host port is
+  ephemeral and never collides; `network_mode: host` services are checked on their
+  declared ports, with the application's choice of address kept undecided; built-in
+  parsing keeps the container end of a range (`ContainerPortEnd`) so `8000-8001:8000-8001`
+  and `8000-8001:80` are no longer read alike. `changes.csv` follows (`ephemeral/tcp`,
+  one row per dynamic range, host-network rows). Verified on Docker 29.7.2: a
+  dual-stack listener blocks `0.0.0.0:<port>` exactly as predicted, an IPv6-only one
+  does not.
+
 - **Container ownership and the replacement plan** (DW-85,
   [app/witness/ownership.go](app/witness/ownership.go)): every existing container is
   classified from the Compose labels it carries (`project`, `service`,

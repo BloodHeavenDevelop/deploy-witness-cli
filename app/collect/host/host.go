@@ -46,6 +46,8 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 		caps.Observe(model.SourceMemory, model.ObservedComplete, "/proc/meminfo")
 	}
 
+	caps.IPv6, caps.BindV6Only = ipv6Posture("/proc/sys/net/ipv6")
+
 	filesystems, notes := Filesystems("/proc/mounts")
 	caps.Filesystems = filesystems
 	for _, note := range notes {
@@ -62,6 +64,25 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 	default:
 		caps.Observe(model.SourceFilesystems, model.ObservedComplete, "/proc/mounts + statfs")
 	}
+}
+
+// ipv6Posture reads whether the host has IPv6 at all, and the default of
+// net.ipv6.bindv6only. No IPv6 tree means no IPv6 in the kernel; disable_ipv6=1 on
+// "all" means it is switched off. Either way the engine publishes on IPv4 only.
+func ipv6Posture(root string) (ipv6, bindV6Only string) {
+	if _, err := os.Stat(root); err != nil {
+		if os.IsNotExist(err) {
+			return "disabled", ""
+		}
+		return "", ""
+	}
+	if raw, err := os.ReadFile(filepath.Join(root, "conf", "all", "disable_ipv6")); err == nil {
+		ipv6 = map[string]string{"0": "enabled", "1": "disabled"}[strings.TrimSpace(string(raw))]
+	}
+	if raw, err := os.ReadFile(filepath.Join(root, "bindv6only")); err == nil {
+		bindV6Only = strings.TrimSpace(string(raw))
+	}
+	return ipv6, bindV6Only
 }
 
 // arch reads the machine architecture. `uname -m` rather than runtime.GOARCH: the

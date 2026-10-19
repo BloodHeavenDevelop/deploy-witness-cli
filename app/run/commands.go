@@ -92,7 +92,8 @@ var commands = []Spec{
 	{
 		Binary: "ss", Args: []string{"-lntupH"},
 		Section: "ports",
-		Purpose: "listening sockets with the owning process, when /proc/net alone cannot attribute them",
+		Purpose: "listening sockets with the owning process, when /proc/net alone cannot attribute them, and " +
+			"whether each IPv6 wildcard socket is IPv6-only ([::]:port) or dual-stack (*:port)",
 	},
 
 	// ── witness: the container runtime ────────────────────────────────────────

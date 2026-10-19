@@ -54,8 +54,8 @@ func tables(r *model.Report) []table {
 		},
 		{
 			name:    string(model.SectionPorts),
-			headers: []string{"Protocol", "Address", "Port", "Exposure", "State", "PID", "Process", "User", "Command"},
-			paths:   []string{"protocol", "address", "port", "exposure", "state", "pid", "process", "user", "command"},
+			headers: []string{"Protocol", "Address", "Port", "Exposure", "State", "PID", "Process", "User", "Command", "V6 only"},
+			paths:   []string{"protocol", "address", "port", "exposure", "state", "pid", "process", "user", "command", "v6Only"},
 			rows:    anySlice(r.Ports),
 		},
 		{

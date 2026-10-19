@@ -197,19 +197,46 @@ name of the `/proc/net` table the socket came from, and the collector normalises
 an IPv4-mapped address such as `::ffff:127.0.0.1` into dotted form, so it is
 matched as IPv4. The `*` that `ss` prints means every interface, both families.
 
-Three things cannot be decided from what this tool reads offline, and each one
-produces the **warning** rather than a blocker or silence:
+Two questions of address family are settled from the host itself where they can
+be:
 
-- a listener on the IPv6 wildcard `[::]` against an IPv4 publish — whether it
-  also answers IPv4 is `net.ipv6.bindv6only`, which is not read;
-- a publish that names no `host_ip` against a specific IPv6 listener — the engine
-  adds an IPv6 binding only when the daemon has IPv6 enabled;
-- a `host_ip` that is not an address, such as an unresolved `${HOST_IP}`.
+- **A listener on the IPv6 wildcard against an IPv4 publish.** It also answers IPv4
+  unless the socket is IPv6-only — a per-socket option (`IPV6_V6ONLY`) that
+  `/proc/net` does not show and `ss` does: `*:port` is dual-stack, `[::]:port`
+  IPv6-only. The ports section runs `ss -lntupH` for exactly this and records it as
+  `V6 only` in `ports.csv`. Dual-stack is a certain overlap, IPv6-only certainly
+  none. `net.ipv6.bindv6only` is only the default a socket may override, so it is
+  quoted, never relied on.
+- **A publish with no `host_ip` against an IPv6 listener.** On a host with IPv6
+  the engine publishes on `[::]` as well as `0.0.0.0` (as `docker ps` shows); on a
+  host without IPv6 (`/proc/sys/net/ipv6` absent, or `disable_ipv6=1`) it cannot.
 
-The finding names the two commands that settle it: `ss -lntup | grep ':<port> '`
-and `cat /proc/sys/net/ipv6/bindv6only`. Reporting them as blockers would be the
-false blocker this rule exists to avoid; reporting them as clean would break the
-second promise.
+What remains undecidable produces the **warning** (`unknown`) rather than a
+blocker or silence: an IPv6 wildcard whose kind `ss` could not tell (not installed,
+or both kinds on one port), a host whose IPv6 state could not be read, and a
+`host_ip` that is not an address, such as an unresolved `${HOST_IP}`. The finding
+names the command that settles it: `ss -lntup | grep ':<port> '`. Reporting them as
+blockers would be the false blocker this rule exists to avoid; reporting them as
+clean would break the second promise.
+
+Publishes that are not one host port per number:
+
+- **A host range to one container port** (`8000-8010:80`) binds **one** port of
+  the range, the first the engine finds free. It is a conflict only when every port
+  of it is held (`problem`); one free port settles it (no finding), and none free
+  with some undecided is `unknown`. `8000-8001:8000-8001` binds both, and each is
+  checked like any other port.
+- **No host port** (`"80"`, `127.0.0.1::80`) gets an ephemeral port from the
+  engine: it cannot collide, and `changes.csv` says so (`ephemeral/tcp`).
+- **The container port is not a host port.** `18080:8080` claims host port 18080;
+  a listener on 8080 is irrelevant. `expose:` publishes nothing.
+- **`network_mode: host`** publishes nothing: the engine discards `ports:` and the
+  application binds its declared ports (the container side of `ports:`, and
+  `expose:`) directly on the host, at addresses of its own choosing. A wildcard
+  holder of such a port is a `problem`; a holder on a specific address, or one that
+  may be the service's own previous container (a host-network socket carries no
+  label), is `unknown`; a host-network service that declares no port at all is a
+  `manual-check`.
 
 `Subject` is the whole binding — `127.0.0.1:8080/tcp`, `[fd00::1]:8080/tcp`. A
 publish that names no address keeps the shorter `8080/tcp` form, because there is

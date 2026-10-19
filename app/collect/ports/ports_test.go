@@ -89,3 +89,24 @@ func TestSocketInode(t *testing.T) {
 		}
 	}
 }
+
+// DW-86: ss shows what /proc/net cannot — whether an IPv6 wildcard socket is
+// IPv6-only ([::]:port) or dual-stack (*:port).
+func TestParseWildcards(t *testing.T) {
+	out := `tcp LISTEN 0 128 *:18992 *:* users:(("java",pid=1,fd=3))
+tcp LISTEN 0 128 [::]:18991 [::]:*
+tcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:*
+udp UNCONN 0 0 *:5353 *:*
+tcp LISTEN 0 128 *:9000 *:*
+tcp LISTEN 0 128 [::]:9000 [::]:*`
+	got := parseWildcards(out)
+	if got["tcp/18992"] != "no" || got["tcp/18991"] != "yes" || got["udp/5353"] != "no" {
+		t.Errorf("wildcards = %v", got)
+	}
+	if _, ok := got["tcp/9000"]; ok {
+		t.Error("a port with both kinds is ambiguous and must stay unknown")
+	}
+	if _, ok := got["tcp/22"]; ok {
+		t.Error("an IPv4 wildcard is not an IPv6 one")
+	}
+}

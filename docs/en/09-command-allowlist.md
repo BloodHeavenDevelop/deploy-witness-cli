@@ -146,7 +146,8 @@ line above it is the one being described.
 
 [ports]
   ss -lntupH                        listening sockets with the owning process, when /proc/net
-                                    alone cannot attribute them
+                                    alone cannot attribute them, and whether each IPv6 wildcard
+                                    socket is IPv6-only ([::]:port) or dual-stack (*:port)
 
 [witness]                         38 entries
   nginx -T                          the effective nginx configuration — server names, ports and

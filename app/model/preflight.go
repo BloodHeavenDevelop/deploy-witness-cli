@@ -237,8 +237,22 @@ type PortMapping struct {
 	HostPort      int    `json:"hostPort"`
 	HostPortEnd   int    `json:"hostPortEnd"`
 	ContainerPort int    `json:"containerPort"`
-	Protocol      string `json:"protocol"`
+	// ContainerPortEnd is the end of a container range ("8000-8001:8000-8001"), or
+	// 0 for a single container port.
+	ContainerPortEnd int    `json:"containerPortEnd"`
+	Protocol         string `json:"protocol"`
 }
+
+// Dynamic reports a host range published to one container port
+// ("8000-8010:80"): the engine binds one port of the range — the first it finds
+// free — not all of them.
+func (p PortMapping) Dynamic() bool {
+	return p.HostPortEnd > p.HostPort && (p.ContainerPortEnd == 0 || p.ContainerPortEnd == p.ContainerPort)
+}
+
+// Ephemeral reports a publish with no host port ("80", "127.0.0.1::80"): the
+// engine picks a free port from the kernel's ephemeral range.
+func (p PortMapping) Ephemeral() bool { return p.HostPort == 0 && p.ContainerPort > 0 }
 
 // HostPorts expands the mapping into the individual host ports it claims.
 func (p PortMapping) HostPorts() []int {
@@ -329,6 +343,12 @@ type Capabilities struct {
 	Jobs         []ScheduledJob `json:"jobs"`
 	Backup       BackupPosture  `json:"backup"`
 	Databases    []Database     `json:"databases"`
+	// IPv6 is "enabled" when the host has IPv6 (the engine then publishes on [::]
+	// as well as 0.0.0.0), "disabled", or "" when it could not be read.
+	// BindV6Only is the net.ipv6.bindv6only default ("0" or "1"), which a socket
+	// may override — the per-socket answer is Port.V6Only.
+	IPv6       string `json:"ipv6"`
+	BindV6Only string `json:"bindV6Only"`
 	// RebootRequired is "yes", "no" or "unknown". The third value is a real answer
 	// and must not be collapsed into "no".
 	RebootRequired string `json:"rebootRequired"`

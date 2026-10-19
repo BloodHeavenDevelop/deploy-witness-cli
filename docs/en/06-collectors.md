@@ -79,6 +79,15 @@ processes by walking `/proc/<pid>/fd` for `socket:[inode]` links.
 - **Addresses** in these tables are hex, with each 32-bit word in host byte order
   while the port is big-endian. Decoding both the same way is the classic route
   to reporting `1.0.0.127`.
+- **IPv6 wildcard sockets** (`::`) are one question `/proc/net` cannot answer:
+  whether each also answers IPv4. When there is at least one, the section runs
+  `ss -lntupH` once and reads it off its rendering — `*:port` dual-stack,
+  `[::]:port` IPv6-only — into the `V6 only` column. Without `ss` the column stays
+  empty and the section says so.
+
+The witness section also reads two IPv6 facts of the host for the port check, both
+plain files: whether IPv6 exists and is enabled (`/proc/sys/net/ipv6`,
+`conf/all/disable_ipv6`), and the `net.ipv6.bindv6only` default.
 
 Each row carries an **exposure** class, which is what turns a socket list into an
 audit — a database on `127.0.0.1` and the same database on `0.0.0.0` are the same

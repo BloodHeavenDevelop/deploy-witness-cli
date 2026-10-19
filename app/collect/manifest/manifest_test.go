@@ -124,7 +124,7 @@ services:
 			name:    "range",
 			entries: `      - "3000-3005:3000-3005"`,
 			want: []model.PortMapping{{
-				HostPort: 3000, HostPortEnd: 3005, ContainerPort: 3000, Protocol: "tcp",
+				HostPort: 3000, HostPortEnd: 3005, ContainerPort: 3000, ContainerPortEnd: 3005, Protocol: "tcp",
 			}},
 		},
 		{

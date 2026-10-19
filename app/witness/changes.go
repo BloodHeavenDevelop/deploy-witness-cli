@@ -87,7 +87,58 @@ func Changes(in Input) []model.ChangeItem {
 	// published without a host IP is on every interface, which is the part people
 	// do not expect.
 	for _, svc := range in.Manifest.Services {
+		if svc.NetworkMode == "host" {
+			for _, mapping := range svc.Ports {
+				out = append(out, model.ChangeItem{
+					Kind:   "firewall-port",
+					Target: fmt.Sprintf("%d/%s", mapping.ContainerPort, protocolOf(mapping)),
+					Detail: fmt.Sprintf("bound directly by %s on the host network (network_mode: host) — the engine "+
+						"discards the published port, and the application chooses the address", svc.Name),
+				})
+			}
+			continue
+		}
 		for _, mapping := range svc.Ports {
+			reach := "all interfaces"
+			if mapping.HostIP != "" {
+				reach = mapping.HostIP
+			}
+			switch {
+			case mapping.Ephemeral():
+				out = append(out, model.ChangeItem{
+					Kind:   "firewall-port",
+					Target: fmt.Sprintf("ephemeral/%s", protocolOf(mapping)),
+					Detail: fmt.Sprintf("a port the engine picks from the kernel's ephemeral range, opened by %s on %s → "+
+						"container port %d; it cannot collide, and it changes on every recreate", svc.Name, reach,
+						mapping.ContainerPort),
+				})
+				continue
+			case mapping.Dynamic():
+				free, held, unknown := 0, 0, 0
+				for _, port := range mapping.HostPorts() {
+					switch state, _ := portState(in, mapping, port); state {
+					case portFree:
+						free++
+					case portTaken:
+						held++
+					default:
+						unknown++
+					}
+				}
+				detail := fmt.Sprintf("one port of %d-%d, the first the engine finds free, opened by %s on %s → container "+
+					"port %d (%d free, %d held, %d undecided)", mapping.HostPort, mapping.HostPortEnd, svc.Name, reach,
+					mapping.ContainerPort, free, held, unknown)
+				if free == 0 && unknown == 0 {
+					detail = fmt.Sprintf("not opened: every port of %d-%d is already held, so %s cannot start (see "+
+						"witness.port_conflict)", mapping.HostPort, mapping.HostPortEnd, svc.Name)
+				}
+				out = append(out, model.ChangeItem{
+					Kind:   "firewall-port",
+					Target: fmt.Sprintf("%d-%d/%s", mapping.HostPort, mapping.HostPortEnd, protocolOf(mapping)),
+					Detail: detail,
+				})
+				continue
+			}
 			for _, port := range mapping.HostPorts() {
 				reach := "all interfaces"
 				if mapping.HostIP != "" {

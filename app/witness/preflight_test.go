@@ -203,7 +203,7 @@ func TestPortConflict(t *testing.T) {
 		in := baseInput()
 		in.Manifest.Services = []model.ManifestService{{
 			Name:  "media",
-			Ports: []model.PortMapping{{HostPort: 3000, HostPortEnd: 3002, ContainerPort: 3000}},
+			Ports: []model.PortMapping{{HostPort: 3000, HostPortEnd: 3002, ContainerPort: 3000, ContainerPortEnd: 3002}},
 		}}
 		in.Caps.Ports = []model.Port{
 			{Protocol: "tcp", Address: "0.0.0.0", Port: 3001, State: "LISTEN", Process: "node"},

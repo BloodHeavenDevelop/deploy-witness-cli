@@ -24,7 +24,19 @@ func portConflicts(in Input) []model.Finding {
 	var out []model.Finding
 
 	for _, svc := range in.Manifest.Services {
+		if svc.NetworkMode == "host" {
+			// No publish at all: the container shares the host's network stack, the
+			// engine discards `ports:`, and the application binds what it binds.
+			out = append(out, hostNetworkPorts(in, svc)...)
+			continue
+		}
 		for _, mapping := range svc.Ports {
+			if mapping.Dynamic() {
+				if f, ok := dynamicRange(in, svc, mapping); ok {
+					out = append(out, f)
+				}
+				continue
+			}
 			for _, port := range mapping.HostPorts() {
 				want := claimFromMapping(mapping, port)
 				if !observableProtocol(want.protocol) {
@@ -57,13 +69,14 @@ type portHolder struct {
 // socket behind a published port is the container's own proxy.
 func portHolders(in Input, want portClaim) []portHolder {
 	var out []portHolder
+	st := stackOf(in)
 
 	for _, container := range in.Caps.Containers {
 		best := portHolder{container: container}
 		for _, mapping := range container.Ports {
 			for _, port := range mapping.HostPorts() {
 				held := claimFromMapping(mapping, port)
-				result, why := collides(want, held)
+				result, why := collides(st, want, held)
 				if result > best.overlap {
 					best.overlap, best.why, best.claim = result, why, held
 				}
@@ -76,7 +89,7 @@ func portHolders(in Input, want portClaim) []portHolder {
 
 	for _, socket := range in.Caps.Ports {
 		held := claimFromSocket(socket)
-		result, why := collides(want, held)
+		result, why := collides(st, want, held)
 		if result == overlapNone {
 			continue
 		}
@@ -196,6 +209,174 @@ func portConflictFinding(
 		finding.Evidence = append(finding.Evidence, holderEvidence(in, holders)...)
 	}
 	return finding
+}
+
+// dynamicRange checks a host range published to one container port
+// ("8000-8010:80"). The engine binds one port of it, the first it finds free, so the
+// range is a conflict only when every port of it is taken — and a single free port
+// settles it the other way.
+func dynamicRange(in Input, svc model.ManifestService, mapping model.PortMapping) (model.Finding, bool) {
+	protocol := protocolOf(mapping)
+	if !observableProtocol(baseProtocol(protocol)) {
+		return unobservableProtocol(in, svc, mapping, claimFromMapping(mapping, mapping.HostPort)), true
+	}
+	var taken, maybe []string
+	for _, port := range mapping.HostPorts() {
+		switch state, holders := portState(in, mapping, port); state {
+		case portFree:
+			return model.Finding{}, false
+		case portTaken:
+			taken = append(taken, fmt.Sprintf("%d (%s)", port, holders))
+		default:
+			maybe = append(maybe, fmt.Sprintf("%d (%s)", port, orUnknown(holders)))
+		}
+	}
+	subject := fmt.Sprintf("%d-%d/%s", mapping.HostPort, mapping.HostPortEnd, baseProtocol(protocol))
+	finding := model.Finding{
+		Code:       "witness.port_conflict",
+		Category:   model.CategoryConflict,
+		Subject:    subject,
+		Confidence: model.ConfidenceHigh,
+		SortOrder:  mapping.HostPort,
+		Evidence: []model.Evidence{
+			manifestEvidence(in, svc.Name, fmt.Sprintf("ports: publishes one port of host range %s → container port %d",
+				subject, mapping.ContainerPort)),
+			evidence(in, "ss -lntupH", strings.Join(append(append([]string{}, taken...), maybe...), "\n")),
+		},
+	}
+	if len(maybe) == 0 {
+		finding.Outcome, finding.Severity = model.OutcomeProblem, model.FindingBlocker
+		finding.Title = fmt.Sprintf("Every port of %s is already in use", subject)
+		finding.Description = fmt.Sprintf("Service %q publishes one port of %s, which the engine picks from the "+
+			"ports still free. None is: %s.", svc.Name, subject, strings.Join(taken, "; "))
+		finding.WhyItMatters = "The container will fail to start: there is no free port in the range for the engine to bind."
+		finding.WhatToDo = fmt.Sprintf("Widen the range or free a port in it before deploying %q.", svc.Name)
+		return finding, true
+	}
+	finding.Outcome, finding.Severity, finding.Confidence = model.OutcomeUnknown, model.FindingWarning, model.ConfidenceMedium
+	finding.Title = fmt.Sprintf("Whether %s has a free port could not be established", subject)
+	finding.Description = fmt.Sprintf("Service %q publishes one port of %s. No port of it is certainly free: "+
+		"taken — %s; undecided — %s.", svc.Name, subject, orNone(taken), strings.Join(maybe, "; "))
+	finding.WhyItMatters = "If none is free the container will not start; if one is, the engine takes it. This audit could not tell."
+	finding.WhatToDo = fmt.Sprintf("Check by hand: `ss -lntup` for the ports of %s.", subject)
+	return finding, true
+}
+
+func orNone(values []string) string {
+	if len(values) == 0 {
+		return "none"
+	}
+	return strings.Join(values, "; ")
+}
+
+// hostNetworkPorts checks a service on the host's network stack (network_mode:
+// host). The engine discards `ports:` for it and publishes nothing; the
+// application binds its ports directly on the host, at addresses of its own
+// choosing. Its declared ports (`ports:` container side, `expose:`) are what the
+// plan says it listens on; a port nothing declares cannot be checked at all.
+func hostNetworkPorts(in Input, svc model.ManifestService) []model.Finding {
+	type declared struct {
+		port     int
+		protocol string
+	}
+	var ports []declared
+	for _, m := range svc.Ports {
+		end := m.ContainerPortEnd
+		if end < m.ContainerPort {
+			end = m.ContainerPort
+		}
+		for p := m.ContainerPort; p <= end; p++ {
+			ports = append(ports, declared{p, baseProtocol(m.Protocol)})
+		}
+	}
+	for _, p := range svc.Expose {
+		ports = append(ports, declared{p, "tcp"})
+	}
+
+	base := manifestEvidence(in, svc.Name, "network_mode: host")
+	if len(ports) == 0 {
+		return []model.Finding{{
+			Code: "witness.port_conflict", Category: model.CategoryConflict, Subject: svc.Name,
+			Severity: model.FindingInfo, Confidence: model.ConfidenceHigh, Outcome: model.OutcomeManualCheck,
+			Title: fmt.Sprintf("Service %q binds host ports nobody declared", svc.Name),
+			Description: fmt.Sprintf("Service %q runs on the host's network stack (network_mode: host) and declares "+
+				"no port, so which ports it will bind is up to the application.", svc.Name),
+			WhyItMatters: "A port the plan does not declare cannot be checked; it conflicts or not when the application starts.",
+			WhatToDo:     fmt.Sprintf("List the ports %q listens on under `expose:` so they can be checked.", svc.Name),
+			Evidence:     []model.Evidence{base},
+		}}
+	}
+
+	var out []model.Finding
+	for _, d := range ports {
+		want := portClaim{protocol: d.protocol, port: d.port, readable: true}
+		if !observableProtocol(d.protocol) {
+			continue
+		}
+		var holders []portHolder
+		st := stackOf(in)
+		for _, socket := range in.Caps.Ports {
+			held := claimFromSocket(socket)
+			if result, why := collides(st, want, held); result != overlapNone {
+				holders = append(holders, portHolder{overlap: result, why: why, claim: held, socket: socket, isSocket: true})
+			}
+		}
+		if len(holders) == 0 {
+			continue
+		}
+		f := model.Finding{
+			Code: "witness.port_conflict", Category: model.CategoryConflict,
+			Subject:   fmt.Sprintf("%d/%s (host network)", d.port, d.protocol),
+			SortOrder: d.port, Confidence: model.ConfidenceMedium,
+			Evidence: append([]model.Evidence{base, manifestEvidence(in, svc.Name,
+				fmt.Sprintf("declares port %d/%s", d.port, d.protocol))}, holderEvidence(in, holders)...),
+		}
+		wildcard := false
+		for _, h := range holders {
+			if h.claim.anyAddr || (h.claim.ip != nil && h.claim.ip.IsUnspecified()) {
+				wildcard = true
+			}
+		}
+		previous := runningOwnContainer(in, svc.Name)
+		switch {
+		case wildcard && previous == "":
+			f.Outcome, f.Severity, f.Confidence = model.OutcomeProblem, model.FindingBlocker, model.ConfidenceHigh
+			f.Title = fmt.Sprintf("Port %d is already in use on the host network", d.port)
+			f.Description = fmt.Sprintf("Service %q runs on the host's network stack and listens on %d/%s, which %s "+
+				"already holds on every address — so the port is taken whatever address the application binds.",
+				svc.Name, d.port, d.protocol, describeHolders(in, holders))
+			f.WhyItMatters = "The application will fail to bind when it starts, which on the host network is a crash of the container."
+			f.WhatToDo = fmt.Sprintf("Free %d/%s, or run %q on a bridge network with a published port.", d.port, d.protocol, svc.Name)
+		default:
+			f.Outcome, f.Severity = model.OutcomeUnknown, model.FindingWarning
+			f.Title = fmt.Sprintf("Port %d may be in use on the host network — this could not be established", d.port)
+			reason := "the application binds an address of its own choosing, which the plan does not state"
+			if previous != "" {
+				reason = fmt.Sprintf("the holder may be this service's own previous container %q, which Compose "+
+					"stops first — a socket on the host network carries no container label", previous)
+			}
+			f.Description = fmt.Sprintf("Service %q runs on the host's network stack and listens on %d/%s; %s holds "+
+				"that port, and whether the two collide is unknown: %s.", svc.Name, d.port, d.protocol,
+				describeHolders(in, holders), reason)
+			f.WhyItMatters = "If they collide the application fails to bind when the container starts."
+			f.WhatToDo = fmt.Sprintf("Settle it by hand: `ss -lntup | grep ':%d '`.", d.port)
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// runningOwnContainer names a running container of this deployment's service, if
+// there is one the plan releases.
+func runningOwnContainer(in Input, service string) string {
+	for _, c := range in.Caps.Containers {
+		if c.Service == service && c.State == "running" {
+			if o := ownerOf(in, c); o.kind == ownService && o.released {
+				return c.Name
+			}
+		}
+	}
+	return ""
 }
 
 // unobservableProtocol is the finding for a publish this tool cannot check at
