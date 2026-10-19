@@ -180,10 +180,16 @@ func summary(r *result.Run) string {
 type environment struct {
 	o    options
 	name string
+	// planFlags is false for a CLI older than the plan flags (≤ 1.4.0): it is
+	// given no --project-name, and derives the project from the directory, as it
+	// always did — which is part of what a comparison with it measures.
+	planFlags bool
 }
 
 func startEnvironment(o options, bin string) (*environment, error) {
 	env := &environment{o: o, name: fmt.Sprintf("dwbench-%d", os.Getpid())}
+	help, _ := host(o, bin, "--help")
+	env.planFlags = strings.Contains(help, "-project-name")
 	// --network none: the environment reaches nothing outside itself. Whatever a
 	// scenario needs is loaded into it from this machine, and a pull — by Compose
 	// for a missing image or a foreign platform — fails instead of fetching.
@@ -336,8 +342,11 @@ func (e *environment) scenario(s result.Scenario) result.Outcome {
 	before, _ := e.exec("sh", "-c", snapshotScript, "snapshot", dir)
 
 	outDir := "/out/" + strings.ReplaceAll(s.ID, "/", "--")
-	audit := append([]string{"deploy-witness", "--compose", dir + "/compose.yml", "--project-name", project,
-		"--format", "json", "--out", outDir}, s.Audit.Args...)
+	audit := []string{"deploy-witness", "--compose", dir + "/compose.yml"}
+	if e.planFlags {
+		audit = append(audit, "--project-name", project)
+	}
+	audit = append(append(audit, "--format", "json", "--out", outDir), e.supported(s.Audit.Args)...)
 	var auditOut string
 	var auditErr error
 	if s.Audit.User == "unprivileged" {
@@ -416,7 +425,7 @@ func (e *environment) readPrediction(o *result.Outcome, path string) error {
 	}
 	var doc struct {
 		Audit struct {
-			Rules []struct {
+			Rules *[]struct {
 				Code    string `json:"code"`
 				Outcome string `json:"outcome"`
 			} `json:"rules"`
@@ -437,14 +446,23 @@ func (e *environment) readPrediction(o *result.Outcome, path string) error {
 		return err
 	}
 	o.Predicted = "absent"
-	for _, r := range doc.Audit.Rules {
-		if r.Code == o.Scenario.Rule {
-			o.Predicted = r.Outcome
-		}
-	}
 	for _, f := range doc.Audit.Findings {
 		if f.Code == o.Scenario.Rule {
 			o.Findings = append(o.Findings, result.Finding{Severity: f.Severity, Outcome: f.Outcome, Subject: f.Subject, Title: f.Title})
+		}
+	}
+	if doc.Audit.Rules == nil {
+		// A report from before rule outcomes existed (≤ 1.4.0): the outcome is
+		// derived the way such a report was read — a blocker or a warning is a
+		// problem, info or nothing is not. It is what lets two versions be compared
+		// on the same scenarios.
+		o.Predicted = legacyOutcome(o.Findings)
+		o.Legacy = true
+		return nil
+	}
+	for _, r := range *doc.Audit.Rules {
+		if r.Code == o.Scenario.Rule {
+			o.Predicted = r.Outcome
 		}
 	}
 	for _, s := range doc.Audit.Sections {
@@ -453,6 +471,30 @@ func (e *environment) readPrediction(o *result.Outcome, path string) error {
 		}
 	}
 	return nil
+}
+
+// supported drops the plan flags a legacy CLI does not have (--remove-orphans);
+// the scenario then measures how that version reads the plan without them.
+func (e *environment) supported(args []string) []string {
+	if e.planFlags {
+		return args
+	}
+	var out []string
+	for _, a := range args {
+		if a != "--remove-orphans" {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func legacyOutcome(findings []result.Finding) string {
+	for _, f := range findings {
+		if f.Severity == "blocker" || f.Severity == "warning" {
+			return "problem"
+		}
+	}
+	return "no-problem"
 }
 
 func diffLines(before, after string) []string {

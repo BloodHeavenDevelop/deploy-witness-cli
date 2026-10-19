@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Quality measurement and release criteria** (DW-84, [bench/score](bench/score/score.go),
+  `docs/<lang>/12-quality-and-release.md`): `make bench-score` gives every rule its
+  detected problems, misses, false findings, unknowns and situation coverage from a
+  bench run, compared scenario by scenario with the committed baseline
+  (`bench/baseline/results.json`); unknown is never a detection — it counts against
+  the detection rate. `make release-gate` blocks a release on a bench error, an audit
+  side effect, broken ground truth, a failing critical or regression scenario, a
+  scenario that passed in the baseline and fails now, or a baseline scenario missing
+  from the run. The released 1.4.0, graded on the same 46 scenarios
+  (`bench/history/1.4.0.json`): 25/46 as specified, detection 76%, false findings
+  32%; this tree: 46/46, 100%, 0%, gate PASS. The bench grades a CLI that predates
+  rule outcomes by its severities, so versions stay comparable.
+
 - **A reproducible test bench** (DW-83): `make bench` stages every scenario under
   `bench/scenarios` in one disposable Docker-in-Docker container (pinned
   `docker:27.5.1-dind` — Engine 27.5.1, Compose 2.33.0 — `--network none`, images

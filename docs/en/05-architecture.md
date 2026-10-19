@@ -80,7 +80,7 @@ process command line, a proxy directive — and this report may be uploaded.
 | `app/witness` | The 25 rules, the change list and the rollback plan. Pure functions of manifest + capabilities; observes nothing. `outcomes.go` gives every rule exactly one outcome (problem, no-problem, unknown, manual-check, not-applicable) and enforces the severity/outcome invariants. |
 | `app/report` | CSV rendering through `app/csv`, the JSON document, the shared audit contract and the upload. |
 | `app/audit` | Section orchestration, the shared inventory cache, and the network plan/record (`network.go`) printed before the run and written as `network.csv`. |
-| `bench/` | Not part of the binary. `bench/dwbench` is the test bench harness (`make bench`, [11](11-test-bench.md)), `bench/result` the shape of its results, `bench/scenarios` the staged situations. It drives a disposable Docker-in-Docker engine with the docker CLI and imports nothing from `app/`. |
+| `bench/` | Not part of the binary. `bench/dwbench` is the test bench harness (`make bench`, [11](11-test-bench.md)), `bench/result` the shape of its results, `bench/scenarios` the staged situations, `bench/score` + `bench/dwscore` the quality figures and the release gate ([12](12-quality-and-release.md)), `bench/baseline` and `bench/history` the committed runs they compare with. It drives a disposable Docker-in-Docker engine with the docker CLI and imports nothing from `app/`. |
 
 Dependencies point one way: `audit` → collectors → `pkgmgr`/`run` → `model`.
 Nothing in `model` imports anything above it, which is why the comparators, the

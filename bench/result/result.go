@@ -171,6 +171,9 @@ type Outcome struct {
 	// directory before and after the audit. Anything here is a defect: the audit
 	// must change nothing.
 	SideEffects []string `json:"sideEffects"`
+	// Legacy marks a prediction derived from severities, for a CLI whose report
+	// has no rule outcomes (≤ 1.4.0).
+	Legacy bool `json:"legacy,omitempty"`
 	// BenchError is set when the bench itself failed (a setup that did not run, an
 	// audit that produced no report): the scenario then proves nothing about the
 	// CLI and is counted apart.

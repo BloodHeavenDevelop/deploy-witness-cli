@@ -16,7 +16,8 @@ UTILS             ?= ../utils
 CONTRACTS         ?= ../contracts
 
 .PHONY: development build run clean lint test vet fmt sync-shared \
-        build-linux-amd64 build-linux-arm64 build-all install dist bench
+        build-linux-amd64 build-linux-arm64 build-all install dist bench \
+        bench-score release-gate bench-baseline
 
 # Run the audit straight from source. Pass flags with ARGS, e.g.
 #   make development ARGS="--sections ports,services --stdout"
@@ -82,6 +83,27 @@ sync-shared:
 # bench/out/<UTC timestamp>/. Narrow it with BENCH_ARGS="-only port_conflict".
 bench: build
 	go run ./bench/dwbench -bin ./$(BINARY) -commit "$$(git rev-parse --short HEAD 2>/dev/null)" $(BENCH_ARGS)
+
+# Quality of the latest bench run, per rule, against the committed baseline
+# (DW-84). RESULTS=<results.json> scores another run.
+bench-score:
+	go run ./bench/dwscore $(if $(RESULTS),-results $(RESULTS))
+
+# The release criteria: a fresh bench run must pass the gate — no bench error, no
+# audit side effect, no broken ground truth, no failing critical or regression
+# scenario, nothing that passed in the baseline failing now, no baseline scenario
+# missing. Run it before cutting a release.
+release-gate: bench
+	go run ./bench/dwscore -gate
+
+# Make the latest run the new baseline. Only after release-gate passes, and with a
+# CHANGELOG line saying why the baseline moved.
+bench-baseline:
+	@latest=$$(ls -1d bench/out/*/ 2>/dev/null | sort | tail -1); \
+	test -n "$$latest" || { echo "no run under bench/out — make bench first"; exit 2; }; \
+	go run ./bench/dwscore -gate -results "$${latest}results.json" && \
+	install -m 0644 "$${latest}results.json" bench/baseline/results.json && \
+	echo "bench/baseline/results.json <- $${latest}results.json"
 
 clean:
 	rm -rf $(BINARY) bin

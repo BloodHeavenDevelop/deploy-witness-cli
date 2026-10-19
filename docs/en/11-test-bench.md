@@ -56,7 +56,7 @@ The harness (`bench/dwbench`), for each scenario in id order:
 
 An `unknown` scenario stages a real problem the audit cannot see (the engine does
 not answer): Docker then fails, as expected — and the CLI's `unknown` is **not** a
-detection, and any quality figure computed from a run must count it that way.
+detection — [12 — Quality](12-quality-and-release.md) counts it that way.
 
 ## Coverage
 
