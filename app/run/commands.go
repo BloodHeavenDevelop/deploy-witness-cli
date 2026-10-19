@@ -156,6 +156,12 @@ var commands = []Spec{
 		Options: composeOptions, MaxRepeat: 64,
 		Section: "witness", Purpose: "the same, on a Compose too old for --no-env-resolution",
 	},
+	{
+		Binary: "docker", Args: []string{"compose", OptionsToken, "config", "--hash", "*"},
+		Options: composeOptions, MaxRepeat: 64,
+		Section: "witness",
+		Purpose: "each service's configuration hash, which Compose compares with a container's label to keep or recreate it",
+	},
 	// Which engine the engineer's own `docker compose up` would talk to. Both read
 	// the CLI's local context store only; neither contacts an engine.
 	{

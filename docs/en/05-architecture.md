@@ -23,7 +23,7 @@ main.go
                  ├─ the manifest Prepare parsed      the requirements side
                  ├─ host/docker/proxy/panels/          the capabilities side,
                  │  scheduler/certs/backup + databases in dependency order
-                 └─ witness.Evaluate()              24 rules: findings, one outcome per rule, changes, rollback
+                 └─ witness.Evaluate()              25 rules: findings, one outcome per rule, changes, rollback
             each producing a model.SectionResult: status, counts, duration, notes
        └─ host audit: a `not-applicable` `witness` row labelled host-audit (out of scope, not a gap)
        └─ report.Commands = runner.Journal()   every command, including refusals
@@ -77,7 +77,7 @@ process command line, a proxy directive — and this report may be uploaded.
 | `app/collect/certs` | TLS certificates on disk, parsed with `crypto/x509`, and whether anything actually renews them. |
 | `app/collect/scheduler` | Scheduled work: cron in every form, plus systemd timers. |
 | `app/collect/backup` | Backup tools, backup jobs, and the date of the newest file in each backup directory. |
-| `app/witness` | The 24 rules, the change list and the rollback plan. Pure functions of manifest + capabilities; observes nothing. `outcomes.go` gives every rule exactly one outcome (problem, no-problem, unknown, manual-check, not-applicable) and enforces the severity/outcome invariants. |
+| `app/witness` | The 25 rules, the change list and the rollback plan. Pure functions of manifest + capabilities; observes nothing. `outcomes.go` gives every rule exactly one outcome (problem, no-problem, unknown, manual-check, not-applicable) and enforces the severity/outcome invariants. |
 | `app/report` | CSV rendering through `app/csv`, the JSON document, the shared audit contract and the upload. |
 | `app/audit` | Section orchestration, the shared inventory cache, and the network plan/record (`network.go`) printed before the run and written as `network.csv`. |
 

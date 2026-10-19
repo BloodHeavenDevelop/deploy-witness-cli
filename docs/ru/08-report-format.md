@@ -252,7 +252,7 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 число блокеров, `High` — число предупреждений, **только среди доказанных проблем**:
 находка с итогом `unknown` или `manual-check` не считается никогда, поэтому прогон,
 который не смог посмотреть, не выглядит как нашедший. Замечания строки заканчиваются
-на `rule outcomes: 24 rules — N problem (коды); N unknown (коды); …`.
+на `rule outcomes: 25 rules — N problem (коды); N unknown (коды); …`.
 
 ## rules.csv
 
@@ -357,11 +357,12 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 
 | Kind | Какие строки даёт |
 |---|---|
-| `container` | По одной на сервис плюс по одной на каждую не-external сеть манифеста. Строка сервиса говорит одно из: `created from <образ>`; `replaced (currently <состояние>, image <образ>) with <образ>` — только для контейнера **этого** Compose-проекта; `not created: a container named <имя> already exists … and does not belong to this deployment` — контейнер другого проекта или созданный вручную (запущенный или нет): на нём `docker compose up` падает (`witness.container_name_conflict`); `created from <образ>, but it cannot start: host port <порт> is already held` (`witness.port_conflict`); либо, если движок не отвечает, `created … unless a container named <имя> already exists — … could not be checked` |
+| `container` | По одной на сервис плюс по одной на каждую не-external сеть манифеста. Строка сервиса говорит одно из: `created from <образ>`; `replaced (currently <состояние>, image <образ>) with <образ> — recreated: its configuration changed (config hash …)` или `kept: its configuration is unchanged` — только для контейнера **этого** деплоя, решается так же, как решает Compose, по хэшу конфигурации (с учётом `--force-recreate`/`--no-recreate`); `taken over: it carries this project's name but was deployed from <каталог>` — другая копия (`witness.project_ownership`); `not created: a container named <имя> already exists … and does not belong to this deployment` — контейнер другого проекта или созданный вручную (запущенный или нет): на нём `docker compose up` падает (`witness.container_name_conflict`); `created from <образ>, but it cannot start: host port <порт> is already held` (`witness.port_conflict`); либо, если движок не отвечает, `created … unless a container named <имя> already exists — … could not be checked` |
 | `command` | Образ, который придётся тянуть, с реестром, откуда он придёт; либо сервис, который собирается локально, с его контекстом сборки |
 | `firewall-port` | По одной на каждый опубликованный порт хоста, с указанием, насколько далеко он будет доступен — порт, опубликованный без адреса хоста, попадает на все интерфейсы, и этого как раз не ожидают. Если привязку уже держит кто-то другой, строка говорит `not opened: … already held by …`, а если это не удалось решить — добавляет `if the binding is free, which could not be established`; сопоставление то же, что у `witness.port_conflict`. Без раздела `ports` добавляется `if the binding is free, which was not checked` |
 | `file` | Каждый bind-монтаж (с пометкой чтение/запись или только чтение) и каждый именованный том |
 | `disk-space` | Сколько места свободно на файловой системе с хранилищем контейнеров и сколько образов ещё предстоит скачать |
+| `container` (существующий) | По одной на каждый существующий контейнер, которого план касается, не называя его: orphan проекта (`left running …` или `removed (--remove-orphans)`), контейнер другой копии (`taken over …`), этот каталог под другим именем проекта или одноразовый run (`left as it is …`) |
 
 Строка про диск сознательно неполна и говорит об этом: сколько нужно отсутствующим
 образам, нельзя узнать без обращения к реестру, а этот аудит его не делает.
@@ -510,7 +511,7 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 - **В контракте нет поля итога.** Находка уходит со своей серьёзностью, и по одной
   находке получатель не отличит доказанную проблему от вопроса, который этот прогон
   не смог решить. Пока контракт этого не умеет, итог передают две вещи: `note`
-  коллектора `witness` заканчивается на `rule outcomes: 24 rules — N problem (коды);
+  коллектора `witness` заканчивается на `rule outcomes: 25 rules — N problem (коды);
   N unknown (коды); …`, а заголовок нерешённой находки говорит об этом прямо («…
   could not be established», «… could not be decided», «… needs a manual check»).
   Чтобы `outcome` передавался у каждой находки, нужно изменение в репозитории

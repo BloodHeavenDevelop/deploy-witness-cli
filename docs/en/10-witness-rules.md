@@ -1,7 +1,7 @@
 # 10. Witness rules
 
 The `witness` section compares one `docker-compose.yml` against one host and
-states every disagreement. This page is the catalogue: 24 rules, 24 finding codes,
+states every disagreement. This page is the catalogue: 25 rules, 25 finding codes,
 what each one is looking at, and what makes it fire.
 
 **The codes are stable identifiers.** They are what an integration matches on, and
@@ -120,7 +120,8 @@ are under each rule below; thresholds are in [Thresholds](#thresholds).
 | Code | Needs | `problem` when | `no-problem` when | `unknown` when | `not-applicable` / `manual-check` when |
 |---|---|---|---|---|---|
 | `port_conflict` | published ports; sockets (ports section); container publications | a binding is certainly held by something that is not this deployment's own container | nothing holds the bindings, or only this deployment's own container does | sockets not read; overlap undecidable offline (`[::]`, no `host_ip`, unresolved `host_ip`); a socket holds it and the engine's containers were not listed, so it may be our own `docker-proxy` | n/a: nothing published · manual: protocol with no socket table (`sctp`) |
-| `container_name_conflict` | `container_name`; container list | a container of that name exists and is not this project's | no container of that name, or it is this project's | the engine did not answer | n/a: no `container_name` |
+| `container_name_conflict` | `container_name`; container list | a container of that name exists and is not this deployment's service | no container of that name, or it is this deployment's | the engine did not answer; its labels were not reported | n/a: no `container_name` |
+| `project_ownership` | containers with their Compose labels; the plan's project, directory, services | another checkout uses this project name | every container of the project is this deployment's previous version, or there is none | the engine did not answer; a container's labels were not reported | manual: this directory under another project name; orphans left running |
 | `volume_name_conflict` | external volumes; volume list (complete) | an external volume is missing from a complete list, or carries another project's label | every external volume exists and is not someone else's | the volume list was not read in full | n/a: no external volume |
 | `bind_path_conflict` | bind mounts | a source is a sensitive host path (`/`, `/etc`, the runtime socket, `/var/lib/docker`, `/proc`, `/sys`, a home) | no source is sensitive | — (the plan is the whole input) | n/a: no bind mount |
 | `network_name_conflict` | external networks; network list (complete) | an external network is missing from a complete list | every external network exists | the network list was not read in full | n/a: no external network · manual: it is shared with another stack |
@@ -177,8 +178,8 @@ or address range this deployment wants?
 
 | Case | Severity | Confidence | Fires when |
 |---|---|---|---|
-| Own container | `info` | `high` | The binding is held by a container carrying this deployment's project label |
-| Taken | **blocker** | `high` | The binding is certainly held — by a listening socket from `ports.csv`, or by a container of another project |
+| Own container | `info` | `high` | The binding is held by a container the planned run releases first — this deployment's previous version (recreated or kept), an orphan with `--remove-orphans` — see [`project_ownership`](#witnessproject_ownership) |
+| Taken | **blocker** | `high` | The binding is certainly held — by a listening socket from `ports.csv`, or by a container the plan does not release: another project, this directory under an older project name, an orphan left running, a one-off run |
 | Undecidable | **warning** | `medium` | Something is on that port and whether the two bindings overlap cannot be established offline |
 | Owner unknown | **warning** (`unknown`) | `medium` | A socket certainly holds the binding, but the engine's containers were not listed — the socket may be this deployment's own `docker-proxy`, which Compose replaces |
 | Not checked | **warning** | `low` | The publish uses a protocol the kernel has no socket table for (anything other than TCP or UDP) |
@@ -231,11 +232,39 @@ happens unprivileged — the finding says "an unidentified process listening on
 
 | | |
 |---|---|
-| Severity | **blocker**, or `info` when the existing container is this deployment's own |
+| Severity | **blocker**, or `info` when the existing container is this deployment's own (same project **and** service); **warning** (`unknown`) when the engine reported no labels for it |
 | Fires when | A service sets `container_name:` and a container with that name already exists |
 
 An explicit `container_name` is precisely the case Compose cannot work around by
 prefixing the project name, so the deployment fails outright.
+
+### `witness.project_ownership`
+
+| | |
+|---|---|
+| Severity | **warning** (`problem`) when another checkout uses this project name; `info` (`manual-check`) for this directory under another project name, and for orphans left running; **warning** (`unknown`) when the engine reported no labels |
+| Fires when | An existing container is tied to this deployment by name or directory but is not simply its previous version |
+
+Whose a container is comes from what Compose wrote on it when it created it, read
+through the engine that was inspected: `com.docker.compose.project`, `.service`,
+`.project.working_dir`, `.project.config_files`, `.oneoff` and `.config-hash`.
+Against the planned run (project name, project directory, services, `up` options)
+every existing container is one of:
+
+| Ownership | What `up` does to it | Released before the new containers bind? |
+|---|---|---|
+| this deployment — the project, a planned service | **kept** when its config hash equals the plan's (`docker compose config --hash`), **recreated** when it differs (stopped and removed, then created), per `--force-recreate`/`--no-recreate` | yes |
+| an orphan — the project, a service the plan does not start | left running; removed with `--remove-orphans` | only with `--remove-orphans` |
+| a one-off `docker compose run` of the project | left as it is | no |
+| another checkout — the project name, another `working_dir` | taken over: Compose cannot tell the two apart | yes — and that is the finding |
+| this directory under another project name | left as it is | no |
+| another Compose project, or no Compose labels | left as it is | no |
+| labels not reported by the engine | unknown | no — and that is a finding |
+
+The same classification decides `port_conflict` (a port held by a container the
+plan releases is not a conflict; one held by an orphan, a one-off run, an older
+project name or anything else is), `container_name_conflict` and the `container`
+rows of `changes.csv`, so the three never disagree.
 
 ### `witness.volume_name_conflict`
 

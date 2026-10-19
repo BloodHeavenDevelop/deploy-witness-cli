@@ -124,7 +124,7 @@ func portConflictFinding(
 			"Service %q publishes %s, and that binding is held on this host by %s. The engine's containers could "+
 				"not be listed (%s), so whether the holder is this deployment's own container — which Compose "+
 				"replaces — or something else cannot be decided.",
-			svc.Name, want.describe(), describeHolders(certain), why)
+			svc.Name, want.describe(), describeHolders(in, certain), why)
 		finding.WhyItMatters = "If the holder is not this deployment's own container, the container will fail to " +
 			"start. This is reported as an open question because a blocker on the previous version of the same " +
 			"deployment is the false blocker."
@@ -140,7 +140,7 @@ func portConflictFinding(
 		finding.Title = fmt.Sprintf("Port %d is already in use", want.port)
 		finding.Description = fmt.Sprintf(
 			"Service %q publishes %s, and that binding is already held on this host by %s.",
-			svc.Name, want.describe(), describeHolders(certain))
+			svc.Name, want.describe(), describeHolders(in, certain))
 		finding.WhyItMatters = "The container will fail to start: the engine cannot bind a port another " +
 			"process already holds. On a deployment that stops the old stack first, the failure lands after " +
 			"the old one is already down."
@@ -163,8 +163,9 @@ func portConflictFinding(
 		finding.Severity = model.FindingInfo
 		finding.Title = fmt.Sprintf("Port %d is held by this deployment's own container", want.port)
 		finding.Description = fmt.Sprintf(
-			"Host %s %s container %q, which belongs to the same Compose "+
-				"project (%s). Deploying replaces it.", want.describe(), holds, container.Name, container.Project)
+			"Host %s %s container %q, which belongs to the same Compose project (%s). The planned run "+
+				"releases it before binding: %s.", want.describe(), holds, container.Name, container.Project,
+			ownerOf(in, container).action)
 		finding.WhyItMatters = "Nothing is blocked. This line exists so that the engine's " +
 			"\"port is already allocated\" message, if it appears, is not mistaken for a conflict with an " +
 			"unrelated service."
@@ -183,7 +184,7 @@ func portConflictFinding(
 		finding.Description = fmt.Sprintf(
 			"Service %q publishes %s. Something is bound to that port on this host — %s — and whether the two "+
 				"bindings actually overlap could not be decided offline. %s",
-			svc.Name, want.describe(), describeHolders(holders), unknownReasons(holders))
+			svc.Name, want.describe(), describeHolders(in, holders), unknownReasons(holders))
 		finding.WhyItMatters = "If they do overlap the container will not start, and the failure lands during " +
 			"the deployment rather than before it. This is reported as an open question rather than a blocker " +
 			"because stopping a deployment that would have worked is the more expensive mistake of the two."
@@ -230,12 +231,13 @@ func unobservableProtocol(in Input, svc model.ManifestService, mapping model.Por
 	}
 }
 
-// ownHolder returns the holder that is this deployment's own container, if any.
-// It is consulted before the certain holders because a published port's raw
-// socket belongs to that same container's proxy and carries no project label.
+// ownHolder returns the holder that the planned run releases before it binds —
+// this deployment's own previous container, recreated or kept, or an orphan it
+// removes — if any. It is consulted before the certain holders because a published
+// port's raw socket belongs to that same container's proxy and carries no label.
 func ownHolder(in Input, holders []portHolder) *portHolder {
 	for i, h := range holders {
-		if !h.isSocket && sameProject(in, h.container.Project) {
+		if !h.isSocket && ownerOf(in, h.container).released {
 			return &holders[i]
 		}
 	}
@@ -272,7 +274,7 @@ func certainHolders(holders []portHolder) []portHolder {
 // "our own container" reading.
 func foreignContainer(in Input, holders []portHolder) bool {
 	for _, h := range holders {
-		if !h.isSocket && !sameProject(in, h.container.Project) {
+		if !h.isSocket && !ownerOf(in, h.container).released {
 			return true
 		}
 	}
@@ -301,10 +303,10 @@ func contains(values []string, want string) bool {
 	return false
 }
 
-func describeHolders(holders []portHolder) string {
+func describeHolders(in Input, holders []portHolder) string {
 	var parts []string
 	for _, h := range holders {
-		parts = append(parts, describeHolder(h))
+		parts = append(parts, describeHolder(in, h))
 	}
 	if len(parts) == 0 {
 		return "another process"
@@ -312,10 +314,10 @@ func describeHolders(holders []portHolder) string {
 	return strings.Join(parts, "; ")
 }
 
-func describeHolder(h portHolder) string {
+func describeHolder(in Input, h portHolder) string {
 	if !h.isSocket {
-		return fmt.Sprintf("container %q (project %s), publishing %s",
-			h.container.Name, h.container.Project, h.claim.describe())
+		return fmt.Sprintf("container %q (%s), publishing %s",
+			h.container.Name, describeOwner(in, h.container), h.claim.describe())
 	}
 	s := h.socket
 	switch {
@@ -409,15 +411,28 @@ func containerNameConflicts(in Input) []model.Finding {
 			},
 		}
 
-		if sameProject(in, found.Project) {
+		owner := ownerOf(in, found)
+		if owner.kind == ownService && (found.Service == "" || found.Service == svc.Name) {
 			finding.Outcome = model.OutcomeNoProblem
 			finding.Severity = model.FindingInfo
 			finding.Title = fmt.Sprintf("Container %q already exists and belongs to this deployment", svc.ContainerName)
 			finding.Description = fmt.Sprintf(
-				"A container named %q is present and carries this deployment's own project label. Deploying replaces it.",
-				svc.ContainerName)
+				"A container named %q is present and carries this deployment's own project label and service. "+
+					"The planned run: %s.", svc.ContainerName, owner.action)
 			finding.WhyItMatters = "Nothing is blocked."
 			finding.WhatToDo = "No action needed."
+			out = append(out, finding)
+			continue
+		}
+		if owner.kind == unlabelled {
+			finding.Outcome = model.OutcomeUnknown
+			finding.Severity = model.FindingWarning
+			finding.Title = fmt.Sprintf("Container %q exists, and whose it is could not be established", svc.ContainerName)
+			finding.Description = fmt.Sprintf("A container named %q exists, and the engine reported no labels for "+
+				"it, so whether it is this deployment's previous version cannot be read.", svc.ContainerName)
+			finding.WhyItMatters = "If it is not this deployment's, `docker compose up` fails on the name."
+			finding.WhatToDo = fmt.Sprintf("Check by hand: `docker inspect --format '{{json .Config.Labels}}' %s`.",
+				svc.ContainerName)
 			out = append(out, finding)
 			continue
 		}
@@ -427,8 +442,8 @@ func containerNameConflicts(in Input) []model.Finding {
 		finding.Title = fmt.Sprintf("Container name %q is taken", svc.ContainerName)
 		finding.Description = fmt.Sprintf(
 			"Service %q fixes its container name to %q with container_name, and a container of that name already "+
-				"exists on this host (image %s, state %s, project %q).",
-			svc.Name, svc.ContainerName, found.Image, found.State, found.Project)
+				"exists on this host (image %s, state %s), belonging to %s.",
+			svc.Name, svc.ContainerName, found.Image, found.State, describeOwner(in, found))
 		finding.WhyItMatters = "Container names are unique per engine. The deployment will fail outright, and " +
 			"an explicit container_name is precisely the case Compose cannot work around by prefixing the project name."
 		finding.WhatToDo = fmt.Sprintf(

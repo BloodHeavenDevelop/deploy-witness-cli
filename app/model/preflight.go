@@ -86,6 +86,15 @@ type LaunchPlan struct {
 	FileDigests []FileDigest `json:"fileDigests"`
 	// ResolvedAt is when the plan was resolved, RFC 3339 UTC.
 	ResolvedAt string `json:"resolvedAt"`
+	// ConfigHashes is each service's configuration hash as Compose computes it
+	// (`docker compose config --hash`): equal to an existing container's label, the
+	// container is kept; different, it is recreated.
+	ConfigHashes map[string]string `json:"configHashes"`
+	// The `docker compose up` options the planned run uses, which change what
+	// happens to the containers already there.
+	RemoveOrphans bool `json:"removeOrphans"`
+	ForceRecreate bool `json:"forceRecreate"`
+	NoRecreate    bool `json:"noRecreate"`
 	// Notes say what the resolution could not reproduce.
 	Notes []string `json:"notes"`
 }
@@ -419,6 +428,17 @@ type Container struct {
 	// "this port is taken by the previous version of this very deployment".
 	Project string `json:"project"`
 	Service string `json:"service"`
+	// WorkingDir, ConfigFiles and ConfigHash are what Compose recorded when it
+	// created the container: the project directory, the files, and the hash of the
+	// service configuration it compares to decide whether to keep or recreate it.
+	// OneOff marks a `docker compose run` container, which `up` never replaces.
+	WorkingDir  string `json:"workingDir"`
+	ConfigFiles string `json:"configFiles"`
+	ConfigHash  string `json:"configHash"`
+	OneOff      bool   `json:"oneOff"`
+	// Labelled is false when the engine reported no labels at all, so ownership
+	// cannot be read from them.
+	Labelled bool `json:"labelled"`
 }
 
 // ContainerNetwork is one existing runtime network.

@@ -1,6 +1,7 @@
 package witness
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +92,32 @@ var situations = map[string][]situation{
 			unreachableEngine(in)
 		}, model.OutcomeUnknown},
 		{"no fixed name", nil, model.OutcomeNotApplicable},
+	},
+	"witness.project_ownership": {
+		{"another checkout uses the project name", func(in *Input) {
+			planAt(in, "/srv/app")
+			in.Caps.Containers = []model.Container{{Name: "app-web-1", Project: "app", Service: "web",
+				WorkingDir: "/home/dev/app", State: "running", Labelled: true}}
+		}, model.OutcomeProblem},
+		{"the previous version of this deployment", func(in *Input) {
+			planAt(in, "/srv/app")
+			in.Caps.Containers = []model.Container{{Name: "app-web-1", Project: "app", Service: "web",
+				WorkingDir: "/srv/app", State: "running", Labelled: true}}
+		}, model.OutcomeNoProblem},
+		{"engine did not answer", func(in *Input) { unreachableEngine(in) }, model.OutcomeUnknown},
+		{"this directory under an older project name", func(in *Input) {
+			planAt(in, "/srv/app")
+			in.Caps.Containers = []model.Container{{Name: "shop-web-1", Project: "shop", Service: "web",
+				WorkingDir: "/srv/app", State: "running", Labelled: true}}
+		}, model.OutcomeManualCheck},
+		{"an orphan left running", func(in *Input) {
+			planAt(in, "/srv/app")
+			in.Caps.Containers = []model.Container{{Name: "app-old-1", Project: "app", Service: "old",
+				WorkingDir: "/srv/app", State: "running", Labelled: true}}
+		}, model.OutcomeManualCheck},
+		{"no labels reported", func(in *Input) {
+			in.Caps.Containers = []model.Container{{Name: "mystery", State: "running"}}
+		}, model.OutcomeUnknown},
 	},
 	"witness.volume_name_conflict": {
 		{"external volume missing", func(in *Input) {
@@ -470,7 +497,7 @@ func TestEveryRuleEndsInExactlyOneOutcome(t *testing.T) {
 		}
 	}
 	summary := OutcomeSummary(result.Rules)
-	if !strings.HasPrefix(summary, "rule outcomes: 24 rules") || !strings.Contains(summary, "problem (") {
+	if !strings.HasPrefix(summary, fmt.Sprintf("rule outcomes: %d rules", len(rules()))) || !strings.Contains(summary, "problem (") {
 		t.Errorf("summary: %s", summary)
 	}
 }
@@ -494,4 +521,8 @@ func TestEvidenceCarriesItsObservation(t *testing.T) {
 	if socket.Origin != model.OriginHost || socket.Source != model.SourceSockets || socket.CapturedAt != "2026-08-17T11:59:30Z" {
 		t.Errorf("socket evidence = %+v", socket)
 	}
+}
+
+func planAt(in *Input, dir string) {
+	in.Plan = &model.LaunchPlan{ProjectDirectory: dir, ProjectName: in.Project}
 }

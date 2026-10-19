@@ -248,7 +248,7 @@ In `summary.csv` the `witness` row reuses the two counters: `Critical` holds the
 blocker count and `High` the warning count **of proven problems only** — a finding
 whose outcome is `unknown` or `manual-check` is never counted, so a run that could
 not look does not read as one that found. The row's notes end with
-`rule outcomes: 24 rules — N problem (codes); N unknown (codes); …`.
+`rule outcomes: 25 rules — N problem (codes); N unknown (codes); …`.
 
 ## rules.csv
 
@@ -353,11 +353,12 @@ be updated" is worth nothing to the person who has to answer for it.
 
 | Kind | Rows it produces |
 |---|---|
-| `container` | One per service, plus one per non-external network the manifest declares. A service's row says one of: `created from <image>`; `replaced (currently <state>, image <image>) with <image>` — only for a container of **this** Compose project; `not created: a container named <name> already exists … and does not belong to this deployment` — another project's container, or one created by hand (running or not), on which `docker compose up` fails (`witness.container_name_conflict`); `created from <image>, but it cannot start: host port <port> is already held` (`witness.port_conflict`); or, with the engine unreachable, `created … unless a container named <name> already exists — … could not be checked` |
+| `container` | One per service, plus one per non-external network the manifest declares. A service's row says one of: `created from <image>`; `replaced (currently <state>, image <image>) with <image> — recreated: its configuration changed (config hash …)` or `kept: its configuration is unchanged` — only for a container of **this** deployment, decided as Compose decides, by the configuration hash (`--force-recreate`/`--no-recreate` respected); `taken over: it carries this project's name but was deployed from <dir>` — another checkout (`witness.project_ownership`); `not created: a container named <name> already exists … and does not belong to this deployment` — another project's container, or one created by hand (running or not), on which `docker compose up` fails (`witness.container_name_conflict`); `created from <image>, but it cannot start: host port <port> is already held` (`witness.port_conflict`); or, with the engine unreachable, `created … unless a container named <name> already exists — … could not be checked` |
 | `command` | An image that has to be pulled, with the registry it comes from; or a service that is built locally, with its build context |
 | `firewall-port` | One per published host port, with how far it will be reachable — a port published without a host IP is on every interface, which is the part people do not expect. When something else already holds the binding the row says `not opened: … already held by …`, and when that could not be decided it adds `if the binding is free, which could not be established` — the same matching as `witness.port_conflict`. Without the `ports` section it adds `if the binding is free, which was not checked` |
 | `file` | Every bind mount (with read/write or read only) and every named volume |
 | `disk-space` | Space available on the filesystem holding the container store, and how many images still have to be pulled |
+| `container` (existing) | One per existing container the plan affects without naming it: an orphan of the project (`left running …` or `removed (--remove-orphans)`), another checkout's container (`taken over …`), this directory under another project name or a one-off run (`left as it is …`) |
 
 The disk row is deliberately incomplete and says so: how much the missing images
 need cannot be known without contacting a registry, which this audit does not do.
@@ -505,7 +506,7 @@ Details worth knowing:
 - **The contract has no outcome field.** A finding goes out with its severity,
   and the receiver cannot tell a proven problem from a question this run could not
   settle by the finding alone. Two things carry it until the contract does: the
-  `witness` collector's `note` ends with `rule outcomes: 24 rules — N problem
+  `witness` collector's `note` ends with `rule outcomes: 25 rules — N problem
   (codes); N unknown (codes); …`, and an undecided finding's title says so ("…
   could not be established", "… could not be decided", "… needs a manual check").
   Carrying `outcome` on each finding needs a change in the `contracts` repository.

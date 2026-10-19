@@ -564,13 +564,18 @@ func TestNormalizeState(t *testing.T) {
 
 func TestLabelsFromEitherShape(t *testing.T) {
 	var packed flexLabels
-	if err := packed.UnmarshalJSON([]byte(`"com.docker.compose.project=shop,solo,empty="`)); err != nil {
+	// Docker renders every label as k=v, an empty value as `k=`; an item with no `=`
+	// is the rest of a value that contained a comma (config_files of a two-file
+	// project).
+	if err := packed.UnmarshalJSON([]byte(`"com.docker.compose.project=shop,` +
+		`com.docker.compose.project.config_files=/srv/a.yml,/srv/b.yml,empty="`)); err != nil {
 		t.Fatalf("string labels: %v", err)
 	}
-	if packed["com.docker.compose.project"] != "shop" {
+	if packed["com.docker.compose.project"] != "shop" ||
+		packed["com.docker.compose.project.config_files"] != "/srv/a.yml,/srv/b.yml" {
 		t.Errorf("packed labels: %+v", packed)
 	}
-	if _, ok := packed["solo"]; !ok {
+	if _, ok := packed["empty"]; !ok {
 		t.Errorf("a label with no value is still a label: %+v", packed)
 	}
 

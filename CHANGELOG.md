@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Container ownership and the replacement plan** (DW-85,
+  [app/witness/ownership.go](app/witness/ownership.go)): every existing container is
+  classified from the Compose labels it carries (`project`, `service`,
+  `project.working_dir`, `project.config_files`, `oneoff`, `config-hash`) against the
+  planned run — this deployment (kept when its config hash equals the plan's from
+  `docker compose config --hash`, recreated otherwise), an orphan, a one-off run,
+  another checkout using the same project name, this directory under another project
+  name, another project, unmanaged, or unknown (no labels). New rule
+  `witness.project_ownership` (25 rules) states another checkout (`problem`), an older
+  project name and orphans left running (`manual-check`) and unlabelled containers
+  (`unknown`). `port_conflict`, `container_name_conflict` and the `container` rows of
+  `changes.csv` follow the same classification, so an update is never a conflict with
+  itself and a port held by an orphan, a one-off run or the previous project name is.
+- **`--remove-orphans`, `--force-recreate`, `--no-recreate`** (DW-85) describe the
+  planned `docker compose up`; allowlist `docker compose <options> config --hash *`
+  (73 commands).
+
 - **Evidence provenance** (DW-82): every report carries `provenance.csv` /
   `audit.provenance` — tool and rules version (`witness.RulesVersion`, `2`), host and
   server fingerprint, engine and its `docker info` ID, Compose, the plan's resolver
@@ -90,6 +107,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   The `preflight` row adds `result: …` — counts per outcome — after its status.
 
 ### Fixed
+
+- **A multi-file Compose project's labels are read whole** (DW-85): docker packs
+  labels as `k=v,k=v`, and `config_files` of a two-file project contains a comma; the
+  rest of the value was read as a label of its own.
 
 - **A docker context pointing at a remote engine no longer makes a host audit
   connect to it** (DW-81): the context is read and every docker command is pinned to

@@ -41,6 +41,12 @@ const (
 	labelDockerService = "com.docker.compose.service"
 	labelPodmanProject = "io.podman.compose.project"
 	labelPodmanService = "io.podman.compose.service"
+
+	labelWorkingDir       = "com.docker.compose.project.working_dir"
+	labelPodmanWorkingDir = "io.podman.compose.project.working_dir"
+	labelConfigFiles      = "com.docker.compose.project.config_files"
+	labelConfigHash       = "com.docker.compose.config-hash"
+	labelOneOff           = "com.docker.compose.oneoff"
 )
 
 // noneValue is what docker prints for an absent repository, tag or digest. It is
@@ -107,8 +113,16 @@ func (l *flexLabels) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	pairs := make(map[string]string)
+	last := ""
 	for _, item := range splitList(packed) {
 		key, value, found := strings.Cut(item, "=")
+		if !found && last != "" {
+			// No `=`: the rest of the previous value, which itself contained a
+			// comma — com.docker.compose.project.config_files lists every file of a
+			// multi-file project that way.
+			pairs[last] += "," + strings.TrimSpace(item)
+			continue
+		}
 		if key = strings.TrimSpace(key); key == "" {
 			continue
 		}
@@ -117,6 +131,7 @@ func (l *flexLabels) UnmarshalJSON(raw []byte) error {
 			continue
 		}
 		pairs[key] = strings.TrimSpace(value)
+		last = key
 	}
 	*l = pairs
 	return nil
@@ -246,6 +261,14 @@ func parseContainers(out string) ([]model.Container, []string) {
 			Networks: entry.Networks,
 			Project:  labelValue(entry.Labels, labelDockerProject, labelPodmanProject),
 			Service:  labelValue(entry.Labels, labelDockerService, labelPodmanService),
+			// What Compose recorded about the run that created the container: where
+			// it was deployed from, with which files, and the configuration hash it
+			// compares to decide between keeping and recreating it.
+			WorkingDir:  labelValue(entry.Labels, labelWorkingDir, labelPodmanWorkingDir),
+			ConfigFiles: labelValue(entry.Labels, labelConfigFiles),
+			ConfigHash:  labelValue(entry.Labels, labelConfigHash),
+			OneOff:      strings.EqualFold(labelValue(entry.Labels, labelOneOff), "true"),
+			Labelled:    entry.Labels != nil,
 		}
 		containers = append(containers, container)
 		return nil

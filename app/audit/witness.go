@@ -90,6 +90,7 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 		PortsUnchecked: !a.cfg.Wants(model.SectionPorts),
 	}
 	if a.plan != nil {
+		in.Plan = a.plan
 		if at, err := time.Parse(time.RFC3339, a.plan.ResolvedAt); err == nil {
 			in.PlanResolvedAt = at
 		}

@@ -41,6 +41,25 @@ func Changes(in Input) []model.ChangeItem {
 		out = append(out, model.ChangeItem{Kind: "container", Target: name, Detail: containerChange(in, svc, name, existing)})
 	}
 
+	// The containers already there that the plan does not name but does affect: the
+	// orphans of this project, another checkout's containers it takes over, and this
+	// directory's containers under an older project name, which it leaves running.
+	planned := map[string]bool{}
+	for _, item := range out {
+		planned[item.Target] = true
+	}
+	for _, c := range in.Caps.Containers {
+		if planned[c.Name] {
+			continue
+		}
+		owner := ownerOf(in, c)
+		switch owner.kind {
+		case ownOrphan, otherCheckout, renamedProject, ownOneOff:
+			out = append(out, model.ChangeItem{Kind: "container", Target: c.Name, Detail: fmt.Sprintf(
+				"%s — %s, currently %s (see witness.project_ownership)", owner.action, describeOwner(in, c), c.State)})
+		}
+	}
+
 	// Images that have to be pulled. Naming them is the difference between "images
 	// will be downloaded" and a list somebody can check against a registry.
 	present := map[string]bool{}
@@ -166,16 +185,27 @@ func containerChange(in Input, svc model.ManifestService, name string, existing 
 			"did not answer, so that could not be checked", image, name)
 	}
 	if found, ok := existing[name]; ok {
-		if sameProject(in, found.Project) {
-			return fmt.Sprintf("replaced (currently %s, image %s) with %s", found.State, found.Image, image)
-		}
-		owner := "no Compose project"
-		if found.Project != "" {
-			owner = fmt.Sprintf("Compose project %q", found.Project)
+		owner := ownerOf(in, found)
+		switch {
+		case owner.kind == ownService && (found.Service == "" || found.Service == svc.Name):
+			if strings.HasPrefix(owner.action, "kept") {
+				return fmt.Sprintf("%s (currently %s, image %s)", owner.action, found.State, found.Image)
+			}
+			detail := fmt.Sprintf("replaced (currently %s, image %s) with %s", found.State, found.Image, image)
+			if in.Plan != nil {
+				detail += " — " + owner.action
+			}
+			return detail
+		case owner.kind == otherCheckout && found.Service == svc.Name:
+			return fmt.Sprintf("%s (currently %s, image %s), replaced with %s (see witness.project_ownership)",
+				owner.action, found.State, found.Image, image)
+		case owner.kind == unlabelled:
+			return fmt.Sprintf("created from %s only if the existing container named %s is this deployment's — "+
+				"the engine reported no labels for it, so that could not be established", image, name)
 		}
 		return fmt.Sprintf("not created: a container named %s already exists (state %s, image %s, %s) and does "+
 			"not belong to this deployment, so docker compose up fails on the name and leaves it as it is "+
-			"(see witness.container_name_conflict)", name, found.State, found.Image, owner)
+			"(see witness.container_name_conflict)", name, found.State, found.Image, describeOwner(in, found))
 	}
 
 	detail := "created from " + image
@@ -223,14 +253,14 @@ func portState(in Input, mapping model.PortMapping, port int) (portAvailability,
 	certain := certainHolders(holders)
 	switch {
 	case len(certain) > 0 && (own == nil || foreignContainer(in, certain)) && !ownershipKnown(in, certain):
-		return portMaybeTaken, describeHolders(certain) + " — which may be this deployment's own container: the " +
+		return portMaybeTaken, describeHolders(in, certain) + " — which may be this deployment's own container: the " +
 			"engine's containers were not listed"
 	case len(certain) > 0 && (own == nil || foreignContainer(in, certain)):
-		return portTaken, describeHolders(certain)
+		return portTaken, describeHolders(in, certain)
 	case own != nil:
 		return portFree, ""
 	default:
-		return portMaybeTaken, describeHolders(holders)
+		return portMaybeTaken, describeHolders(in, holders)
 	}
 }
 
@@ -284,7 +314,7 @@ func Rollback(in Input) []model.RollbackItem {
 	// digest — a tag is not enough, because the tag is what moved.
 	running := map[string]model.Container{}
 	for _, c := range in.Caps.Containers {
-		if sameProject(in, c.Project) {
+		if ownerOf(in, c).kind == ownService {
 			running[c.Service] = c
 		}
 	}

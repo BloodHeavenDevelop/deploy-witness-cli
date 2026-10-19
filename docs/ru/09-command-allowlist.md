@@ -137,7 +137,7 @@ deploy-witness --commands
 
 Он печатает применяемый список, сгруппированный по разделу, которому команда нужна,
 с указанием, ради чего она читается. Ниже — этот вывод на релизе после 1.4.0,
-**72 команды**. Вывод программы приводится как есть, по-английски; где две записи
+**73 команды**. Вывод программы приводится как есть, по-английски; где две записи
 делят строку назначения вида «the same, …», описывается запись выше.
 
 ```
@@ -148,7 +148,7 @@ deploy-witness --commands
   ss -lntupH                        listening sockets with the owning process, when /proc/net
                                     alone cannot attribute them
 
-[witness]                         37 записей
+[witness]                         38 записей
   nginx -T                          the effective nginx configuration — server names, ports and
                                     certificate paths already in use, with includes resolved
   nginx -v                          the nginx version
@@ -163,6 +163,9 @@ deploy-witness --commands
                  config --format json [--no-env-resolution]
                                     the final model of the planned run, exactly as Compose
                                     resolves it (two entries: with and without the flag)
+  docker compose [<options>]... config --hash *
+                                    each service's configuration hash, which Compose compares with a
+                                    container's label to keep or recreate it
   docker context show               the name of the active docker context
   docker context inspect --format {{json .Endpoints.docker.Host}}
                                     its endpoint, to refuse a preflight of a remote engine
@@ -215,7 +218,7 @@ deploy-witness --commands
 ```
 
 Группировка выше сворачивает почти одинаковые записи podman и yum ради читаемости;
-`--commands` печатает каждую из 72 отдельно, и применяется именно она. **Если эта
+`--commands` печатает каждую из 73 отдельно, и применяется именно она. **Если эта
 страница и `--commands` когда-нибудь расходятся, прав `--commands`.**
 
 ## Журнал

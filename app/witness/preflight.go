@@ -54,6 +54,11 @@ type Input struct {
 	// PlanResolvedAt is when the plan was resolved: the time of every piece of
 	// evidence quoting the manifest. Zero means Now.
 	PlanResolvedAt time.Time
+	// Plan is the planned run — its directory, configuration hashes and `up`
+	// options decide what happens to the containers already there. Nil in tests
+	// that do not need it: every container of the project then counts as this
+	// deployment's previous version.
+	Plan *model.LaunchPlan
 }
 
 // RulesVersion identifies the rule set a report was produced with. It changes
@@ -98,6 +103,9 @@ func rules() []rule {
 		{"container-name-conflict", "witness.container_name_conflict", "Fixed container names",
 			"container_name of each service; the engine's container list",
 			containerNameConflicts, assessContainerNames},
+		{"project-ownership", "witness.project_ownership", "Ownership of the existing containers",
+			"the engine's containers with their Compose labels; the plan's project, directory and services",
+			projectOwnership, assessProjectOwnership},
 		{"volume-name-conflict", "witness.volume_name_conflict", "External volumes",
 			"the external volumes of the plan; the engine's volume list",
 			volumeNameConflicts, assessExternalVolumes},
