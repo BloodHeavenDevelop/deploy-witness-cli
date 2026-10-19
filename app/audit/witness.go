@@ -73,6 +73,7 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 	certs.Collect(a.runner, caps, result)
 	backup.Collect(a.runner, caps, result)
 	caps.Databases = host.Databases(caps, result)
+	host.BindSources(parsed, caps, result)
 
 	report.Capabilities = caps
 	if a.plan != nil && caps.Runtime != nil {

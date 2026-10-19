@@ -349,6 +349,7 @@ func listImages(runner *run.Runner, kind string, caps *model.Capabilities, resul
 		if known {
 			image.Architecture = detail.Architecture
 			image.OS = detail.OS
+			image.User = detail.User
 			if detail.SizeBytes > 0 {
 				image.SizeBytes = detail.SizeBytes
 			}

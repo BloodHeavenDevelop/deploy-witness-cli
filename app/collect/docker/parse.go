@@ -641,6 +641,7 @@ type imageDetail struct {
 	OS           string
 	SizeBytes    int64
 	Digest       string
+	User         string
 }
 
 type imageInspectEntry struct {
@@ -649,6 +650,10 @@ type imageInspectEntry struct {
 	Size         flexBytes `json:"Size"`
 	Digest       string    `json:"Digest"`
 	RepoDigests  []string  `json:"RepoDigests"`
+	// Config is read for the default user alone; its environment is never decoded.
+	Config struct {
+		User string `json:"User"`
+	} `json:"Config"`
 }
 
 // parseImageInspect reads one `image inspect`. It reports false when the output
@@ -670,6 +675,7 @@ func parseImageInspect(out string) (imageDetail, bool) {
 			OS:           strings.TrimSpace(entry.OS),
 			SizeBytes:    int64(entry.Size),
 			Digest:       cleanDigest(entry.Digest),
+			User:         strings.TrimSpace(entry.Config.User),
 		}
 		if detail.Digest == "" {
 			for _, repoDigest := range entry.RepoDigests {

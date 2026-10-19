@@ -124,8 +124,11 @@ type composeMount struct {
 	Target   string `json:"target"`
 	ReadOnly bool   `json:"read_only"`
 	Bind     *struct {
-		CreateHostPath *bool `json:"create_host_path"`
+		CreateHostPath *bool  `json:"create_host_path"`
+		SELinux        string `json:"selinux"`
+		Propagation    string `json:"propagation"`
 	} `json:"bind"`
+	Consistency string `json:"consistency"`
 }
 
 type composeHealthcheck struct {
@@ -219,6 +222,7 @@ func (w *warner) resolvedService(name string, s composeService) model.ManifestSe
 		DNS:           s.DNS,
 		ExtraHosts:    s.ExtraHosts,
 		Labels:        s.Labels,
+		User:          s.User,
 	}
 	if s.Image != "" {
 		svc.Image = parseImage(s.Image)
@@ -252,6 +256,25 @@ func (w *warner) resolvedService(name string, s composeService) model.ManifestSe
 
 	for _, m := range s.Volumes {
 		mount := model.VolumeMount{Kind: strings.ToLower(m.Type), Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly}
+		if mount.Kind == model.MountBind {
+			// Compose's resolved model prints create_host_path only when it is false.
+			create := true
+			if m.Bind != nil {
+				if m.Bind.CreateHostPath != nil {
+					create = *m.Bind.CreateHostPath
+				}
+				if m.Bind.SELinux != "" {
+					mount.Options = append(mount.Options, "selinux="+m.Bind.SELinux)
+				}
+				if m.Bind.Propagation != "" {
+					mount.Options = append(mount.Options, "propagation="+m.Bind.Propagation)
+				}
+			}
+			mount.CreateHostPath = &create
+			if m.Consistency != "" {
+				mount.Options = append(mount.Options, "consistency="+m.Consistency)
+			}
+		}
 		switch mount.Kind {
 		case model.MountBind, model.MountVolume, model.MountTmpfs:
 		case "":

@@ -308,14 +308,24 @@ func assessExternalVolumes(in Input) verdict {
 }
 
 func assessBindPaths(in Input) verdict {
+	binds := 0
 	for _, svc := range in.Manifest.Services {
 		for _, mount := range svc.Volumes {
 			if mount.Kind == model.MountBind {
-				return checked("no bind mount source is a sensitive host path")
+				binds++
 			}
 		}
 	}
-	return notApplicable("the plan declares no bind mount")
+	if binds == 0 {
+		return notApplicable("the plan declares no bind mount")
+	}
+	if o := in.Caps.Observed(model.SourceBindSources); o.State == model.ObservedNotCollected || o.State == model.ObservedFailed {
+		return undecided(in, "the bind mount sources were not examined on this host", "stat <source>",
+			orUnknown(o.Note), "Re-run the audit on the host itself.")
+	}
+	return checked(fmt.Sprintf("%d bind mount(s): no source is a sensitive host path, every source exists or is "+
+		"created by the engine, and none is denied to the container user by its mode bits — access itself is not "+
+		"proven: ACLs, user namespaces and SELinux are not read", binds))
 }
 
 func assessExternalNetworks(in Input) verdict {

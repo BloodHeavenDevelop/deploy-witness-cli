@@ -809,10 +809,11 @@ func bindPathConflicts(in Input) []model.Finding {
 			}
 			source := mount.Source
 			if !strings.HasPrefix(source, "/") {
-				// A relative bind is resolved against the compose file's directory;
-				// it is reported as-is rather than guessed at.
+				// Sources are resolved against the project directory when the plan is
+				// read; one that is still relative could not be resolved.
 				continue
 			}
+			out = append(out, bindSourceFindings(in, svc, mount)...)
 
 			if sensitive := sensitiveHostPath(source); sensitive != "" {
 				out = append(out, model.Finding{

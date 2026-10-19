@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Bind mount sources examined on the host** (DW-88,
+  [app/collect/host/binds.go](app/collect/host/binds.go),
+  [app/witness/binds.go](app/witness/binds.go)): every source is resolved as Compose
+  resolves it (relative to the project directory, `~` to the home directory — the
+  built-in parser warns that it can only use the audit account's) and examined by
+  `lstat`/`stat` alone — nothing is created, opened or read. `bind_path_conflict`
+  now also states a missing source with `create_host_path: false` (blocker), a
+  read/write mount on a read-only filesystem (warning), and as `unknown`: a source
+  this account could not stat (never "missing"), a dangling symlink, a missing
+  source whose creation depends on the Compose version, a missing file-like source
+  the engine would create as a directory, and mode bits that refuse the container
+  user. The container user is the service's `user:`, else the image's `Config.User`
+  (now read by `image inspect`), else unknown; access is never claimed proven —
+  every bind row of `changes.csv` says it is not verified (ACLs, user namespaces,
+  SELinux are not read) and lists the options not evaluated (`z`, `Z`, propagation,
+  consistency). `VolumeMount` gains `declared`, `createHostPath`, `options`;
+  `capabilities.bindSources` records what each stat showed.
+
 - **Volumes and networks matched by their names in the engine** (DW-87): `name:`,
   the key of an external resource (or `external: {name: …}`), `<project>_<key>` for
   what Compose creates — as `docker compose config` resolves it, and by
