@@ -135,3 +135,18 @@ func TestRemoteIncludes(t *testing.T) {
 		t.Errorf("RemoteIncludes = %v, %v", got, err)
 	}
 }
+
+// DW-87: Compose's naming — <project>_<key> for what it creates, the key (or
+// `name:`) for what is external.
+func TestResolveEngineNames(t *testing.T) {
+	m := &model.Manifest{
+		Networks: []model.ManifestNetwork{{Name: "back"}, {Name: "edge", External: true}, {Name: "x", EngineName: "custom"}},
+		Volumes:  []model.ManifestVolume{{Name: "data"}, {Name: "pg", External: true}},
+	}
+	ResolveEngineNames(m, "shop")
+	got := []string{m.Networks[0].EngineName, m.Networks[1].EngineName, m.Networks[2].EngineName,
+		m.Volumes[0].EngineName, m.Volumes[1].EngineName}
+	if strings.Join(got, ",") != "shop_back,edge,custom,shop_data,pg" {
+		t.Errorf("engine names = %v", got)
+	}
+}

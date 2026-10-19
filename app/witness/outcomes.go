@@ -273,22 +273,38 @@ func assessContainerNames(in Input) verdict {
 	return checked("no existing container is named " + strings.Join(fixed, ", "))
 }
 
-func externalVolumes(in Input) []string {
-	var out []string
+func assessExternalVolumes(in Input) verdict {
+	used := mountedVolumes(in)
+	var external, created []string
 	for _, v := range in.Manifest.Volumes {
+		if !used[v.Name] {
+			continue
+		}
+		name := engineNameOf(v.EngineName, v.Name)
 		if v.External {
-			out = append(out, v.Name)
+			external = append(external, name)
+		} else {
+			created = append(created, name)
 		}
 	}
-	return out
-}
-
-func assessExternalVolumes(in Input) verdict {
-	external := externalVolumes(in)
-	if len(external) == 0 {
-		return notApplicable("the plan declares no external volume; Compose creates its own")
+	if len(external)+len(created) == 0 {
+		return notApplicable("the plan mounts no named volume")
 	}
-	return checked("every external volume (" + strings.Join(external, ", ") + ") exists in the engine's volume list")
+	if len(external) == 0 {
+		if listed, why := engineList(in, model.SourceVolumes); !listed {
+			return undecided(in, "the engine's volumes could not be listed ("+why+"), so whether "+
+				strings.Join(created, ", ")+" already exist — created by someone else — is unknown",
+				engineCommand(in, "volume ls --format {{json .}}"), why, engineTodo)
+		}
+	}
+	reason := "every external volume (" + strings.Join(external, ", ") + ") exists"
+	if len(created) > 0 {
+		reason = strings.Join(created, ", ") + " are created by Compose or already this project's"
+		if len(external) > 0 {
+			reason += "; every external volume (" + strings.Join(external, ", ") + ") exists"
+		}
+	}
+	return checked(reason)
 }
 
 func assessBindPaths(in Input) verdict {
@@ -303,16 +319,33 @@ func assessBindPaths(in Input) verdict {
 }
 
 func assessExternalNetworks(in Input) verdict {
-	var external []string
+	var external, created []string
 	for _, n := range in.Manifest.Networks {
+		name := engineNameOf(n.EngineName, n.Name)
 		if n.External {
-			external = append(external, n.Name)
+			external = append(external, name)
+		} else {
+			created = append(created, name)
 		}
 	}
-	if len(external) == 0 {
-		return notApplicable("the plan declares no external network; Compose creates its own")
+	if len(external)+len(created) == 0 {
+		return notApplicable("the plan declares no network")
 	}
-	return checked("every external network (" + strings.Join(external, ", ") + ") exists in the engine's network list")
+	if len(external) == 0 {
+		if listed, why := engineList(in, model.SourceNetworks); !listed {
+			return undecided(in, "the engine's networks could not be listed ("+why+"), so whether "+
+				strings.Join(created, ", ")+" already exist — created by someone else — is unknown",
+				engineCommand(in, "network ls --format {{json .}}"), why, engineTodo)
+		}
+	}
+	reason := "every external network (" + strings.Join(external, ", ") + ") exists and can be joined"
+	if len(created) > 0 {
+		reason = strings.Join(created, ", ") + " are created by Compose or already this project's"
+		if len(external) > 0 {
+			reason += "; every external network (" + strings.Join(external, ", ") + ") exists and can be joined"
+		}
+	}
+	return checked(reason)
 }
 
 func assessSubnets(in Input) verdict {

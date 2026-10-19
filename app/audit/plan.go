@@ -83,6 +83,7 @@ func (a *Auditor) preparePlan() error {
 	}
 
 	plan.ProjectName, plan.ProjectNameSource = planProjectName(cfg.ProjectName, plan, parsed)
+	manifest.ResolveEngineNames(parsed, plan.ProjectName)
 	if err := selectServices(plan, parsed); err != nil {
 		return err
 	}

@@ -1087,7 +1087,7 @@ volumes:
 	wantNetworks := []model.ManifestNetwork{
 		{Name: "backend", Driver: "bridge", Subnets: []string{"172.30.0.0/24", "172.31.0.0/24"}},
 		{Name: "shared", External: true},
-		{Name: "legacy_external", External: true},
+		{Name: "legacy_external", EngineName: "really-shared", External: true},
 		{Name: "plain"},
 	}
 	if !reflect.DeepEqual(manifest.Networks, wantNetworks) {

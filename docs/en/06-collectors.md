@@ -229,7 +229,7 @@ walk that stops early says the size is a partial total.
 | Engine and versions | `docker version`, `docker info`, and the podman equivalents |
 | Compose implementation | `docker compose version --short` (plugin), `docker-compose version --short` (standalone V1), `podman-compose version --short` |
 | Containers | `docker ps -a --format {{json .}}` — including stopped ones, with their published ports and their Compose project/service labels |
-| Networks, volumes | `... network ls`, `... volume ls`, plus `network inspect` for subnets |
+| Networks, volumes | `... network ls` (with each network's scope), `... volume ls`, plus `network inspect` for subnets and whether a swarm network is attachable |
 | Images | `... image ls --all --digests`, plus `image inspect` for architecture, OS and size |
 
 Every command is a query. None of them starts, stops, pulls or removes anything.

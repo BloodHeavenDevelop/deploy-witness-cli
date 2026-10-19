@@ -230,7 +230,7 @@ space left on device» при том, что `df` показывает своб�
 | Движок и версии | `docker version`, `docker info` и эквиваленты podman |
 | Реализация compose | `docker compose version --short` (плагин), `docker-compose version --short` (standalone V1), `podman-compose version --short` |
 | Контейнеры | `docker ps -a --format {{json .}}` — включая остановленные, с их опубликованными портами и метками проекта/сервиса Compose |
-| Сети, тома | `... network ls`, `... volume ls` плюс `network inspect` для подсетей |
+| Сети, тома | `... network ls` (со scope каждой сети), `... volume ls` плюс `network inspect` для подсетей и признака attachable у swarm-сети |
 | Образы | `... image ls --all --digests` плюс `image inspect` для архитектуры, ОС и размера |
 
 Каждая команда — запрос. Ни одна ничего не запускает, не останавливает, не тянет и

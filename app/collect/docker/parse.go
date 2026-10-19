@@ -416,6 +416,7 @@ func parsePortRange(spec string) (start, end int) {
 type networkEntry struct {
 	Name   string     `json:"Name"`
 	Driver string     `json:"Driver"`
+	Scope  string     `json:"Scope"`
 	Labels flexLabels `json:"Labels"`
 }
 
@@ -435,6 +436,7 @@ func parseNetworkList(out string) ([]model.ContainerNetwork, []string) {
 		networks = append(networks, model.ContainerNetwork{
 			Name:    name,
 			Driver:  strings.TrimSpace(entry.Driver),
+			Scope:   strings.TrimSpace(entry.Scope),
 			Project: labelValue(entry.Labels, labelDockerProject, labelPodmanProject),
 		})
 		return nil
@@ -505,6 +507,21 @@ func (p subnetProbe) collect() []string {
 		out = append(out, p.IPAM.collect()...)
 	}
 	return out
+}
+
+// parseAttachable reads whether a whole docker network object is attachable:
+// "yes", "no", or "" when the field is absent (podman, or an IPAM-only answer).
+func parseAttachable(out string) string {
+	var probe struct {
+		Attachable *bool `json:"Attachable"`
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(out)), &probe) != nil || probe.Attachable == nil {
+		return ""
+	}
+	if *probe.Attachable {
+		return "yes"
+	}
+	return "no"
 }
 
 // ─────────────────────────────────────────────────────────────── volumes

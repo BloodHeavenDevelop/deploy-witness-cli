@@ -121,14 +121,14 @@ var situations = map[string][]situation{
 	},
 	"witness.volume_name_conflict": {
 		{"external volume missing", func(in *Input) {
-			in.Manifest.Volumes = []model.ManifestVolume{{Name: "shared", External: true}}
+			mountShared(in)
 		}, model.OutcomeProblem},
 		{"external volume present", func(in *Input) {
-			in.Manifest.Volumes = []model.ManifestVolume{{Name: "shared", External: true}}
+			mountShared(in)
 			in.Caps.ContainerVolumes = []model.ContainerVolume{{Name: "shared", Project: "app"}}
 		}, model.OutcomeNoProblem},
 		{"engine did not answer", func(in *Input) {
-			in.Manifest.Volumes = []model.ManifestVolume{{Name: "shared", External: true}}
+			mountShared(in)
 			unreachableEngine(in)
 		}, model.OutcomeUnknown},
 		{"no external volume", nil, model.OutcomeNotApplicable},
@@ -525,4 +525,12 @@ func TestEvidenceCarriesItsObservation(t *testing.T) {
 
 func planAt(in *Input, dir string) {
 	in.Plan = &model.LaunchPlan{ProjectDirectory: dir, ProjectName: in.Project}
+}
+
+// mountShared declares the external volume "shared" and mounts it into the plan's
+// service — Compose looks up only the volumes a service mounts.
+func mountShared(in *Input) {
+	in.Manifest.Volumes = []model.ManifestVolume{{Name: "shared", External: true}}
+	in.Manifest.Services[0].Volumes = append(in.Manifest.Services[0].Volumes,
+		model.VolumeMount{Kind: model.MountVolume, Source: "shared", Target: "/shared"})
 }

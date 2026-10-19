@@ -122,9 +122,9 @@ are under each rule below; thresholds are in [Thresholds](#thresholds).
 | `port_conflict` | published ports; sockets (ports section); container publications | a binding is certainly held by something that is not this deployment's own container | nothing holds the bindings, or only this deployment's own container does | sockets not read; overlap undecidable offline (`[::]`, no `host_ip`, unresolved `host_ip`); a socket holds it and the engine's containers were not listed, so it may be our own `docker-proxy` | n/a: nothing published · manual: protocol with no socket table (`sctp`) |
 | `container_name_conflict` | `container_name`; container list | a container of that name exists and is not this deployment's service | no container of that name, or it is this deployment's | the engine did not answer; its labels were not reported | n/a: no `container_name` |
 | `project_ownership` | containers with their Compose labels; the plan's project, directory, services | another checkout uses this project name | every container of the project is this deployment's previous version, or there is none | the engine did not answer; a container's labels were not reported | manual: this directory under another project name; orphans left running |
-| `volume_name_conflict` | external volumes; volume list (complete) | an external volume is missing from a complete list, or carries another project's label | every external volume exists and is not someone else's | the volume list was not read in full | n/a: no external volume |
+| `volume_name_conflict` | mounted named volumes by engine name; volume list (complete) | an external volume is missing from a complete list or carries another project's label; a volume Compose would create exists without this project's label | every external volume exists; every created one is absent (a planned creation) or this project's | the volume list was not read in full | n/a: no named volume mounted |
 | `bind_path_conflict` | bind mounts | a source is a sensitive host path (`/`, `/etc`, the runtime socket, `/var/lib/docker`, `/proc`, `/sys`, a home) | no source is sensitive | — (the plan is the whole input) | n/a: no bind mount |
-| `network_name_conflict` | external networks; network list (complete) | an external network is missing from a complete list | every external network exists | the network list was not read in full | n/a: no external network · manual: it is shared with another stack |
+| `network_name_conflict` | networks by engine name; network list (complete) with scope and attachability | an external network is missing from a complete list, or is a non-attachable swarm network; a network Compose would create exists without this project's label | every external network exists and can be joined; every created one is absent or this project's | the network list was not read in full; a swarm network's attachability was not read | n/a: no network · manual: an external network shared with another stack |
 | `subnet_overlap` | explicit IPAM subnets; every network's subnets | a requested subnet overlaps another project's network | no overlap with any network | networks not listed, or the subnets of some were not read | n/a: no explicit subnet |
 | `insufficient_memory` | reservations/limits; `/proc/meminfo` | the declared amount exceeds what is available | it fits | `/proc/meminfo` unreadable | n/a: nothing declared |
 | `insufficient_disk` | images to pull; image list; container-store filesystem | images must be pulled and less than 2 GiB is free | nothing to pull, or headroom | no filesystem measured; images not listed | — |
@@ -297,16 +297,24 @@ rows of `changes.csv`, so the three never disagree.
 
 | | |
 |---|---|
-| Severity | **blocker** when the volume is missing from a complete volume list; **warning** when it exists under another project; **warning** (`unknown`) when the engine's volumes could not be listed — absence is not concluded from a list that was not read |
-| Fires when | A volume declared `external: true` is either absent from the host, or present with a different project label |
+| Severity | **blocker** when an external volume is missing from a complete volume list; **warning** when an external volume carries another project's label, or when a volume Compose would create already exists without this project's label; **warning** (`unknown`) when the engine's volumes could not be listed — absence is never concluded from a list that was not read |
+| Fires when | A named volume a planned service mounts is compared, **by its name in the engine**, with the engine's volume list |
 
-Only external volumes are checked. Compose prefixes a project's own volumes with
-the project name, so a plain declaration cannot collide with an unrelated stack; an
-`external` volume is referenced by its literal name, which can.
+A volume is matched by the name it has in the engine, not by the key the services
+use: `name:` if the plan sets one, the key itself for an external volume (or the
+legacy `external: {name: …}`), and `<project>_<key>` for one Compose creates —
+exactly as `docker compose config` resolves it. Only the volumes a planned service
+mounts are checked; Compose looks up no other. Three questions stay separate:
 
-The warning case is the more interesting one: it does not fail. It succeeds, and
-the new service starts on top of existing data belonging to something else — which
-is worse, because nothing announces it.
+| | Absent | Present, this project's | Present, no label | Present, another project's |
+|---|---|---|---|---|
+| external | `problem` (blocker) — Compose refuses to start; `unknown` if the list was not read in full | fine | fine — what `external: true` is for | `problem` (warning): its data is attached |
+| created by Compose | fine — a planned creation (`changes.csv`: `created empty by Compose`), not a conflict | fine — reused with its data | `problem` (warning): Compose warns "already exists but was not created by Docker Compose" and mounts it, data and all | `problem` (warning): the same, "created for project …" |
+
+The warning cases are the interesting ones: nothing fails. The deployment
+succeeds, and the new service starts on top of existing data nobody declared it
+would use. Every observation names the engine it came from (`engine <ID>`), so the
+same volume name on two servers is never one answer.
 
 ### `witness.bind_path_conflict`
 
@@ -323,8 +331,15 @@ layouts and teach the reader to skip the category.
 
 | | |
 |---|---|
-| Severity | **blocker** when the network is missing from a complete network list; `info` (`manual-check`) when it exists under another project; **warning** (`unknown`) when the engine's networks could not be listed |
-| Fires when | A network declared `external: true` is absent, or present and owned by another stack |
+| Severity | **blocker** when an external network is missing from a complete network list, or exists but is a swarm network that is not attachable; **warning** when a network Compose would create already exists without this project's label (Compose warns and joins it); `info` (`manual-check`) when an external network belongs to another stack; **warning** (`unknown`) when the networks could not be listed, or a swarm network's attachability was not read |
+| Fires when | A network of the plan is compared, by its name in the engine, with the engine's network list |
+
+Networks are matched by engine name exactly as volumes are (`name:`, the key of an
+external one, `<project>_<key>` — `<project>_default` included when Compose lists
+it). Presence is kept apart from **usability**: a network can exist and still refuse
+the deployment's containers — a swarm-scoped network that is not attachable takes no
+standalone container, which is what Compose creates. The scope comes from `network
+ls`, attachability from `network inspect`.
 
 The `info` case says the deployment will join a shared network: often the intent,
 and also a statement that a service here becomes reachable from whatever else is on

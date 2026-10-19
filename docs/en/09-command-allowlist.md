@@ -173,7 +173,7 @@ line above it is the one being described.
   docker-compose version --short
   docker ps -a --format {{json .}}
   docker network ls --format {{json .}}
-  docker network inspect <container> --format {{json .IPAM}}
+  docker network inspect <container> --format {{json .}}
   docker volume ls --format {{json .}}
   docker image ls --all --digests --format {{json .}}
   docker image inspect <image> --format {{json .}}

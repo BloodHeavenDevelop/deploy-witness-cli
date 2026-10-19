@@ -299,7 +299,11 @@ type EnvFileRef struct {
 
 // ManifestNetwork is one declared network.
 type ManifestNetwork struct {
-	Name     string `json:"name"`
+	// Name is the key services reference; EngineName is the name the network has
+	// in the engine — `name:`, or <project>_<key>, or the key itself for an
+	// external network — which is what an existing network is matched by.
+	Name       string `json:"name"`
+	EngineName string `json:"engineName"`
 	Driver   string `json:"driver"`
 	External bool   `json:"external"`
 	// Subnets are the explicit IPAM subnets, in CIDR form. They are what a
@@ -309,7 +313,10 @@ type ManifestNetwork struct {
 
 // ManifestVolume is one declared named volume.
 type ManifestVolume struct {
-	Name     string `json:"name"`
+	// Name is the key mounts reference; EngineName the name in the engine, as for
+	// networks.
+	Name       string `json:"name"`
+	EngineName string `json:"engineName"`
 	Driver   string `json:"driver"`
 	External bool   `json:"external"`
 }
@@ -467,6 +474,11 @@ type ContainerNetwork struct {
 	Driver  string   `json:"driver"`
 	Subnets []string `json:"subnets"`
 	Project string   `json:"project"`
+	// Scope is local or swarm; Attachable is "yes", "no" or "" (not inspected). A
+	// swarm-scoped network that is not attachable cannot take a standalone
+	// container, which is what Compose creates.
+	Scope      string `json:"scope"`
+	Attachable string `json:"attachable"`
 }
 
 // ContainerVolume is one existing runtime volume.

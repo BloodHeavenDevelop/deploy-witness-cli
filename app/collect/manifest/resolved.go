@@ -49,7 +49,7 @@ func FromComposeConfig(raw []byte, first string, result *model.SectionResult) (*
 
 	for _, key := range sortedKeys(doc.Networks) {
 		n := doc.Networks[key]
-		network := model.ManifestNetwork{Name: key, Driver: n.Driver, External: bool(n.External)}
+		network := model.ManifestNetwork{Name: key, EngineName: n.Name, Driver: n.Driver, External: bool(n.External)}
 		for _, c := range n.IPAM.Config {
 			if strings.TrimSpace(c.Subnet) != "" {
 				network.Subnets = append(network.Subnets, c.Subnet)
@@ -59,7 +59,8 @@ func FromComposeConfig(raw []byte, first string, result *model.SectionResult) (*
 	}
 	for _, key := range sortedKeys(doc.Volumes) {
 		v := doc.Volumes[key]
-		manifest.Volumes = append(manifest.Volumes, model.ManifestVolume{Name: key, Driver: v.Driver, External: bool(v.External)})
+		manifest.Volumes = append(manifest.Volumes, model.ManifestVolume{Name: key, EngineName: v.Name, Driver: v.Driver,
+			External: bool(v.External)})
 	}
 
 	manifest.Warnings = w.warnings

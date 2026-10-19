@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Volumes and networks matched by their names in the engine** (DW-87): `name:`,
+  the key of an external resource (or `external: {name: …}`), `<project>_<key>` for
+  what Compose creates — as `docker compose config` resolves it, and by
+  `manifest.ResolveEngineNames` for the built-in parser. A volume or network Compose
+  would create and that already exists without this project's label is now a warning
+  (Compose warns and reuses it, data included) instead of passing unnoticed; one not
+  there yet is a planned creation in `changes.csv`, never a conflict; only volumes a
+  planned service mounts are checked. Presence is kept apart from usability: a
+  swarm network that is not attachable is a blocker, one whose attachability was not
+  read is `unknown`. Every volume/network observation names the engine it came from
+  (`engine <ID>, <name>`). `docker network inspect` now asks for the whole network
+  object (`{{json .}}`) to read `Attachable`; `network ls` contributes the scope.
+
 - **Port conflicts decided from the binding, not the number** (DW-86): whether an
   IPv6 wildcard socket also answers IPv4 is now read per socket from `ss` (`*:port`
   dual-stack, `[::]:port` IPv6-only) into a new appended `V6 only` column of
@@ -123,6 +136,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **An external volume created by hand is not "somebody else's data"** (DW-87): a
+  volume with no project label is what `external: true` is for; only one carrying
+  another project's label is a warning.
 - **A multi-file Compose project's labels are read whole** (DW-85): docker packs
   labels as `k=v,k=v`, and `config_files` of a two-file project contains a comma; the
   rest of the value was read as a label of its own.

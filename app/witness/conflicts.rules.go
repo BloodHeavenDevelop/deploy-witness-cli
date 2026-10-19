@@ -636,6 +636,17 @@ func containerNameConflicts(in Input) []model.Finding {
 }
 
 // 3. witness.volume_name_conflict
+//
+// Every named volume the plan mounts, matched by its name in the engine (`name:`,
+// <project>_<key>, or the key of an external one). Presence, ownership and the
+// completeness of the list are three separate questions:
+//
+//   - external and absent from a list read in full: Compose refuses to start;
+//   - external and the list was not read: unknown — never "absent";
+//   - external and present with another project's label: its data is attached;
+//   - not external and absent: Compose creates it — a planned change, not a conflict;
+//   - not external and present without this project's label: Compose warns ("already
+//     exists but was not created by Docker Compose") and reuses its data.
 func volumeNameConflicts(in Input) []model.Finding {
 	var out []model.Finding
 
@@ -644,80 +655,144 @@ func volumeNameConflicts(in Input) []model.Finding {
 		existing[v.Name] = v
 	}
 	listed, why := engineList(in, model.SourceVolumes)
+	used := mountedVolumes(in)
 
 	for _, vol := range in.Manifest.Volumes {
-		// Compose prefixes a project's volumes with the project name, so a plain
-		// declaration cannot collide with an unrelated stack. An `external: true`
-		// volume is referenced by its literal name, which can.
-		if !vol.External {
+		if !used[vol.Name] {
 			continue
 		}
-		found, ok := existing[vol.Name]
-
+		name := engineNameOf(vol.EngineName, vol.Name)
+		found, ok := existing[name]
 		finding := model.Finding{
 			Code:       "witness.volume_name_conflict",
 			Category:   model.CategoryConflict,
-			Subject:    vol.Name,
+			Subject:    name,
 			Confidence: model.ConfidenceHigh,
-			Evidence: []model.Evidence{
-				manifestEvidence(in, "", fmt.Sprintf("volumes: %s declared external", vol.Name)),
-			},
+			Evidence:   []model.Evidence{manifestEvidence(in, "", volumeDeclaration(vol, name))},
 		}
 
-		if !ok && !listed {
+		switch {
+		case vol.External && !ok && !listed:
 			// Absence is proven only by a list that was read in full.
 			finding.Outcome = model.OutcomeUnknown
 			finding.Severity = model.FindingWarning
-			finding.Title = fmt.Sprintf("Whether external volume %q exists could not be established", vol.Name)
+			finding.Title = fmt.Sprintf("Whether external volume %q exists could not be established", name)
 			finding.Description = fmt.Sprintf(
 				"The manifest declares volume %q as external, so Compose expects it to exist already. The engine's "+
-					"volumes could not be listed (%s), so its presence is unknown — not absent.", vol.Name, why)
+					"volumes could not be listed (%s), so its presence is unknown — not absent.", name, why)
 			finding.WhyItMatters = "If it is missing, Compose refuses to start the stack. If it exists, nothing is " +
-				"wrong. This audit could not tell which."
+				"wrong. This audit could not tell."
 			finding.WhatToDo = fmt.Sprintf("Check by hand: `docker volume inspect %s`. Re-run the audit as a user "+
-				"who can reach the engine to have it checked.", vol.Name)
-			finding.Evidence = append(finding.Evidence, evidence(in, engineCommand(in, "volume ls --format {{json .}}"), why))
-			out = append(out, finding)
-			continue
-		}
+				"who can reach the engine to have it checked.", name)
+			finding.Evidence = append(finding.Evidence, evidence(in, engineCommand(in, "volume ls --format {{json .}}"),
+				onEngine(in, why)))
 
-		if !ok {
+		case vol.External && !ok:
 			finding.Outcome = model.OutcomeProblem
 			finding.Severity = model.FindingBlocker
-			finding.Title = fmt.Sprintf("External volume %q does not exist", vol.Name)
+			finding.Title = fmt.Sprintf("External volume %q does not exist", name)
 			finding.Description = fmt.Sprintf(
 				"The manifest declares volume %q as external, which means Compose expects it to exist already. "+
-					"It is not present on this host.", vol.Name)
+					"It is not present in this engine's volume list.", name)
 			finding.WhyItMatters = "Compose refuses to start a stack whose external volume is missing. It will not " +
 				"create it for you — that is what declaring it external asks for."
 			finding.WhatToDo = fmt.Sprintf(
-				"Create the volume before deploying, or remove `external: true` so Compose manages %q itself.", vol.Name)
-			finding.Evidence = append(finding.Evidence, evidence(in, "docker volume ls --format {{json .}}",
-				fmt.Sprintf("no volume named %s among the %d volumes on this host", vol.Name, len(in.Caps.ContainerVolumes))))
-			out = append(out, finding)
-			continue
-		}
+				"Create the volume before deploying, or remove `external: true` so Compose manages %q itself.", name)
+			finding.Evidence = append(finding.Evidence, evidence(in, engineCommand(in, "volume ls --format {{json .}}"),
+				onEngine(in, fmt.Sprintf("no volume named %s among the %d volumes", name, len(in.Caps.ContainerVolumes)))))
 
-		if sameProject(in, found.Project) {
+		case !ok:
+			// Not there yet: Compose creates it. That is the change list's business.
 			continue
-		}
 
-		finding.Outcome = model.OutcomeProblem
-		finding.Severity = model.FindingWarning
-		finding.Title = fmt.Sprintf("External volume %q already holds somebody else's data", vol.Name)
-		finding.Description = fmt.Sprintf(
-			"Volume %q exists, mounted at %s, and carries project label %q — not this deployment's. "+
-				"Deploying will attach it to the new containers.", vol.Name, found.Mountpoint, found.Project)
-		finding.WhyItMatters = "This does not fail. It succeeds, and the new service starts on top of existing " +
-			"data belonging to something else — which is worse, because nothing announces it."
-		finding.WhatToDo = fmt.Sprintf(
-			"Confirm that reusing %q is intended. If it is not, pick a different volume name.", vol.Name)
-		finding.Evidence = append(finding.Evidence, evidence(in, "docker volume ls --format {{json .}}",
-			fmt.Sprintf("volume %s driver=%s mountpoint=%s project=%q",
-				found.Name, found.Driver, found.Mountpoint, found.Project)))
+		case sameProject(in, found.Project):
+			// This project's own volume, reused on purpose.
+			continue
+
+		case vol.External && found.Project == "":
+			// An external volume created by hand (`docker volume create`) is exactly
+			// what `external: true` is for.
+			continue
+
+		case vol.External:
+			finding.Outcome = model.OutcomeProblem
+			finding.Severity = model.FindingWarning
+			finding.Title = fmt.Sprintf("External volume %q already holds somebody else's data", name)
+			finding.Description = fmt.Sprintf(
+				"Volume %q exists, mounted at %s, and carries project label %q — not this deployment's. "+
+					"Deploying will attach it to the new containers.", name, found.Mountpoint, found.Project)
+			finding.WhyItMatters = "This does not fail. It succeeds, and the new service starts on top of existing " +
+				"data belonging to something else — which is worse, because nothing announces it."
+			finding.WhatToDo = fmt.Sprintf(
+				"Confirm that reusing %q is intended. If it is not, pick a different volume name.", name)
+			finding.Evidence = append(finding.Evidence, volumeEvidence(in, found))
+
+		default:
+			owner := "was not created by Compose"
+			if found.Project != "" {
+				owner = fmt.Sprintf("was created for project %q", found.Project)
+			}
+			finding.Outcome = model.OutcomeProblem
+			finding.Severity = model.FindingWarning
+			finding.SortOrder = 1
+			finding.Title = fmt.Sprintf("Volume %q already exists and %s", name, owner)
+			finding.Description = fmt.Sprintf(
+				"The plan's volume %q is not external, so Compose expects to create %q for project %q. A volume of "+
+					"that name already exists and %s. Compose warns (\"already exists but was not created by Docker "+
+					"Compose. Use `external: true`\") and mounts it — with whatever data it holds.",
+				vol.Name, name, in.Project, owner)
+			finding.WhyItMatters = "The new containers start on top of data nobody declared they would use, and " +
+				"`docker compose down -v` for this project will not remove it."
+			finding.WhatToDo = fmt.Sprintf("Declare it `external: true` if reusing it is intended, or give the plan's "+
+				"volume another name.")
+			finding.Evidence = append(finding.Evidence, volumeEvidence(in, found))
+		}
 		out = append(out, finding)
 	}
 	return out
+}
+
+// mountedVolumes is the set of declared volumes a planned service mounts — the
+// only ones Compose creates or looks up.
+func mountedVolumes(in Input) map[string]bool {
+	used := map[string]bool{}
+	for _, svc := range in.Manifest.Services {
+		for _, m := range svc.Volumes {
+			if m.Kind == model.MountVolume && m.Source != "" {
+				used[m.Source] = true
+			}
+		}
+	}
+	return used
+}
+
+func engineNameOf(engineName, key string) string {
+	if engineName != "" {
+		return engineName
+	}
+	return key
+}
+
+func volumeDeclaration(vol model.ManifestVolume, name string) string {
+	if vol.External {
+		return fmt.Sprintf("volumes: %s declared external (engine name %s)", vol.Name, name)
+	}
+	return fmt.Sprintf("volumes: %s, created by Compose as %s", vol.Name, name)
+}
+
+func volumeEvidence(in Input, found model.ContainerVolume) model.Evidence {
+	return evidence(in, engineCommand(in, "volume ls --format {{json .}}"), onEngine(in, fmt.Sprintf(
+		"volume %s driver=%s mountpoint=%s project=%q", found.Name, found.Driver, found.Mountpoint, found.Project)))
+}
+
+// onEngine names the engine an observation came from. Two servers may hold
+// volumes, networks and containers of the same names; the engine ID is what tells
+// one's answer from the other's.
+func onEngine(in Input, observation string) string {
+	if in.Caps.Runtime == nil || in.Caps.Runtime.EngineID == "" {
+		return observation
+	}
+	return fmt.Sprintf("%s (engine %s, %s)", observation, in.Caps.Runtime.EngineID, orUnknown(in.Caps.Runtime.EngineName))
 }
 
 // 4. witness.bind_path_conflict
@@ -800,6 +875,10 @@ func sensitiveHostPath(path string) string {
 }
 
 // 5. witness.network_name_conflict
+//
+// The same three questions as for volumes — present, whose, read in full — and a
+// fourth: present but unusable, a swarm-scoped network that is not attachable,
+// which a standalone container cannot join.
 func networkNameConflicts(in Input) []model.Finding {
 	var out []model.Finding
 
@@ -810,71 +889,113 @@ func networkNameConflicts(in Input) []model.Finding {
 	listed, why := engineList(in, model.SourceNetworks)
 
 	for _, network := range in.Manifest.Networks {
-		if !network.External {
-			continue
+		name := engineNameOf(network.EngineName, network.Name)
+		found, ok := existing[name]
+		declaration := fmt.Sprintf("networks: %s, created by Compose as %s", network.Name, name)
+		if network.External {
+			declaration = fmt.Sprintf("networks: %s declared external (engine name %s)", network.Name, name)
 		}
-		found, ok := existing[network.Name]
-
 		finding := model.Finding{
 			Code:       "witness.network_name_conflict",
 			Category:   model.CategoryConflict,
-			Subject:    network.Name,
+			Subject:    name,
 			Confidence: model.ConfidenceHigh,
-			Evidence: []model.Evidence{
-				manifestEvidence(in, "", fmt.Sprintf("networks: %s declared external", network.Name)),
-			},
+			Evidence:   []model.Evidence{manifestEvidence(in, "", declaration)},
+		}
+		listing := func(text string) model.Evidence {
+			return evidence(in, engineCommand(in, "network ls --format {{json .}}"), onEngine(in, text))
 		}
 
-		if !ok && !listed {
+		switch {
+		case network.External && !ok && !listed:
 			finding.Outcome = model.OutcomeUnknown
 			finding.Severity = model.FindingWarning
-			finding.Title = fmt.Sprintf("Whether external network %q exists could not be established", network.Name)
+			finding.Title = fmt.Sprintf("Whether external network %q exists could not be established", name)
 			finding.Description = fmt.Sprintf(
 				"The manifest expects network %q to exist already. The engine's networks could not be listed (%s), "+
-					"so its presence is unknown — not absent.", network.Name, why)
+					"so its presence is unknown — not absent.", name, why)
 			finding.WhyItMatters = "If it is missing, Compose refuses to start the stack. This audit could not tell."
 			finding.WhatToDo = fmt.Sprintf("Check by hand: `docker network inspect %s`. Re-run the audit as a user "+
-				"who can reach the engine to have it checked.", network.Name)
-			finding.Evidence = append(finding.Evidence, evidence(in, engineCommand(in, "network ls --format {{json .}}"), why))
-			out = append(out, finding)
-			continue
-		}
+				"who can reach the engine to have it checked.", name)
+			finding.Evidence = append(finding.Evidence, listing(why))
 
-		if !ok {
+		case network.External && !ok:
 			finding.Outcome = model.OutcomeProblem
 			finding.Severity = model.FindingBlocker
-			finding.Title = fmt.Sprintf("External network %q does not exist", network.Name)
+			finding.Title = fmt.Sprintf("External network %q does not exist", name)
 			finding.Description = fmt.Sprintf(
-				"The manifest expects network %q to exist already. It is not present on this host.", network.Name)
+				"The manifest expects network %q to exist already. It is not in this engine's network list.", name)
 			finding.WhyItMatters = "Compose will not create an external network, and refuses to start without it."
 			finding.WhatToDo = fmt.Sprintf(
-				"Create %q before deploying, or drop `external: true` so Compose manages it.", network.Name)
-			finding.Evidence = append(finding.Evidence, evidence(in, "docker network ls --format {{json .}}",
-				fmt.Sprintf("no network named %s among the %d networks on this host",
-					network.Name, len(in.Caps.ContainerNetworks))))
-			out = append(out, finding)
-			continue
-		}
+				"Create %q before deploying, or drop `external: true` so Compose manages it.", name)
+			finding.Evidence = append(finding.Evidence, listing(fmt.Sprintf("no network named %s among the %d networks",
+				name, len(in.Caps.ContainerNetworks))))
 
-		if sameProject(in, found.Project) {
+		case !ok:
 			continue
-		}
 
-		finding.Outcome = model.OutcomeManualCheck
-		finding.Severity = model.FindingInfo
-		finding.Title = fmt.Sprintf("External network %q is shared with another stack", network.Name)
-		finding.Description = fmt.Sprintf(
-			"Network %q exists (driver %s, project %q) and this deployment will join it.",
-			network.Name, found.Driver, found.Project)
-		finding.WhyItMatters = "Containers on a shared network can reach each other by name. That is often the " +
-			"intent; it also means a service here is reachable from whatever else is on that network."
-		finding.WhatToDo = "Confirm the sharing is intended."
-		finding.Evidence = append(finding.Evidence, evidence(in, "docker network ls --format {{json .}}",
-			fmt.Sprintf("network %s driver=%s subnets=%s project=%q",
-				found.Name, found.Driver, strings.Join(found.Subnets, ", "), found.Project)))
+		case found.Scope == "swarm" && found.Attachable == "no":
+			finding.Outcome = model.OutcomeProblem
+			finding.Severity = model.FindingBlocker
+			finding.Title = fmt.Sprintf("Network %q exists but cannot take a standalone container", name)
+			finding.Description = fmt.Sprintf("Network %q is a swarm-scoped %s network that is not attachable, and "+
+				"Compose creates standalone containers.", name, orUnknown(found.Driver))
+			finding.WhyItMatters = "The containers fail to start: the engine refuses to connect them to the network."
+			finding.WhatToDo = fmt.Sprintf("Recreate %q with --attachable, or deploy the stack to the swarm.", name)
+			finding.Evidence = append(finding.Evidence, networkEvidence(in, found))
+
+		case found.Scope == "swarm" && found.Attachable == "":
+			finding.Outcome = model.OutcomeUnknown
+			finding.Severity = model.FindingWarning
+			finding.Title = fmt.Sprintf("Whether swarm network %q takes a standalone container could not be established", name)
+			finding.Description = fmt.Sprintf("Network %q is swarm-scoped, and whether it is attachable was not read "+
+				"(its inspect failed or was capped).", name)
+			finding.WhyItMatters = "A non-attachable swarm network refuses Compose's standalone containers."
+			finding.WhatToDo = fmt.Sprintf("Check by hand: `docker network inspect --format '{{.Attachable}}' %s`.", name)
+			finding.Evidence = append(finding.Evidence, networkEvidence(in, found))
+
+		case sameProject(in, found.Project):
+			continue
+
+		case network.External:
+			finding.Outcome = model.OutcomeManualCheck
+			finding.Severity = model.FindingInfo
+			finding.Title = fmt.Sprintf("External network %q is shared with another stack", name)
+			finding.Description = fmt.Sprintf(
+				"Network %q exists (driver %s, project %q) and this deployment will join it.",
+				name, found.Driver, found.Project)
+			finding.WhyItMatters = "Containers on a shared network can reach each other by name. That is often the " +
+				"intent; it also means a service here is reachable from whatever else is on that network."
+			finding.WhatToDo = "Confirm the sharing is intended."
+			finding.Evidence = append(finding.Evidence, networkEvidence(in, found))
+
+		default:
+			owner := "was not created by Compose"
+			if found.Project != "" {
+				owner = fmt.Sprintf("was created for project %q", found.Project)
+			}
+			finding.Outcome = model.OutcomeProblem
+			finding.Severity = model.FindingWarning
+			finding.SortOrder = 1
+			finding.Title = fmt.Sprintf("Network %q already exists and %s", name, owner)
+			finding.Description = fmt.Sprintf(
+				"The plan's network %q is not external, so Compose expects to create %q for project %q. A network of "+
+					"that name already exists and %s; Compose warns (\"exists but was not created by compose. Set "+
+					"`external: true`\") and joins it.", network.Name, name, in.Project, owner)
+			finding.WhyItMatters = "The services land on a network shared with whatever else is attached to it, " +
+				"and its configuration (subnet, driver, options) is not the plan's."
+			finding.WhatToDo = "Declare it `external: true` if joining it is intended, or give the plan's network another name."
+			finding.Evidence = append(finding.Evidence, networkEvidence(in, found))
+		}
 		out = append(out, finding)
 	}
 	return out
+}
+
+func networkEvidence(in Input, found model.ContainerNetwork) model.Evidence {
+	return evidence(in, engineCommand(in, "network ls --format {{json .}}"), onEngine(in, fmt.Sprintf(
+		"network %s driver=%s scope=%s attachable=%s subnets=%s project=%q", found.Name, found.Driver,
+		orUnknown(found.Scope), orUnknown(found.Attachable), strings.Join(found.Subnets, ", "), found.Project)))
 }
 
 // 6. witness.subnet_overlap
@@ -918,7 +1039,7 @@ func subnetOverlaps(in Input) []model.Finding {
 							existingCIDR, network.Name),
 						Evidence: []model.Evidence{
 							manifestEvidence(in, "", fmt.Sprintf("networks.%s.ipam: subnet %s", network.Name, cidr)),
-							evidence(in, "docker network inspect "+existing.Name+" --format {{json .IPAM}}",
+							evidence(in, "docker network inspect "+existing.Name+" --format {{json .}}",
 								fmt.Sprintf("network %s uses %s", existing.Name, existingCIDR)),
 						},
 					})
