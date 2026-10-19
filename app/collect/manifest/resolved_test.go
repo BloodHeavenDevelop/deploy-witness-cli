@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,7 +57,7 @@ const resolvedFixture = `{
 }`
 
 func TestFromComposeConfig(t *testing.T) {
-	m, err := FromComposeConfig([]byte(resolvedFixture), "/srv/shop/compose.yml", nil)
+	m, err := FromComposeConfig([]byte(resolvedFixture), "/srv/shop/compose.yml", "5.5.0", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +117,7 @@ func TestFromComposeConfig(t *testing.T) {
 
 func TestFromComposeConfigRejectsWhatIsNotAModel(t *testing.T) {
 	for _, raw := range []string{"", "not json", `{"name": "x"}`} {
-		if _, err := FromComposeConfig([]byte(raw), "/c.yml", &model.SectionResult{}); err == nil {
+		if _, err := FromComposeConfig([]byte(raw), "/c.yml", "5.5.0", &model.SectionResult{}); err == nil {
 			t.Errorf("%q was accepted", raw)
 		}
 	}
@@ -148,5 +149,42 @@ func TestResolveEngineNames(t *testing.T) {
 		m.Volumes[0].EngineName, m.Volumes[1].EngineName}
 	if strings.Join(got, ",") != "shop_back,edge,custom,shop_data,pg" {
 		t.Errorf("engine names = %v", got)
+	}
+}
+
+// DW-83 (found by the bench): Compose 2.x and 5.x encode create_host_path in
+// opposite ways in the resolved model, and an absent key means the version's default.
+func TestCreateHostPathByComposeVersion(t *testing.T) {
+	model2 := `{"services":{"a":{"volumes":[
+	  {"type":"bind","source":"/s","target":"/s","bind":{"create_host_path":true}},
+	  {"type":"bind","source":"/l","target":"/l"},
+	  {"type":"bind","source":"/f","target":"/f","bind":{}}]}}}`
+	model5 := `{"services":{"a":{"volumes":[
+	  {"type":"bind","source":"/s","target":"/s","bind":{}},
+	  {"type":"bind","source":"/l","target":"/l"},
+	  {"type":"bind","source":"/f","target":"/f","bind":{"create_host_path":false}}]}}}`
+	for _, tc := range []struct {
+		version, raw string
+		want       []string
+	}{
+		{"2.33.0", model2, []string{"true", "false", "false"}},
+		{"5.5.0", model5, []string{"true", "true", "false"}},
+		{"", model5, []string{"nil", "nil", "false"}},
+	} {
+		m, err := FromComposeConfig([]byte(tc.raw), "/c.yml", tc.version, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, v := range m.Services[0].Volumes {
+			if v.CreateHostPath == nil {
+				got = append(got, "nil")
+			} else {
+				got = append(got, fmt.Sprint(*v.CreateHostPath))
+			}
+		}
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("compose %q: %v, want %v", tc.version, got, tc.want)
+		}
 	}
 }

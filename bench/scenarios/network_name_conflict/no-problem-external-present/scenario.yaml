@@ -1,0 +1,13 @@
+id: network_name_conflict/no-problem-external-present
+rule: witness.network_name_conflict
+situation: no-problem
+description: >-
+  The external network edge exists.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

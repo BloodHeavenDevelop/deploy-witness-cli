@@ -958,6 +958,10 @@ func networkNameConflicts(in Input) []model.Finding {
 		case sameProject(in, found.Project):
 			continue
 
+		case network.External && found.Project == "":
+			// Created by hand (`docker network create`): what `external: true` is for.
+			continue
+
 		case network.External:
 			finding.Outcome = model.OutcomeManualCheck
 			finding.Severity = model.FindingInfo

@@ -16,7 +16,7 @@ UTILS             ?= ../utils
 CONTRACTS         ?= ../contracts
 
 .PHONY: development build run clean lint test vet fmt sync-shared \
-        build-linux-amd64 build-linux-arm64 build-all install dist
+        build-linux-amd64 build-linux-arm64 build-all install dist bench
 
 # Run the audit straight from source. Pass flags with ARGS, e.g.
 #   make development ARGS="--sections ports,services --stdout"
@@ -74,6 +74,14 @@ sync-shared:
 	install -m 0644 $(CONTRACTS)/gen/go/bloodheaven/audit/v1/report.pb.go \
 		app/contract/auditv1/report.pb.go
 	go build ./... && go test ./app/csv/ ./app/report/
+
+# The reproducible test bench (DW-83): every scenario under bench/scenarios, staged in
+# one disposable Docker-in-Docker container (pinned image, images loaded from this
+# machine, nothing pulled), audited, then deployed — prediction against Docker's
+# actual behaviour. Needs Docker that can run a privileged container. Results land in
+# bench/out/<UTC timestamp>/. Narrow it with BENCH_ARGS="-only port_conflict".
+bench: build
+	go run ./bench/dwbench -bin ./$(BINARY) -commit "$$(git rev-parse --short HEAD 2>/dev/null)" $(BENCH_ARGS)
 
 clean:
 	rm -rf $(BINARY) bin

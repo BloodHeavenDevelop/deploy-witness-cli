@@ -1,0 +1,14 @@
+id: port_conflict/no-problem-other-protocol
+rule: witness.port_conflict
+situation: no-problem
+description: >-
+  The unrelated container holds 18080/udp; the plan publishes 18080/tcp — two different sockets on one number.
+critical: true
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

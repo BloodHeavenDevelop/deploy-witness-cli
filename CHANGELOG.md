@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A reproducible test bench** (DW-83): `make bench` stages every scenario under
+  `bench/scenarios` in one disposable Docker-in-Docker container (pinned
+  `docker:27.5.1-dind` — Engine 27.5.1, Compose 2.33.0 — `--network none`, images
+  loaded from this machine, nothing pulled), runs the audit (the prediction), then
+  the planned `docker compose up` (the actual behaviour), and writes
+  `bench/out/<timestamp>/results.json` and `results.csv`: per scenario the input,
+  the expected outcome, the CLI's prediction, Docker's exit, output and whether its
+  containers stayed up, and two verdicts. Bench failures and anything the audit
+  itself changed in the engine or the scenario directory are recorded apart. 46
+  scenarios over 15 rules — problem, a similar situation without it, and
+  insufficient data (an unprivileged audit) for each engine-dependent rule
+  ([bench/dwbench](bench/dwbench/main.go), `docs/<lang>/11-test-bench.md`). First full
+  run: prediction as specified 46/46, Docker as expected 36/36 (10 advisory), no
+  bench error, no side effect.
+
 - **Bind mount sources examined on the host** (DW-88,
   [app/collect/host/binds.go](app/collect/host/binds.go),
   [app/witness/binds.go](app/witness/binds.go)): every source is resolved as Compose
@@ -154,6 +169,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Found by the bench** (DW-83): a hand-made external network (no project label)
+  is no longer "shared with another stack"; `create_host_path` in Compose's resolved
+  model is decoded by the Compose version that printed it — 2.x omits `false`, 5.x
+  omits `true` — so a missing source with `create_host_path: false` is a blocker on
+  Compose 2.x too.
 - **An external volume created by hand is not "somebody else's data"** (DW-87): a
   volume with no project label is what `external: true` is for; only one carrying
   another project's label is a warning.

@@ -1,0 +1,13 @@
+id: privileged_container/problem
+rule: witness.privileged_container
+situation: problem
+description: >-
+  A privileged service. Docker runs it — the rule is about authority over the host.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: advisory

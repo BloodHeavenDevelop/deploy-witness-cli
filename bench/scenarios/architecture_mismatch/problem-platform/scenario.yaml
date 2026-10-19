@@ -1,0 +1,13 @@
+id: architecture_mismatch/problem-platform
+rule: witness.architecture_mismatch
+situation: problem
+description: >-
+  The plan pins platform linux/arm64 on an amd64 engine whose only alpine:3.21 is amd64.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: fails
