@@ -45,7 +45,7 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 
 	switch {
 	case haveNginx:
-		proxy := collectNginx(runner, nginxRoot, result)
+		proxy, state := collectNginx(runner, nginxRoot, result)
 		if haveApache {
 			// Both installed is a real configuration — Apache behind nginx, or a
 			// leftover package still holding a port. Only one of them fits in
@@ -58,11 +58,35 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 				"apache is installed on this host as well ("+where+
 					") and was not inspected, so an Apache vhost or port is not represented here")
 			result.Degrade("both nginx and apache are installed; only nginx was inspected")
+			if state == model.ObservedComplete {
+				state = model.ObservedPartial
+			}
 		}
 		caps.Proxy = proxy
+		caps.Observe(model.SourceProxy, state, "nginx: "+orNone(proxy.Note))
 	case haveApache:
-		caps.Proxy = collectApache(runner, apacheBinary, apacheRoot, result)
+		proxy, state := collectApache(runner, apacheBinary, apacheRoot, result)
+		caps.Proxy = proxy
+		caps.Observe(model.SourceProxy, state, "apache: "+orNone(proxy.Note))
+	default:
+		caps.Observe(model.SourceProxy, model.ObservedComplete, "neither nginx nor apache is installed")
 	}
+}
+
+func orNone(note string) string {
+	if strings.TrimSpace(note) == "" {
+		return "configuration read in full"
+	}
+	return note
+}
+
+// crawlState is how completely a configuration walk stands in for the server's own
+// dump: some files read is a partial picture, none is no picture at all.
+func crawlState(files int) model.ObservationState {
+	if files == 0 {
+		return model.ObservedFailed
+	}
+	return model.ObservedPartial
 }
 
 // ─────────────────────────────────────────────────────────────────────── nginx
@@ -72,9 +96,10 @@ func nginxBinary() string { return run.Path("nginx") }
 
 // collectNginx fills a model.Proxy from `nginx -T`, or from a walk of the
 // configuration tree when that command cannot run.
-func collectNginx(runner *run.Runner, configRoot string, result *model.SectionResult) *model.Proxy {
+func collectNginx(runner *run.Runner, configRoot string, result *model.SectionResult) (*model.Proxy, model.ObservationState) {
 	proxy := &model.Proxy{Kind: kindNginx, Version: nginxVersion(runner)}
 	acc := newAccumulator()
+	state := model.ObservedComplete
 
 	dump, err := runner.Output("nginx", "-T")
 	if err == nil && strings.Contains(dump, "# configuration file") {
@@ -110,6 +135,7 @@ func collectNginx(runner *run.Runner, configRoot string, result *model.SectionRe
 		}
 		proxy.Note = appendNote(proxy.Note, degraded)
 		result.Degrade("proxy (nginx): " + degraded)
+		state = crawlState(crawl.files)
 
 		for _, note := range crawl.notes() {
 			proxy.Note = appendNote(proxy.Note, note)
@@ -118,7 +144,10 @@ func collectNginx(runner *run.Runner, configRoot string, result *model.SectionRe
 	}
 
 	finish(proxy, acc, result)
-	return proxy
+	if acc.namesTruncated && state == model.ObservedComplete {
+		state = model.ObservedPartial
+	}
+	return proxy, state
 }
 
 // nginxVersion reads the nginx version, in two steps and for one irritating reason.
@@ -166,9 +195,10 @@ func apachePresent() (binary, configRoot string, present bool) {
 
 // collectApache fills a model.Proxy from `apachectl -S`, falling back to a walk of
 // the configuration tree.
-func collectApache(runner *run.Runner, binary, configRoot string, result *model.SectionResult) *model.Proxy {
+func collectApache(runner *run.Runner, binary, configRoot string, result *model.SectionResult) (*model.Proxy, model.ObservationState) {
 	proxy := &model.Proxy{Kind: kindApache}
 	acc := newAccumulator()
+	state := model.ObservedComplete
 
 	if binary != "" {
 		if out, err := runner.Output(binary, "-v"); err == nil {
@@ -225,6 +255,7 @@ func collectApache(runner *run.Runner, binary, configRoot string, result *model.
 		}
 		proxy.Note = appendNote(proxy.Note, degraded)
 		result.Degrade("proxy (apache): " + degraded)
+		state = crawlState(crawl.files)
 	}
 	for _, note := range crawl.notes() {
 		proxy.Note = appendNote(proxy.Note, note)
@@ -232,7 +263,10 @@ func collectApache(runner *run.Runner, binary, configRoot string, result *model.
 	}
 
 	finish(proxy, acc, result)
-	return proxy
+	if acc.namesTruncated && state == model.ObservedComplete {
+		state = model.ObservedPartial
+	}
+	return proxy, state
 }
 
 // ─────────────────────────────────────────────────────────────────────── shared

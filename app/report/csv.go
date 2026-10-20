@@ -67,10 +67,18 @@ func tables(r *model.Report) []table {
 		{
 			name: string(model.SectionWitness),
 			headers: []string{"Code", "Collector", "Category", "Severity", "Subject", "Title", "Description",
-				"Why it matters", "What to do", "Confidence", "Evidence"},
+				"Why it matters", "What to do", "Confidence", "Evidence", "Outcome"},
 			paths: []string{"code", "collector", "category", "severity", "subject", "title", "description",
-				"whyItMatters", "whatToDo", "confidence", "evidenceSummary"},
+				"whyItMatters", "whatToDo", "confidence", "evidenceSummary", "outcome"},
 			rows: anySlice(findingRows(r)),
+		},
+		{
+			// One row per rule, whether or not it published a finding: "no problem" and
+			// "not applicable" are lines a reader can point at, not absences.
+			name:    "rules",
+			headers: []string{"Code", "Rule", "Outcome", "Findings", "Reason", "Requires"},
+			paths:   []string{"code", "rule", "outcome", "findings", "reason", "requires"},
+			rows:    anySlice(r.Rules),
 		},
 		{
 			// The evidence gets a file of its own rather than being crushed into one
@@ -128,6 +136,7 @@ type findingRow struct {
 	WhatToDo        string `json:"whatToDo"`
 	Confidence      string `json:"confidence"`
 	EvidenceSummary string `json:"evidenceSummary"`
+	Outcome         string `json:"outcome"`
 }
 
 func findingRows(r *model.Report) []findingRow {
@@ -141,7 +150,7 @@ func findingRows(r *model.Report) []findingRow {
 			Code: f.Code, Collector: f.Collector, Category: f.Category,
 			Severity: string(f.Severity), Subject: f.Subject, Title: f.Title,
 			Description: f.Description, WhyItMatters: f.WhyItMatters, WhatToDo: f.WhatToDo,
-			Confidence: string(f.Confidence), EvidenceSummary: summary,
+			Confidence: string(f.Confidence), EvidenceSummary: summary, Outcome: string(f.Outcome),
 		})
 	}
 	return out
@@ -263,16 +272,34 @@ func preflightRow(r *model.Report) model.SummaryRow {
 			" was not compared with this host; this is not a preflight result"
 	case witness.Status == model.StatusOk:
 		row.Status = string(model.StatusOk)
-		row.Notes = string(model.ModeComposePreflight) + ": " + path + " was compared with this host"
+		row.Notes = string(model.ModeComposePreflight) + ": " + path + " was compared with this host" +
+			resultSummary(r.Rules)
 	case witness.Status == model.StatusPartial:
 		row.Status = string(model.StatusPartial)
 		row.Notes = string(model.ModeComposePreflight) + ": " + path + " was compared with this host, " +
-			"but parts of the comparison could not be made (see the witness row)"
+			"but parts of the comparison could not be made (see the witness row)" + resultSummary(r.Rules)
 	default:
 		row.Notes = string(model.ModeComposePreflight) + ": the comparison of " + path +
 			" with this host did not complete (see the witness row); this is not a preflight result"
 	}
 	return row
+}
+
+// resultSummary is the preflight row's account of what the comparison concluded,
+// kept apart from its status (whether it ran): proven problems first, then what
+// could not be decided, which is never folded into either.
+func resultSummary(rules []model.RuleResult) string {
+	if len(rules) == 0 {
+		return ""
+	}
+	counts := map[model.Outcome]int{}
+	for _, rule := range rules {
+		counts[rule.Outcome]++
+	}
+	return fmt.Sprintf("; result: %d rule(s) found a problem, %d could not decide (unknown), %d need a manual "+
+		"check, %d found no problem, %d not applicable (rules.csv)",
+		counts[model.OutcomeProblem], counts[model.OutcomeUnknown], counts[model.OutcomeManualCheck],
+		counts[model.OutcomeNoProblem], counts[model.OutcomeNotApplicable])
 }
 
 // WriteDir renders one CSV file per section and returns the paths written.

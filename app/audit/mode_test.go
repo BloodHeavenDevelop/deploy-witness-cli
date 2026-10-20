@@ -67,3 +67,16 @@ func TestHostAuditWitnessRow(t *testing.T) {
 		t.Errorf("notes = %v", row.Notes)
 	}
 }
+
+// DW-80: an unknown is never counted as a detected problem in summary.csv.
+func TestUnknownIsNotCountedAsAProblem(t *testing.T) {
+	blockers, warnings := findingCounts([]model.Finding{
+		{Severity: model.FindingBlocker, Outcome: model.OutcomeProblem},
+		{Severity: model.FindingWarning, Outcome: model.OutcomeUnknown},
+		{Severity: model.FindingWarning, Outcome: model.OutcomeManualCheck},
+		{Severity: model.FindingWarning, Outcome: model.OutcomeProblem},
+	})
+	if blockers != 1 || warnings != 1 {
+		t.Errorf("blockers %d warnings %d, want 1 and 1", blockers, warnings)
+	}
+}

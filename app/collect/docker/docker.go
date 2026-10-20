@@ -64,6 +64,9 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 		// no container engine is a finding in its own right, and it must not reach
 		// the rules as an empty container list.
 		result.Note("no container runtime found on PATH (docker, podman); the container checks did not run")
+		for _, source := range engineSources {
+			caps.Observe(source, model.ObservedNotCollected, "no container runtime is installed")
+		}
 		return
 	}
 
@@ -88,6 +91,9 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 		runtime.Reachable = false
 		runtime.Note = unreachableNote(kind, psErr)
 		result.Degrade(runtime.Note)
+		for _, source := range engineSources {
+			caps.Observe(source, model.ObservedFailed, kind+" did not answer: "+shorten(psErr.Error()))
+		}
 		return
 	}
 	runtime.Reachable = true
@@ -101,12 +107,30 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 
 	containers, warnings := parseContainers(psOut)
 	noteWarnings(result, kind+" ps", warnings)
+	observeList(caps, model.SourceContainers, kind+" ps -a", warnings)
 	sort.SliceStable(containers, func(i, j int) bool { return containers[i].Name < containers[j].Name })
 	caps.Containers = containers
 
-	caps.ContainerNetworks = listNetworks(runner, kind, result)
-	caps.ContainerVolumes = listVolumes(runner, kind, result)
-	caps.Images = listImages(runner, kind, result)
+	caps.ContainerNetworks = listNetworks(runner, kind, caps, result)
+	caps.ContainerVolumes = listVolumes(runner, kind, caps, result)
+	caps.Images = listImages(runner, kind, caps, result)
+}
+
+// engineSources are the observations only the container engine can supply.
+var engineSources = []string{
+	model.SourceContainers, model.SourceNetworks, model.SourceNetworkSubnets,
+	model.SourceVolumes, model.SourceImages,
+}
+
+// observeList records a list command that answered: complete, or partial when some
+// of its entries could not be parsed.
+func observeList(caps *model.Capabilities, source, command string, warnings []string) {
+	if len(warnings) > 0 {
+		caps.Observe(source, model.ObservedPartial,
+			fmt.Sprintf("%s: %d entries could not be parsed", command, len(warnings)))
+		return
+	}
+	caps.Observe(source, model.ObservedComplete, command)
 }
 
 // detect picks the engine to interrogate: docker first, podman second.
@@ -162,17 +186,20 @@ func composeImplementation(runner *run.Runner, kind string) (composeKind, versio
 }
 
 // listNetworks enumerates the runtime networks and looks up each one's subnets.
-func listNetworks(runner *run.Runner, kind string, result *model.SectionResult) []model.ContainerNetwork {
+func listNetworks(runner *run.Runner, kind string, caps *model.Capabilities, result *model.SectionResult) []model.ContainerNetwork {
 	out, err := runner.Output(kind, "network", "ls", "--format", "{{json .}}")
 	if err != nil {
-		result.Degrade(fmt.Sprintf(
-			"%s network ls failed (%s); the runtime network list is unknown, not empty",
-			kind, shorten(err.Error())))
+		note := fmt.Sprintf("%s network ls failed (%s); the runtime network list is unknown, not empty",
+			kind, shorten(err.Error()))
+		result.Degrade(note)
+		caps.Observe(model.SourceNetworks, model.ObservedFailed, note)
+		caps.Observe(model.SourceNetworkSubnets, model.ObservedFailed, note)
 		return nil
 	}
 
 	networks, warnings := parseNetworkList(out)
 	noteWarnings(result, kind+" network ls", warnings)
+	observeList(caps, model.SourceNetworks, kind+" network ls", warnings)
 
 	inspected, skipped, failed, refused := 0, 0, 0, 0
 	for i := range networks {
@@ -211,6 +238,12 @@ func listNetworks(runner *run.Runner, kind string, result *model.SectionResult) 
 			"%d runtime networks have a name this tool will not pass to a command, so their subnets were not read",
 			refused))
 	}
+	if missed := skipped + failed + refused; missed > 0 {
+		caps.Observe(model.SourceNetworkSubnets, model.ObservedPartial, fmt.Sprintf(
+			"%s network inspect: the subnets of %d of %d networks are unknown", kind, missed, len(networks)))
+	} else {
+		caps.Observe(model.SourceNetworkSubnets, model.ObservedComplete, kind+" network inspect")
+	}
 
 	sort.SliceStable(networks, func(i, j int) bool { return networks[i].Name < networks[j].Name })
 	return networks
@@ -228,34 +261,38 @@ func networkInspectArgs(kind, name string) []string {
 
 // listVolumes enumerates the runtime volumes. `volume ls` already carries the
 // mountpoint and the labels, so no per-volume inspect is needed.
-func listVolumes(runner *run.Runner, kind string, result *model.SectionResult) []model.ContainerVolume {
+func listVolumes(runner *run.Runner, kind string, caps *model.Capabilities, result *model.SectionResult) []model.ContainerVolume {
 	out, err := runner.Output(kind, "volume", "ls", "--format", "{{json .}}")
 	if err != nil {
-		result.Degrade(fmt.Sprintf(
-			"%s volume ls failed (%s); the runtime volume list is unknown, not empty",
-			kind, shorten(err.Error())))
+		note := fmt.Sprintf("%s volume ls failed (%s); the runtime volume list is unknown, not empty",
+			kind, shorten(err.Error()))
+		result.Degrade(note)
+		caps.Observe(model.SourceVolumes, model.ObservedFailed, note)
 		return nil
 	}
 
 	volumes, warnings := parseVolumeList(out)
 	noteWarnings(result, kind+" volume ls", warnings)
+	observeList(caps, model.SourceVolumes, kind+" volume ls", warnings)
 	sort.SliceStable(volumes, func(i, j int) bool { return volumes[i].Name < volumes[j].Name })
 	return volumes
 }
 
 // listImages enumerates the images on the host and fills each one's architecture,
 // OS and size from a bounded number of `image inspect` calls.
-func listImages(runner *run.Runner, kind string, result *model.SectionResult) []model.ContainerImage {
+func listImages(runner *run.Runner, kind string, caps *model.Capabilities, result *model.SectionResult) []model.ContainerImage {
 	out, err := runner.Output(kind, "image", "ls", "--all", "--digests", "--format", "{{json .}}")
 	if err != nil {
-		result.Degrade(fmt.Sprintf(
-			"%s image ls failed (%s); the image list is unknown, not empty",
-			kind, shorten(err.Error())))
+		note := fmt.Sprintf("%s image ls failed (%s); the image list is unknown, not empty",
+			kind, shorten(err.Error()))
+		result.Degrade(note)
+		caps.Observe(model.SourceImages, model.ObservedFailed, note)
 		return nil
 	}
 
 	entries, warnings := parseImageList(out)
 	noteWarnings(result, kind+" image ls", warnings)
+	observeList(caps, model.SourceImages, kind+" image ls", warnings)
 
 	// Keyed by image id: the same image under five tags is five rows of
 	// `image ls` and one call to `image inspect`.

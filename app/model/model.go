@@ -264,11 +264,14 @@ type Report struct {
 	// The witness section's output. Manifest and Capabilities are the two sides
 	// it compared; keeping them in the report is what lets a reader check a finding
 	// rather than take it on faith.
-	Manifest     *Manifest      `json:"manifest,omitempty"`
-	Capabilities *Capabilities  `json:"capabilities,omitempty"`
-	Findings     []Finding      `json:"findings"`
-	Changes      []ChangeItem   `json:"changes"`
-	Rollback     []RollbackItem `json:"rollback"`
+	Manifest     *Manifest     `json:"manifest,omitempty"`
+	Capabilities *Capabilities `json:"capabilities,omitempty"`
+	Findings     []Finding     `json:"findings"`
+	// Rules is one outcome per witness rule, including the rules that published no
+	// finding: "no problem" and "not applicable" are stated, not implied.
+	Rules    []RuleResult   `json:"rules"`
+	Changes  []ChangeItem   `json:"changes"`
+	Rollback []RollbackItem `json:"rollback"`
 }
 
 // SummaryRow is one line of summary.csv — the index an operator reads first.

@@ -36,6 +36,7 @@ func architectureMismatch(in Input) []model.Finding {
 			Category:   model.CategoryConflict,
 			Severity:   model.FindingBlocker,
 			Confidence: model.ConfidenceHigh,
+			Outcome:    model.OutcomeProblem,
 			Subject:    svc.Name,
 			Title:      fmt.Sprintf("Service %q asks for %s on a %s host", svc.Name, svc.Platform, in.Caps.Arch),
 			Description: fmt.Sprintf(
@@ -68,6 +69,7 @@ func architectureMismatch(in Input) []model.Finding {
 			Category:   model.CategoryConflict,
 			Severity:   model.FindingBlocker,
 			Confidence: model.ConfidenceHigh,
+			Outcome:    model.OutcomeProblem,
 			Subject:    svc.Image.Raw,
 			SortOrder:  1,
 			Title: fmt.Sprintf("Image %s is built for %s; this host is %s",
@@ -134,6 +136,7 @@ func runtimeVersion(in Input) []model.Finding {
 			Category:     model.CategoryMissing,
 			Severity:     model.FindingBlocker,
 			Confidence:   model.ConfidenceHigh,
+			Outcome:      model.OutcomeProblem,
 			Title:        "No container runtime is installed",
 			Description:  "Neither docker nor podman was found on this host, and the manifest describes containers.",
 			WhyItMatters: "There is nothing here that can run the deployment.",
@@ -155,6 +158,7 @@ func runtimeVersion(in Input) []model.Finding {
 			Severity:   model.FindingWarning,
 			Confidence: model.ConfidenceHigh,
 			Subject:    runtime.Kind,
+			Outcome:    model.OutcomeUnknown,
 			Title:      fmt.Sprintf("%s is installed but did not answer", runtime.Kind),
 			Description: fmt.Sprintf(
 				"The %s binary is present, but querying the engine failed: %s. Every check that compares the "+
@@ -178,6 +182,7 @@ func runtimeVersion(in Input) []model.Finding {
 			Confidence: model.ConfidenceHigh,
 			Subject:    "compose",
 			SortOrder:  1,
+			Outcome:    model.OutcomeProblem,
 			Title:      "No Compose implementation was found",
 			Description: fmt.Sprintf(
 				"%s %s is installed, but neither the `docker compose` plugin nor a standalone docker-compose "+
@@ -197,6 +202,7 @@ func runtimeVersion(in Input) []model.Finding {
 			Confidence: model.ConfidenceHigh,
 			Subject:    "compose",
 			SortOrder:  2,
+			Outcome:    model.OutcomeProblem,
 			Title:      "Only the standalone Compose V1 is installed",
 			Description: fmt.Sprintf(
 				"This host has docker-compose %s (the Python V1 implementation) and not the V2 plugin.",
@@ -252,6 +258,7 @@ func registryReachability(in Input) []model.Finding {
 			Category:   model.CategoryMissing,
 			Severity:   model.FindingInfo,
 			Confidence: model.ConfidenceHigh,
+			Outcome:    model.OutcomeUnknown,
 			Title:      "Registry reachability was not checked",
 			Description: fmt.Sprintf(
 				"The deployment pulls from %s. This audit does not open outbound connections unless asked, so "+
@@ -278,6 +285,7 @@ func registryReachability(in Input) []model.Finding {
 			Severity:   model.FindingBlocker,
 			Confidence: model.ConfidenceHigh,
 			Subject:    registry,
+			Outcome:    model.OutcomeProblem,
 			Title:      fmt.Sprintf("Registry %s is not reachable from this host", registry),
 			Description: fmt.Sprintf("Reaching %s failed: %s. Service(s) %s pull from it.",
 				registry, failure, strings.Join(registries[registry], ", ")),
@@ -343,6 +351,7 @@ func databaseVersionMismatch(in Input) []model.Finding {
 				Category:   model.CategoryConflict,
 				Severity:   severity,
 				Confidence: model.ConfidenceMedium,
+				Outcome:    model.OutcomeProblem,
 				Subject:    svc.Name,
 				Title: fmt.Sprintf("Service %q runs %s %s against %s %s data",
 					svc.Name, kind, wanted, kind, have),

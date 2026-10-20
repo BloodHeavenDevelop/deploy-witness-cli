@@ -33,6 +33,7 @@ func memoryShortfall(in Input) []model.Finding {
 			Category:   model.CategoryResource,
 			Severity:   model.FindingInfo,
 			Confidence: model.ConfidenceHigh,
+			Outcome:    model.OutcomeUnknown,
 			Title:      "Memory could not be measured",
 			Description: "The host's memory was not readable, so the manifest's memory reservations were not " +
 				"compared against anything.",
@@ -70,6 +71,7 @@ func memoryShortfall(in Input) []model.Finding {
 			Category:   model.CategoryResource,
 			Severity:   model.FindingInfo,
 			Confidence: model.ConfidenceHigh,
+			Outcome:    model.OutcomeNotApplicable,
 			Title:      "The manifest declares no memory requirements",
 			Description: fmt.Sprintf(
 				"None of the %d service(s) sets deploy.resources.reservations.memory or a memory limit. "+
@@ -114,6 +116,7 @@ func memoryShortfall(in Input) []model.Finding {
 		Category:   model.CategoryResource,
 		Severity:   severity,
 		Confidence: model.ConfidenceMedium,
+		Outcome:    model.OutcomeProblem,
 		Subject:    humanBytes(need),
 		Title:      fmt.Sprintf("The deployment asks for %s of memory; %s is available", humanBytes(need), humanBytes(in.Caps.MemAvailableBytes)),
 		Description: fmt.Sprintf("%s. The host has %s total, %s available and %s of swap. %s",
@@ -149,6 +152,7 @@ func diskShortfall(in Input) []model.Finding {
 			Category:   model.CategoryResource,
 			Severity:   model.FindingInfo,
 			Confidence: model.ConfidenceHigh,
+			Outcome:    model.OutcomeUnknown,
 			Title:      "Free disk space could not be measured",
 			Description: "No filesystem capacity was collected, so the space the deployment needs was not " +
 				"compared against anything.",
@@ -189,6 +193,7 @@ func diskShortfall(in Input) []model.Finding {
 		Category:   model.CategoryResource,
 		Severity:   model.FindingBlocker,
 		Confidence: model.ConfidenceMedium,
+		Outcome:    model.OutcomeProblem,
 		Subject:    target.Mount,
 		Title: fmt.Sprintf("%s has %s free, and %d image(s) still have to be pulled",
 			target.Mount, humanBytes(int64(target.AvailableBytes)), len(missing)),
@@ -254,6 +259,7 @@ func inodeShortfall(in Input) []model.Finding {
 		Category:   model.CategoryResource,
 		Severity:   severity,
 		Confidence: model.ConfidenceHigh,
+		Outcome:    model.OutcomeProblem,
 		Subject:    target.Mount,
 		Title:      fmt.Sprintf("%s has used %.1f%% of its inodes", target.Mount, usedPercent),
 		Description: fmt.Sprintf(
@@ -298,6 +304,7 @@ func diskPressure(in Input) []model.Finding {
 			Category:   model.CategoryResource,
 			Severity:   severity,
 			Confidence: model.ConfidenceHigh,
+			Outcome:    model.OutcomeProblem,
 			Subject:    fs.Mount,
 			Title:      fmt.Sprintf("%s is %.1f%% full", fs.Mount, usedPercent),
 			Description: fmt.Sprintf("%s (%s on %s) holds %s of %s, leaving %s available.",

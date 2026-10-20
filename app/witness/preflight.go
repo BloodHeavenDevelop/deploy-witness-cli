@@ -54,9 +54,25 @@ type Input struct {
 }
 
 // rule is one check. Rules never observe and never mutate their input.
+//
+// eval states what the rule found; assess states what the rule could conclude when
+// eval found nothing to say — that the plan gives it nothing to check, that the data
+// it needs was not there, or that it checked and everything is in order. The two are
+// separate because "no finding" means three different things, and a report that lets
+// a reader guess which one is the dishonest half of the second promise.
 type rule struct {
 	name string
-	eval func(Input) []model.Finding
+	// code is the finding code the rule publishes under; it is also the key of the
+	// rule's RuleResult.
+	code string
+	// title names the check in a sentence: "Port conflicts", "External volumes".
+	title string
+	// requires names the data the rule cannot decide without, for rules.csv.
+	requires string
+	eval     func(Input) []model.Finding
+	// assess is optional; a rule without it reports no-problem when it published
+	// nothing.
+	assess func(Input) verdict
 }
 
 // rules is the full set. The order here is the order the codes are documented in,
@@ -64,52 +80,111 @@ type rule struct {
 // takes over.
 func rules() []rule {
 	return []rule{
-		{"port-conflict", portConflicts},
-		{"container-name-conflict", containerNameConflicts},
-		{"volume-name-conflict", volumeNameConflicts},
-		{"bind-path-conflict", bindPathConflicts},
-		{"network-name-conflict", networkNameConflicts},
-		{"subnet-overlap", subnetOverlaps},
-		{"memory", memoryShortfall},
-		{"disk", diskShortfall},
-		{"inodes", inodeShortfall},
-		{"architecture", architectureMismatch},
-		{"runtime-version", runtimeVersion},
-		{"registry", registryReachability},
-		{"proxy-port", proxyPortConflict},
-		{"domain", domainConflict},
-		{"database-version", databaseVersionMismatch},
-		{"env-file", missingEnvFiles},
-		{"healthcheck", missingHealthchecks},
-		{"floating-tag", floatingTags},
-		{"security-flags", securityFlags},
-		{"backup", backupGap},
-		{"rollback", rollbackGap},
-		{"certificate", certificateExpiry},
-		{"reboot", rebootPending},
-		{"disk-pressure", diskPressure},
+		{"port-conflict", "witness.port_conflict", "Port conflicts",
+			"the published ports; the listening sockets (ports section); the containers' publications",
+			portConflicts, assessPorts},
+		{"container-name-conflict", "witness.container_name_conflict", "Fixed container names",
+			"container_name of each service; the engine's container list",
+			containerNameConflicts, assessContainerNames},
+		{"volume-name-conflict", "witness.volume_name_conflict", "External volumes",
+			"the external volumes of the plan; the engine's volume list",
+			volumeNameConflicts, assessExternalVolumes},
+		{"bind-path-conflict", "witness.bind_path_conflict", "Bind mount sources",
+			"the bind mounts of the plan",
+			bindPathConflicts, assessBindPaths},
+		{"network-name-conflict", "witness.network_name_conflict", "External networks",
+			"the external networks of the plan; the engine's network list",
+			networkNameConflicts, assessExternalNetworks},
+		{"subnet-overlap", "witness.subnet_overlap", "Subnet overlaps",
+			"the explicit IPAM subnets of the plan; every engine network's subnets",
+			subnetOverlaps, assessSubnets},
+		{"memory", "witness.insufficient_memory", "Memory",
+			"the memory reservations and limits of the plan; /proc/meminfo",
+			memoryShortfall, assessMemory},
+		{"disk", "witness.insufficient_disk", "Disk space for image pulls",
+			"the images of the plan; the engine's image list; the filesystem of the container store",
+			diskShortfall, assessDisk},
+		{"inodes", "witness.insufficient_inodes", "Inodes",
+			"the filesystem of the container store, with a fixed inode count",
+			inodeShortfall, assessInodes},
+		{"architecture", "witness.architecture_mismatch", "CPU architecture",
+			"uname -m; platform: of each service; the architecture of each image already on the host",
+			architectureMismatch, assessArchitecture},
+		{"runtime-version", "witness.runtime_missing_or_old", "Container engine and Compose",
+			"the engine binary and whether it answers; the Compose implementation",
+			runtimeVersion, nil},
+		{"registry", "witness.registry_unreachable", "Registry reachability",
+			"the registries the plan pulls from; a TCP connect to each (--egress)",
+			registryReachability, assessRegistries},
+		{"proxy-port", "witness.proxy_conflict", "Web server ports 80/443",
+			"ports 80/443 of the plan; the web server's and the control panels' listen ports",
+			proxyPortConflict, assessProxyPorts},
+		{"domain", "witness.domain_conflict", "Domains",
+			"the domains in the services' labels; the web server's server names",
+			domainConflict, assessDomains},
+		{"database-version", "witness.database_version_mismatch", "Database major versions",
+			"the database images and their tags; the databases already on the host",
+			databaseVersionMismatch, assessDatabases},
+		{"env-file", "witness.env_file_missing", "env_file presence",
+			"env_file of each service; whether each file exists",
+			missingEnvFiles, assessEnvFiles},
+		{"healthcheck", "witness.no_healthcheck", "Healthchecks",
+			"healthcheck of each service",
+			missingHealthchecks, assessServices},
+		{"floating-tag", "witness.floating_image_tag", "Image pinning",
+			"the image reference of each pulled service",
+			floatingTags, assessPulledImages},
+		{"security-flags", "witness.privileged_container", "Host authority",
+			"privileged, cap_add, devices, network_mode and socket mounts of each service",
+			securityFlags, assessServices},
+		{"backup", "witness.backup_gap", "Backups",
+			"the persistent data of the plan; backup tools, jobs and directories on the host",
+			backupGap, assessBackup},
+		{"rollback", "witness.no_rollback_plan", "Rollback plan",
+			"the rollback section of this report",
+			rollbackGap, nil},
+		{"certificate", "witness.certificate_expiring", "Certificate expiry",
+			"the TLS certificates found on the host, parsed",
+			certificateExpiry, assessCertificates},
+		{"reboot", "witness.reboot_required", "Pending reboot",
+			"needs-restarting -r or /var/run/reboot-required (system section)",
+			rebootPending, assessReboot},
+		{"disk-pressure", "witness.disk_at_limit", "Filesystem fill level",
+			"capacity of every writable filesystem",
+			diskPressure, assessFilesystems},
 	}
 }
 
-// Evaluate runs every rule and returns the findings, the change list and the
-// rollback plan.
+// Result is everything Evaluate concludes.
+type Result struct {
+	Findings []model.Finding
+	Rules    []model.RuleResult
+	Changes  []model.ChangeItem
+	Rollback []model.RollbackItem
+	Notes    []string
+}
+
+// Evaluate runs every rule and returns the findings, one outcome per rule, the
+// change list and the rollback plan.
 //
 // It never returns an error. A rule that cannot reach a conclusion produces a
 // finding that says so, which is the whole point: the caller has no way to render
 // "the engine gave up" usefully, and a report that omits a check silently is the
 // one outcome this package exists to prevent.
-func Evaluate(in Input) (findings []model.Finding, changes []model.ChangeItem, rollback []model.RollbackItem, notes []string) {
+func Evaluate(in Input) Result {
 	if in.Manifest == nil || in.Caps == nil {
-		return nil, nil, nil, []string{
+		return Result{Notes: []string{
 			"witness: nothing to compare — a manifest and the host capabilities are both required",
-		}
+		}}
 	}
 	if in.Now.IsZero() {
 		in.Now = time.Now().UTC()
 	}
 
-	dropped := 0
+	var out Result
+	dropped, corrected := 0, 0
 	for _, r := range rules() {
+		var published []model.Finding
 		for _, finding := range r.eval(in) {
 			// The one invariant worth spending code on. A finding with no evidence
 			// is a defect in a rule, and the honest response is to lose the finding
@@ -121,19 +196,35 @@ func Evaluate(in Input) (findings []model.Finding, changes []model.ChangeItem, r
 			if finding.Collector == "" {
 				finding.Collector = r.name
 			}
-			findings = append(findings, finding)
+			if fixOutcome(&finding) {
+				corrected++
+			}
+			published = append(published, finding)
 		}
+
+		result, synthesized := conclude(in, r, published)
+		if synthesized != nil {
+			published = append(published, *synthesized)
+		}
+		out.Findings = append(out.Findings, published...)
+		out.Rules = append(out.Rules, result)
 	}
 	if dropped > 0 {
-		notes = append(notes, fmt.Sprintf(
+		out.Notes = append(out.Notes, fmt.Sprintf(
 			"%d finding(s) were discarded because no evidence was attached to them; this is a bug in deploy-witness, "+
 				"not a property of the host", dropped))
 	}
+	if corrected > 0 {
+		out.Notes = append(out.Notes, fmt.Sprintf(
+			"%d finding(s) carried a severity their outcome does not allow (a blocker that is not a proven "+
+				"problem, or a warning that is not a problem at all) and were downgraded; this is a bug in "+
+				"deploy-witness, not a property of the host", corrected))
+	}
 
-	sortFindings(findings)
-	changes = Changes(in)
-	rollback = Rollback(in)
-	return findings, changes, rollback, notes
+	sortFindings(out.Findings)
+	out.Changes = Changes(in)
+	out.Rollback = Rollback(in)
+	return out
 }
 
 // sortFindings puts the report in the order somebody reads it: worst first, then by

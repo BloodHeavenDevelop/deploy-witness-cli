@@ -27,10 +27,24 @@ func baseInput() Input {
 				InodesTotal: 6000000, InodesFree: 5000000,
 			}},
 			RebootRequired: "no",
+			Observations:   completeObservations(),
 		},
 		Now:     fixedNow,
 		Project: "app",
 	}
+}
+
+// completeObservations is a host on which every source answered in full.
+func completeObservations() []model.Observation {
+	var out []model.Observation
+	for _, source := range []string{
+		model.SourceContainers, model.SourceNetworks, model.SourceNetworkSubnets, model.SourceVolumes,
+		model.SourceImages, model.SourceSockets, model.SourceArch, model.SourceMemory,
+		model.SourceFilesystems, model.SourceProxy,
+	} {
+		out = append(out, model.Observation{Source: source, State: model.ObservedComplete})
+	}
+	return out
 }
 
 func codes(findings []model.Finding) []string {
@@ -59,7 +73,8 @@ func has(findings []model.Finding, code string) bool {
 // rather than per rule, so a rule added later cannot quietly skip it.
 func TestEveryFindingIsComplete(t *testing.T) {
 	in := busyHost()
-	findings, _, _, notes := Evaluate(in)
+	evaluated := Evaluate(in)
+	findings, notes := evaluated.Findings, evaluated.Notes
 
 	if len(findings) == 0 {
 		t.Fatal("the fixture is meant to trip many rules; none fired")
@@ -111,7 +126,7 @@ func TestQuietHostProducesNoBlockers(t *testing.T) {
 		Ports:          []model.PortMapping{{HostPort: 8080, ContainerPort: 80, Protocol: "tcp"}},
 	}}
 
-	findings, _, _, _ := Evaluate(in)
+	findings := Evaluate(in).Findings
 	for _, f := range findings {
 		if f.Severity == model.FindingBlocker {
 			t.Errorf("unexpected blocker on a healthy host: %s — %s", f.Code, f.Title)

@@ -73,6 +73,7 @@ func proxyPortConflict(in Input) []model.Finding {
 				Category:   model.CategoryConflict,
 				Severity:   severityFor(stated),
 				Confidence: confidenceFor(stated, model.ConfidenceMedium),
+				Outcome:    outcomeFor(stated),
 				Subject:    fmt.Sprintf("%d/%s", port, panel.Name),
 				Title:      fmt.Sprintf("%s owns port %d on this host", panel.Name, port),
 				Description: fmt.Sprintf(
@@ -101,6 +102,7 @@ func proxyPortConflict(in Input) []model.Finding {
 			Category:   model.CategoryConflict,
 			Severity:   severityFor(stated),
 			Confidence: confidenceFor(stated, model.ConfidenceHigh),
+			Outcome:    outcomeFor(stated),
 			Subject:    fmt.Sprintf("%d/%s", port, proxy.Kind),
 			SortOrder:  1,
 			Title:      fmt.Sprintf("%s already listens on port %d", proxy.Kind, port),
@@ -133,6 +135,15 @@ func severityFor(stated bool) model.FindingSeverity {
 		return model.FindingBlocker
 	}
 	return model.FindingWarning
+}
+
+// outcomeFor: a TCP publish on a port the front end listens on is a proven
+// collision; any other protocol is a question the collected data cannot settle.
+func outcomeFor(stated bool) model.Outcome {
+	if stated {
+		return model.OutcomeProblem
+	}
+	return model.OutcomeUnknown
 }
 
 func confidenceFor(stated bool, certain model.Confidence) model.Confidence {
@@ -219,6 +230,7 @@ func domainConflict(in Input) []model.Finding {
 					Category:   model.CategoryConflict,
 					Severity:   model.FindingWarning,
 					Confidence: model.ConfidenceMedium,
+					Outcome:    model.OutcomeProblem,
 					Subject:    domain,
 					Title:      fmt.Sprintf("%s is already served by %s on this host", domain, in.Caps.Proxy.Kind),
 					Description: fmt.Sprintf(
@@ -242,6 +254,7 @@ func domainConflict(in Input) []model.Finding {
 					Category:   model.CategoryConflict,
 					Severity:   model.FindingInfo,
 					Confidence: model.ConfidenceMedium,
+					Outcome:    model.OutcomeManualCheck,
 					Subject:    domain,
 					SortOrder:  1,
 					Title:      fmt.Sprintf("%s will land on the catch-all vhost until the new one is in place", domain),

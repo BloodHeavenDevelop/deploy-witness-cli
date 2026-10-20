@@ -49,6 +49,7 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 	if !a.cfg.Wants(model.SectionPorts) {
 		result.Degrade("the ports section was not selected, so port conflicts could not be checked")
 	}
+	caps.Observe(socketState(a.cfg.Wants(model.SectionPorts), report.Sections))
 
 	// The order is a dependency order, not a preference. panels reads the service
 	// units, scheduler fills the job inventory that certs needs to tell an installed
@@ -79,13 +80,42 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 		in.RegistryResults = a.checkRegistries(parsed, result)
 	}
 
-	findings, changes, rollback, notes := witness.Evaluate(in)
-	report.Findings = findings
-	report.Changes = changes
-	report.Rollback = rollback
-	for _, note := range notes {
+	evaluated := witness.Evaluate(in)
+	report.Findings = evaluated.Findings
+	report.Rules = evaluated.Rules
+	report.Changes = evaluated.Changes
+	report.Rollback = evaluated.Rollback
+	for _, note := range evaluated.Notes {
 		result.Degrade(note)
 	}
+	// What every rule concluded, in the section's own notes: summary.csv and the
+	// upload's witness collector both carry it, so a reader of either can tell a rule
+	// that found nothing from one that could not look.
+	if len(evaluated.Rules) > 0 {
+		result.Note(witness.OutcomeSummary(evaluated.Rules))
+	}
+}
+
+// socketState is how completely the listening sockets were read, taken from the
+// ports section that read them.
+func socketState(selected bool, sections []model.SectionResult) (string, model.ObservationState, string) {
+	if !selected {
+		return model.SourceSockets, model.ObservedNotCollected, "the ports section was not selected"
+	}
+	for _, s := range sections {
+		if s.Section != model.SectionPorts {
+			continue
+		}
+		switch s.Status {
+		case model.StatusOk:
+			return model.SourceSockets, model.ObservedComplete, "/proc/net (ports section)"
+		case model.StatusPartial:
+			return model.SourceSockets, model.ObservedPartial, strings.Join(s.Notes, "; ")
+		default:
+			return model.SourceSockets, model.ObservedFailed, strings.Join(s.Notes, "; ")
+		}
+	}
+	return model.SourceSockets, model.ObservedNotCollected, "the ports section did not run"
 }
 
 // HostAuditNote is the note a host audit's witness row carries. It starts with the
@@ -186,8 +216,13 @@ func (a *Auditor) checkRegistries(parsed *model.Manifest, result *model.SectionR
 
 // findingCounts maps the witness severities onto the summary's two counters, so
 // that a reader scanning summary.csv sees the blockers without opening the section.
+// Only proven problems are counted: an unknown is not a detected problem, and
+// counting it as one would let a report that could not look read as one that found.
 func findingCounts(findings []model.Finding) (blockers, warnings int) {
 	for _, f := range findings {
+		if f.Outcome != model.OutcomeProblem {
+			continue
+		}
 		switch f.Severity {
 		case model.FindingBlocker:
 			blockers++

@@ -125,3 +125,42 @@ func TestRollbackCSVRendersUnknown(t *testing.T) {
 		}
 	}
 }
+
+// DW-80: the outcome of every rule is a table of its own, every finding states its
+// outcome in an appended column, and the preflight row keeps the result (what was
+// concluded) apart from the status (whether the comparison ran).
+func TestOutcomesAreReportedApartFromStatus(t *testing.T) {
+	r := reportWith(model.ModeComposePreflight, &model.SectionResult{Section: model.SectionWitness, Status: model.StatusOk})
+	r.Rules = []model.RuleResult{
+		{Code: "witness.port_conflict", Rule: "port-conflict", Outcome: model.OutcomeUnknown, Reason: "r", Requires: "q"},
+		{Code: "witness.no_healthcheck", Rule: "healthcheck", Outcome: model.OutcomeNoProblem, Reason: "r", Requires: "q"},
+	}
+	r.Findings = []model.Finding{{Code: "witness.port_conflict", Severity: model.FindingWarning,
+		Outcome: model.OutcomeUnknown, Evidence: []model.Evidence{{Command: "ss"}}}}
+
+	var witness, rules *table
+	for _, tb := range tables(r) {
+		tb := tb
+		switch tb.name {
+		case "witness":
+			witness = &tb
+		case "rules":
+			rules = &tb
+		}
+	}
+	if rules == nil || len(rules.rows) != 2 {
+		t.Fatalf("rules.csv = %+v", rules)
+	}
+	if witness == nil || witness.headers[len(witness.headers)-1] != "Outcome" {
+		t.Fatalf("witness.csv must append Outcome as its last column: %+v", witness)
+	}
+	data, err := render(*witness)
+	if err != nil || !strings.Contains(string(data), "unknown") {
+		t.Errorf("witness.csv = %s (%v)", data, err)
+	}
+
+	pre, _ := summaryRow(summaryRows(r), "preflight")
+	if pre.Status != string(model.StatusOk) || !strings.Contains(pre.Notes, "0 rule(s) found a problem, 1 could not decide") {
+		t.Errorf("preflight row = %+v", pre)
+	}
+}
