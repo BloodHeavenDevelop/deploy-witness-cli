@@ -295,8 +295,9 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 | `note` | Что разрешение не смогло воспроизвести |
 
 Замечания `witness` несут то же одной строкой (`plan: project shop (from
---project-name), 2 Compose file(s), …`), поэтому это есть и у коллектора `witness` в
-отправке.
+--project-name), 2 Compose file(s), …`) — для человека, читающего `summary.csv`.
+Отправка несёт план собственным полем (`plan`, см. [report.json](#reportjson));
+замечание больше не единственный его носитель.
 
 ## provenance.csv
 
@@ -308,6 +309,7 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 | `tool`, `rules-version` | Сборка и набор правил (`witness.RulesVersion`), который меняется при любом изменении логики правила — независимо от версии инструмента |
 | `host`, `server-fingerprint` | Имя хоста и солёный хэш `/etc/machine-id`, который несёт отправка |
 | `engine`, `engine-id`, `compose` | Движок и его ID из `docker info`, реализация Compose |
+| `engine-fingerprint` | Солёный хэш ID движка, вычисленный так же, как `server-fingerprint`, — единственная форма идентичности движка, которую несёт отправка |
 | `plan-source`, `plan-digest` | Кто разрешил план и его дайджест — то, что сравнивает `--recheck` |
 | `started-at`, `plan-resolved-at`, `observed-from`, `observed-until`, `compared-at`, `finished-at` | Хронология прогона, RFC 3339 UTC |
 | `clock-synchronized` | `yes`, `no` или `unknown` (`NTPSynchronized` из timedatectl) |
@@ -319,7 +321,9 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 
 Замечания `witness` несут это одной строкой (`provenance: deploy-witness 1.5.0, rules
 2; engine docker 29.7.2 (id …); …`), а каждую несогласованность времени — замечанием
-`time:`, поэтому это есть и в отправке: в контракте поля для этого нет.
+`time:` — для человека, читающего `summary.csv`. Отправка несёт это собственным полем
+(`provenance`, вместе с наблюдениями); в отправке ID движка в этих замечаниях заменён
+его отпечатком.
 
 ## evidence.csv
 
@@ -469,7 +473,7 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 | Ключ | Содержание | Уходит с машины? |
 |---|---|---|
 | `schemaVersion` | Версия контракта половины `upload`. Получатель проверяет её первой, поэтому агент, собранный месяцы назад, получит ответ «твой отчёт не понят», а не будет прочитан наполовину | — |
-| `upload` | Общий контракт `bloodheaven.audit.v1` в виде protojson: `findings` с доказательствами, `collectors` (результаты разделов), `changes`, `rollback`, `command_journal`, плюс `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` и `producer` | **Да** — это ровно те байты, которые отправляет `--upload` |
+| `upload` | Общий контракт `bloodheaven.audit.v1` в виде protojson: `findings` с доказательствами и `outcome`, `collectors` (результаты разделов), `changes`, `rollback`, `command_journal`, `rule_results` (по одному на правило), `plan` (только в preflight), `provenance` (с `observations`), плюс `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` и `producer` | **Да** — это ровно те байты, которые отправляет `--upload` |
 | `audit` | Всё, что остаётся локальным: режим прогона `mode` (`host-audit` или `compose-preflight`), инвентарь хоста, список обновлений, список CVE, разобранный манифест, наблюдённые возможности (с `observations`: насколько полно прочитан каждый источник — контейнеры, тома, сокеты, память…), сетевая запись (`network`, как в `network.csv`), те же находки во внутренней форме этого инструмента (каждая со своим `outcome`, доказательства с `origin` и `source`), `rules`, как в `rules.csv`, `plan`, как в `plan.csv`, и `provenance`, как в `provenance.csv` | Нет |
 
 Клиент может прочитать файл, увидеть, какая половина покинула бы его машину, и
@@ -511,14 +515,36 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
   различает режимы. Замечание `host-audit: not applicable` остаётся в
   `audit.sections` файла `report.json`; чтобы режим или статус `NOT_APPLICABLE`
   передавался в самом контракте, нужно изменение в репозитории `contracts`.
-- **В контракте нет поля итога.** Находка уходит со своей серьёзностью, и по одной
-  находке получатель не отличит доказанную проблему от вопроса, который этот прогон
-  не смог решить. Пока контракт этого не умеет, итог передают две вещи: `note`
-  коллектора `witness` заканчивается на `rule outcomes: 25 rules — N problem (коды);
-  N unknown (коды); …`, а заголовок нерешённой находки говорит об этом прямо («…
-  could not be established», «… could not be decided», «… needs a manual check»).
-  Чтобы `outcome` передавался у каждой находки, нужно изменение в репозитории
-  `contracts`.
+- **Каждая находка сообщает свой `outcome`, у каждого правила есть запись в
+  `rule_results`** (contracts v0.15.0): `OUTCOME_PROBLEM`, `OUTCOME_NO_PROBLEM`,
+  `OUTCOME_UNKNOWN`, `OUTCOME_MANUAL_CHECK` или `OUTCOME_NOT_APPLICABLE` — пять
+  значений `rules.csv`. Обнаруженная проблема — только `OUTCOME_PROBLEM`; unknown —
+  вопрос, который прогон не смог решить. Находка без итога уходит как
+  `OUTCOME_UNSPECIFIED` и читается по серьёзности; в проблему она не угадывается.
+  `note` коллектора `witness` по-прежнему заканчивается на `rule outcomes: 25 rules
+  — N problem (коды); N unknown (коды); …`, а заголовок нерешённой находки
+  по-прежнему говорит об этом прямо — для читающего человека, но уже не как
+  единственный носитель.
+- **`plan` — план запуска, который проверил preflight**, как в `plan.csv`, без двух
+  вещей: адреса движка (движок называют `engine_context` и `engine_local`) и хэшей
+  конфигурации сервисов. Аудит хоста план не проверял и оставляет `plan` пустым.
+  Значений переменных в нём нет — план несёт только имена, а env-файлы — путями и
+  дайджестами SHA-256.
+- **`provenance` — это `provenance.csv` вместе с наблюдениями**, у каждого свой
+  `OBSERVATION_STATE_*` и время. Имя хоста и отпечаток сервера там не повторяются (это
+  `server_hostname`/`server_fingerprint`).
+- **Движок называется `engine_fingerprint`, никогда своим ID.** Как и
+  `server_fingerprint`, это солёный SHA-256 — от ID из `docker info`, по той же схеме
+  и с той же солью. Правила пишут сырой ID в доказательства, чтобы различать ответы
+  двух движков, и замечание provenance его называет; перед тем как отрисовать
+  отправку, все строки документа просматриваются и сырой ID заменяется отпечатком,
+  так что получатель всё ещё может сопоставить эти строки с `engine_fingerprint`.
+  Локальная половина (`audit`, CSV-файлы) хранит сырой ID рядом с отпечатком — для
+  ручной сверки с `docker info`.
+- **`schema_version` остаётся `1.0`.** Новые поля аддитивны: получатель декодирует с
+  отбрасыванием неизвестных полей и сравнивает версию на равенство, поэтому старый
+  получатель читает новый отчёт как раньше, а новый читает старый отчёт по
+  серьёзностям.
 - **Инвентаря пакетов, списка обновлений и списка CVE в `upload` нет.** Контракт —
   это документ находок, а отправлять их значило бы добровольно передавать полный
   инвентарь ПО чьего-то продакшн-хоста сервису, который об этом не просил.

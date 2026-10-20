@@ -291,8 +291,9 @@ audit. See [04 — The planned run](04-cli-reference.md#the-planned-run).
 | `note` | What the resolution could not reproduce |
 
 The `witness` notes carry the same in one line (`plan: project shop (from
---project-name), 2 Compose file(s), …`), so the upload's `witness` collector has it
-too.
+--project-name), 2 Compose file(s), …`) for a person reading `summary.csv`. The
+upload carries the plan as a field of its own (`plan`, see
+[report.json](#reportjson)); the note is no longer its only carrier.
 
 ## provenance.csv
 
@@ -304,6 +305,7 @@ run; in a host audit the plan rows are empty.
 | `tool`, `rules-version` | The build, and the rule set (`witness.RulesVersion`), which changes whenever a rule's logic does — independently of the tool version |
 | `host`, `server-fingerprint` | The host name, and the salted hash of `/etc/machine-id` the upload carries |
 | `engine`, `engine-id`, `compose` | The engine and its `docker info` ID, the Compose implementation |
+| `engine-fingerprint` | The salted hash of the engine ID, computed like `server-fingerprint` — the only form of the engine's identity the upload carries |
 | `plan-source`, `plan-digest` | The plan's resolver and its digest — what `--recheck` compares |
 | `started-at`, `plan-resolved-at`, `observed-from`, `observed-until`, `compared-at`, `finished-at` | The run's timeline, RFC 3339 UTC |
 | `clock-synchronized` | `yes`, `no` or `unknown` (timedatectl `NTPSynchronized`) |
@@ -314,8 +316,10 @@ run; in a host audit the plan rows are empty.
 | `time-check` | `consistent`, or one row per inconsistency: the clock going backwards, an observation or evidence timed outside the run, an unsynchronised clock, an engine clock more than 5 s off, observations more than 10 min apart |
 
 The `witness` notes carry it in one line (`provenance: deploy-witness 1.5.0, rules
-2; engine docker 29.7.2 (id …); …`) and each time inconsistency as a `time:` note, so
-the upload has it too — the contract has no field for it.
+2; engine docker 29.7.2 (id …); …`) and each time inconsistency as a `time:` note,
+for a person reading `summary.csv`. The upload carries it as a field of its own
+(`provenance`, with the observations); in the upload the engine ID in those notes is
+replaced by its fingerprint.
 
 ## evidence.csv
 
@@ -464,7 +468,7 @@ the naming is the point:
 | Key | Contents | Leaves the machine? |
 |---|---|---|
 | `schemaVersion` | The contract version of the `upload` half. A receiver checks it first, so an agent built months ago is told its report is not understood rather than having it half-read | — |
-| `upload` | The shared `bloodheaven.audit.v1` contract, rendered as protojson: `findings` with their evidence, `collectors` (the section outcomes), `changes`, `rollback`, `command_journal`, plus `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` and `producer` | **Yes** — these are the exact bytes `--upload` sends |
+| `upload` | The shared `bloodheaven.audit.v1` contract, rendered as protojson: `findings` with their evidence and `outcome`, `collectors` (the section outcomes), `changes`, `rollback`, `command_journal`, `rule_results` (one per rule), `plan` (preflight only), `provenance` (with `observations`), plus `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` and `producer` | **Yes** — these are the exact bytes `--upload` sends |
 | `audit` | Everything that stays local: the run's `mode` (`host-audit` or `compose-preflight`), the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities (with `observations`: how completely each source — containers, volumes, sockets, memory… — was read), the network record (`network`, as in `network.csv`), the same findings in this tool's own shape (each with its `outcome`, evidence with `origin` and `source`), `rules`, as in `rules.csv`, `plan`, as in `plan.csv`, and `provenance`, as in `provenance.csv` | No |
 
 A client can read the file, see which half would leave their machine, and diff it
@@ -506,13 +510,35 @@ Details worth knowing:
   applicable` note stays in `audit.sections` of `report.json`; carrying the mode or a
   `NOT_APPLICABLE` status in the contract itself needs a change in the `contracts`
   repository.
-- **The contract has no outcome field.** A finding goes out with its severity,
-  and the receiver cannot tell a proven problem from a question this run could not
-  settle by the finding alone. Two things carry it until the contract does: the
-  `witness` collector's `note` ends with `rule outcomes: 25 rules — N problem
-  (codes); N unknown (codes); …`, and an undecided finding's title says so ("…
-  could not be established", "… could not be decided", "… needs a manual check").
-  Carrying `outcome` on each finding needs a change in the `contracts` repository.
+- **Every finding states its `outcome`, and every rule has a `rule_results` entry**
+  (contracts v0.15.0): `OUTCOME_PROBLEM`, `OUTCOME_NO_PROBLEM`, `OUTCOME_UNKNOWN`,
+  `OUTCOME_MANUAL_CHECK` or `OUTCOME_NOT_APPLICABLE` — the five values of
+  `rules.csv`. Only `OUTCOME_PROBLEM` is a detected problem; an unknown is a
+  question the run could not settle. A finding that states no outcome goes out as
+  `OUTCOME_UNSPECIFIED` and is read by its severity, never guessed into a problem.
+  The `witness` collector's `note` still ends with `rule outcomes: 25 rules — N
+  problem (codes); N unknown (codes); …`, and an undecided finding's title still
+  says so — for a person reading them, no longer as the only carrier.
+- **`plan` is the launch plan the preflight checked**, as in `plan.csv`, with two
+  things left out: the engine's endpoint (`engine_context` and `engine_local` name
+  the engine instead) and the per-service configuration hashes. A host audit
+  checked no plan and leaves `plan` unset. No variable value is in it — the plan
+  carries names only, and env files appear as paths and SHA-256 digests.
+- **`provenance` is `provenance.csv` with the observations**, each with its
+  `OBSERVATION_STATE_*` and time. Host name and server fingerprint are not repeated
+  there (they are `server_hostname`/`server_fingerprint`).
+- **The engine is named by `engine_fingerprint`, never by its ID.** Like
+  `server_fingerprint` it is a salted SHA-256 — of the `docker info` ID, the same
+  scheme and salt. The rules write the raw ID into evidence to tell two engines'
+  answers apart, and the provenance note names it; before the upload is rendered
+  every string of the document is swept and the raw ID replaced by the
+  fingerprint, so the receiver can still match those lines against
+  `engine_fingerprint`. The local half (`audit`, the CSV files) keeps the raw ID
+  beside the fingerprint, for matching against `docker info` by hand.
+- **`schema_version` stays `1.0`.** The new fields are additive: the receiver
+  decodes with unknown fields discarded and checks the version for equality, so an
+  older receiver reads a new report as before and a newer one reads an older
+  report by its severities.
 - **The package inventory, the pending updates and the CVE list are not in
   `upload`.** The contract is a findings document, and sending them would be
   volunteering a full software inventory of somebody's production host to a

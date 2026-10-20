@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-20
+
+### Added
+
+- **The upload states outcomes, the plan and the provenance in fields of their own**
+  (DW-94, [app/report/contract.go](app/report/contract.go),
+  `docs/<lang>/08-report-format.md`). `app/contract/auditv1` is refreshed to
+  contracts v0.15.0 through `make sync-shared` (`CONTRACTS_VERSION` bumped; still a
+  verbatim copy, `go.mod` unchanged). Every finding carries its `outcome`
+  (`OUTCOME_PROBLEM` … `OUTCOME_NOT_APPLICABLE`; a finding without one goes out as
+  `OUTCOME_UNSPECIFIED`, never guessed into a problem); `rule_results` has one entry
+  per rule; `plan` is the launch plan a preflight checked — `engine_context` and
+  `engine_local`, never the engine's endpoint, no per-service config hashes, no
+  variable value — and stays unset in a host audit; `provenance` carries the
+  timeline, completeness and every observation with its `OBSERVATION_STATE_*`.
+  `schema_version` stays `1.0`: the fields are additive both ways. The
+  `rule outcomes:`, `plan:`, `provenance:` and `time:` lines stay in the witness notes
+  for a human reader, but are no longer the only carrier.
+
+- **The engine is identified by a fingerprint** (DW-94,
+  [app/model/fingerprint.go](app/model/fingerprint.go)): `engine_fingerprint` is a
+  salted SHA-256 of the `docker info` ID, the same scheme and salt as
+  `server_fingerprint`. The raw ID never reaches the upload: the evidence lines and
+  the provenance note that name it have it replaced by the fingerprint across every
+  string of the document. Locally the ID stays, with `engineFingerprint` beside it in
+  `report.json` and an `engine-fingerprint` row in `provenance.csv`, so a reader can
+  match the upload against `docker info`.
+
 ## [1.5.0] - 2026-10-19
 
 ### Added
