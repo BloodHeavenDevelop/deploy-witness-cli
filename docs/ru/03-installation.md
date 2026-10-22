@@ -20,7 +20,7 @@
   | Копия | Откуда | Зачем нужна |
   |---|---|---|
   | `app/csv` | `utils/csv` v0.9.0 | Генератор CSV, которым отрисовывается каждая таблица. |
-  | `app/contract/auditv1` | `contracts` v0.9.0, `gen/go/bloodheaven/audit/v1` | Сгенерированный Go для `bloodheaven.audit.v1` — контракта отчёта, который отправляет `--upload`. |
+  | `app/contract/auditv1` | `contracts` v0.15.0, `gen/go/bloodheaven/audit/v1` | Сгенерированный Go для `bloodheaven.audit.v1` — контракта отчёта, который отправляет `--upload`. |
 
   Обе — побайтовые копии, у каждой рядом `doc.go` с указанием релиза, из которого
   она взята. Мейнтейнер, у которого есть checkout обоих репозиториев, обновляет их

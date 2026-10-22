@@ -11,7 +11,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # releases they were copied from. Building needs neither — that is the point; only
 # refreshing the copies does. See app/csv/doc.go and app/contract/auditv1/doc.go.
 UTILS_VERSION     := v0.9.0
-CONTRACTS_VERSION := v0.9.0
+CONTRACTS_VERSION := v0.15.0
 UTILS             ?= ../utils
 CONTRACTS         ?= ../contracts
 

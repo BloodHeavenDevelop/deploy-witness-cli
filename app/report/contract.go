@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/reflect/protoreflect"
+
 	auditv1 "github.com/BloodHeavenDevelop/deploy-witness-cli/app/contract/auditv1"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
 )
@@ -31,7 +33,9 @@ const levelServer = 2
 
 // Contract converts a finished report into the shared audit contract.
 //
-// Only the witness section maps: the contract is a *findings* document, and
+// Only the witness section maps — its findings and their outcomes, one result per
+// rule, the launch plan and the provenance — plus the collector statuses, change
+// list, rollback plan and command journal: the contract is a *findings* document, and
 // deploy-witness's package inventory, pending updates and CVE list have no place in
 // it. They stay in the CSV, which is where a person reads them. Sending them would
 // be volunteering a full software inventory of somebody's production host to a
@@ -83,7 +87,137 @@ func Contract(r *model.Report) *auditv1.Report {
 			fmt.Sprintf("%s — %s (%s)", command.Command, command.Outcome, command.Duration))
 	}
 
+	// What the run concluded, from what plan, resting on what (DW-94). Until then
+	// these went out only as text in the witness collector's note; the note lines
+	// stay for a person reading it, but the fields are what a receiver reads.
+	for _, rule := range r.Rules {
+		out.RuleResults = append(out.RuleResults, &auditv1.RuleResult{
+			Code: rule.Code, Rule: rule.Rule, Outcome: contractOutcome(rule.Outcome),
+			Findings: int32(rule.Findings), Reason: rule.Reason, Requires: rule.Requires,
+		})
+	}
+	out.Plan = contractPlan(r.Plan)
+	out.Provenance = contractProvenance(r.Provenance, r.Capabilities)
+
+	// The engine's own ID is not ours to publish, any more than /etc/machine-id is:
+	// the upload names the engine by its fingerprint alone. The rules write the raw
+	// ID into evidence (to tell two engines' answers apart) and the provenance note
+	// names it, so every string of the document is swept rather than only the
+	// fields known to carry it today.
+	if p := r.Provenance; p != nil {
+		hideEngineID(out.ProtoReflect(), p.EngineID, model.EngineFingerprint(p.EngineID))
+	}
+
 	return out
+}
+
+// contractPlan maps the launch plan. Two things are deliberately left out: the
+// engine's endpoint (engine_context names it for the person who ran the audit, and
+// an address is not the receiver's business) and the per-service configuration
+// hashes, which the contract does not carry. No variable value is in the plan to
+// begin with — Environment holds names.
+func contractPlan(plan *model.LaunchPlan) *auditv1.LaunchPlan {
+	if plan == nil {
+		return nil
+	}
+	out := &auditv1.LaunchPlan{
+		Files:             plan.Files,
+		ProjectDirectory:  plan.ProjectDirectory,
+		ProjectName:       plan.ProjectName,
+		ProjectNameSource: plan.ProjectNameSource,
+		EnvFiles:          plan.EnvFiles,
+		Profiles:          plan.Profiles,
+		Services:          plan.Services,
+		Started:           plan.Started,
+		Resolver:          plan.Resolver,
+		ResolverVersion:   plan.ResolverVersion,
+		Environment:       plan.Environment,
+		EngineContext:     plan.Engine.Context,
+		EngineLocal:       plan.Engine.Local,
+		Digest:            plan.Digest,
+		ResolvedAt:        plan.ResolvedAt,
+		RemoveOrphans:     plan.RemoveOrphans,
+		ForceRecreate:     plan.ForceRecreate,
+		NoRecreate:        plan.NoRecreate,
+		Notes:             plan.Notes,
+	}
+	for _, digest := range plan.FileDigests {
+		out.FileDigests = append(out.FileDigests, &auditv1.FileDigest{Path: digest.Path, Sha256: digest.SHA256})
+	}
+	return out
+}
+
+// contractProvenance maps the provenance and the observations it rests on. The
+// engine goes out as its fingerprint, never as the ID `docker info` reports; the
+// host name and the server fingerprint already have fields of their own on Report.
+func contractProvenance(p *model.Provenance, caps *model.Capabilities) *auditv1.Provenance {
+	if p == nil {
+		return nil
+	}
+	out := &auditv1.Provenance{
+		Tool:              p.Tool,
+		ToolVersion:       p.ToolVersion,
+		RulesVersion:      p.RulesVersion,
+		Engine:            p.Engine,
+		EngineFingerprint: model.EngineFingerprint(p.EngineID),
+		Compose:           p.Compose,
+		PlanSource:        p.PlanSource,
+		PlanDigest:        p.PlanDigest,
+		StartedAt:         p.StartedAt,
+		PlanResolvedAt:    p.PlanResolvedAt,
+		ObservedFrom:      p.ObservedFrom,
+		ObservedUntil:     p.ObservedUntil,
+		ComparedAt:        p.ComparedAt,
+		FinishedAt:        p.FinishedAt,
+		ClockSynchronized: p.ClockSynchronized,
+		EngineClockSkew:   p.EngineClockSkew,
+		TimeChecks:        p.TimeChecks,
+		Completeness:      p.Completeness,
+		RecheckAfter:      p.RecheckAfter,
+	}
+	if caps != nil {
+		for _, o := range caps.Observations {
+			out.Observations = append(out.Observations, &auditv1.Observation{
+				Source: o.Source, State: contractObservationState(o.State), Note: o.Note, ObservedAt: o.ObservedAt,
+			})
+		}
+	}
+	return out
+}
+
+// minEngineIDLength keeps the sweep from rewriting ordinary words: `docker info`
+// IDs are UUIDs or twelve colon-separated groups, never a handful of characters.
+const minEngineIDLength = 8
+
+// hideEngineID replaces every occurrence of the engine's raw ID in the message's
+// strings — nested messages and lists included — with its fingerprint.
+func hideEngineID(m protoreflect.Message, raw, fingerprint string) {
+	raw = strings.TrimSpace(raw)
+	if len(raw) < minEngineIDLength {
+		return
+	}
+	m.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+		switch {
+		case fd.IsList() && fd.Kind() == protoreflect.StringKind:
+			list := v.List()
+			for i := 0; i < list.Len(); i++ {
+				list.Set(i, protoreflect.ValueOfString(strings.ReplaceAll(list.Get(i).String(), raw, fingerprint)))
+			}
+		case fd.IsList() && fd.Kind() == protoreflect.MessageKind:
+			list := v.List()
+			for i := 0; i < list.Len(); i++ {
+				hideEngineID(list.Get(i).Message(), raw, fingerprint)
+			}
+		case fd.IsMap():
+			// The contract has no map fields; were one added, it is not swept
+			// silently — the test that checks the raw ID is absent will say so.
+		case fd.Kind() == protoreflect.StringKind:
+			m.Set(fd, protoreflect.ValueOfString(strings.ReplaceAll(v.String(), raw, fingerprint)))
+		case fd.Kind() == protoreflect.MessageKind:
+			hideEngineID(v.Message(), raw, fingerprint)
+		}
+		return true
+	})
 }
 
 // staleAfter is how long a level 2 report is presented as current. Server state
@@ -104,6 +238,7 @@ func contractFinding(f model.Finding) *auditv1.Finding {
 		WhatToDo:     f.WhatToDo,
 		Confidence:   contractConfidence(f.Confidence),
 		SortOrder:    int32(f.SortOrder),
+		Outcome:      contractOutcome(f.Outcome),
 	}
 	for _, e := range f.Evidence {
 		out.Evidence = append(out.Evidence, &auditv1.Evidence{
@@ -123,6 +258,41 @@ func contractCollector(section model.SectionResult) *auditv1.CollectorResult {
 		Status:     contractStatus(section.Status),
 		Note:       strings.Join(section.Notes, "; "),
 		DurationMs: int32(duration.Milliseconds()),
+	}
+}
+
+// contractOutcome maps a rule's conclusion. An empty outcome — a finding built by
+// a path that states none — goes out as UNSPECIFIED, which the receiver reads by
+// severity as it always has; it is never guessed into PROBLEM.
+func contractOutcome(o model.Outcome) auditv1.Outcome {
+	switch o {
+	case model.OutcomeProblem:
+		return auditv1.Outcome_OUTCOME_PROBLEM
+	case model.OutcomeNoProblem:
+		return auditv1.Outcome_OUTCOME_NO_PROBLEM
+	case model.OutcomeUnknown:
+		return auditv1.Outcome_OUTCOME_UNKNOWN
+	case model.OutcomeManualCheck:
+		return auditv1.Outcome_OUTCOME_MANUAL_CHECK
+	case model.OutcomeNotApplicable:
+		return auditv1.Outcome_OUTCOME_NOT_APPLICABLE
+	default:
+		return auditv1.Outcome_OUTCOME_UNSPECIFIED
+	}
+}
+
+func contractObservationState(s model.ObservationState) auditv1.ObservationState {
+	switch s {
+	case model.ObservedComplete:
+		return auditv1.ObservationState_OBSERVATION_STATE_COMPLETE
+	case model.ObservedPartial:
+		return auditv1.ObservationState_OBSERVATION_STATE_PARTIAL
+	case model.ObservedFailed:
+		return auditv1.ObservationState_OBSERVATION_STATE_FAILED
+	case model.ObservedNotCollected:
+		return auditv1.ObservationState_OBSERVATION_STATE_NOT_COLLECTED
+	default:
+		return auditv1.ObservationState_OBSERVATION_STATE_UNSPECIFIED
 	}
 }
 
