@@ -119,8 +119,9 @@ var commands = []Spec{
 		Section: "witness", Purpose: "existing networks, to find a name collision",
 	},
 	{
-		Binary: "docker", Args: []string{"network", "inspect", "<container>", "--format", "{{json .IPAM}}"},
-		Section: "witness", Purpose: "one network's subnet, to find an address-range overlap",
+		Binary: "docker", Args: []string{"network", "inspect", "<container>", "--format", "{{json .}}"},
+		Section: "witness",
+		Purpose: "one network's subnet, to find an address-range overlap, and whether a swarm network is attachable",
 	},
 	{
 		Binary: "docker", Args: []string{"volume", "ls", "--format", "{{json .}}"},

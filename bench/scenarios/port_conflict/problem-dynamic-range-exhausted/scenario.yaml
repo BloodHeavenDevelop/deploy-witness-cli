@@ -1,0 +1,13 @@
+id: port_conflict/problem-dynamic-range-exhausted
+rule: witness.port_conflict
+situation: problem
+description: >-
+  The plan publishes one port of 18080-18081; both are held by an unrelated container.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: fails

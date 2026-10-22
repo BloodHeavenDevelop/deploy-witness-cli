@@ -1,0 +1,6 @@
+services:
+  web:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    volumes:
+      - {type: bind, source: ./nodir, target: /x, bind: {create_host_path: false}}

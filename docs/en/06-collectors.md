@@ -198,6 +198,7 @@ actually runs, and `host.Databases` reads the listening sockets.
 | Architecture | `uname -m` — what the host *is*, not what this binary was compiled for; the two differ under emulation, which is exactly the case an architecture mismatch is about |
 | Memory | `/proc/meminfo`: `MemTotal`, `MemAvailable`, `SwapTotal` |
 | Filesystems | `/proc/mounts` + `statfs(2)`, **with inodes** |
+| Bind sources | `lstat(2)` of every bind mount source of the plan (following a symlink with `stat(2)`): exists / missing / unknown, type, mode, owner, whether its filesystem is read-only. Nothing is created, opened or read; a path this account cannot reach is `unknown`, never `missing` |
 | Databases | The listening sockets already collected, plus the data directory of a recognised engine: `postgres`, `mysql`, `mariadb`, `mongodb`, `redis`, or `unknown` |
 
 The system section reports most of this as prose — "7.5 GiB used of 30 GiB
@@ -229,8 +230,8 @@ walk that stops early says the size is a partial total.
 | Engine and versions | `docker version`, `docker info`, and the podman equivalents |
 | Compose implementation | `docker compose version --short` (plugin), `docker-compose version --short` (standalone V1), `podman-compose version --short` |
 | Containers | `docker ps -a --format {{json .}}` — including stopped ones, with their published ports and their Compose project/service labels |
-| Networks, volumes | `... network ls`, `... volume ls`, plus `network inspect` for subnets |
-| Images | `... image ls --all --digests`, plus `image inspect` for architecture, OS and size |
+| Networks, volumes | `... network ls` (with each network's scope), `... volume ls`, plus `network inspect` for subnets and whether a swarm network is attachable |
+| Images | `... image ls --all --digests`, plus `image inspect` for architecture, OS, size and the default user (`Config.User`; the image's environment is not decoded) |
 
 Every command is a query. None of them starts, stops, pulls or removes anything.
 

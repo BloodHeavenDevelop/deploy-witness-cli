@@ -2,7 +2,7 @@
 // report contract — the document `--upload` sends.
 //
 // `report.pb.go` beside this file is a byte-for-byte copy of
-// `contracts/gen/go/bloodheaven/audit/v1/report.pb.go` at contracts v0.9.0,
+// `contracts/gen/go/bloodheaven/audit/v1/report.pb.go` at contracts v0.15.0,
 // generated from `proto/bloodheaven/audit/v1/report.proto` in that repository.
 // It is copied rather than imported because building this binary must not
 // require access to a private repository: somebody who is about to run an

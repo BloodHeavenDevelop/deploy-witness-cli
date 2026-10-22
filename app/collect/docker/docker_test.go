@@ -270,9 +270,9 @@ func TestParseNetworkList(t *testing.T) {
 		t.Fatalf("unexpected warnings: %v", warnings)
 	}
 	want := []model.ContainerNetwork{
-		{Name: "shop_default", Driver: "bridge", Project: "shop"},
-		{Name: "bridge", Driver: "bridge"},
-		{Name: "host", Driver: "host"},
+		{Name: "shop_default", Driver: "bridge", Project: "shop", Scope: "local"},
+		{Name: "bridge", Driver: "bridge", Scope: "local"},
+		{Name: "host", Driver: "host", Scope: "local"},
 	}
 	if !reflect.DeepEqual(networks, want) {
 		t.Fatalf("docker networks: %+v, want %+v", networks, want)
@@ -632,5 +632,20 @@ func TestParseEngineClock(t *testing.T) {
 	id, name := parseEngineIdentity(`{"ID":"d2da8027","Name":"build-01"}`)
 	if id != "d2da8027" || name != "build-01" {
 		t.Errorf("identity = %q %q", id, name)
+	}
+}
+
+func TestParseAttachable(t *testing.T) {
+	for out, want := range map[string]string{
+		`{"Name":"edge","Scope":"swarm","Attachable":true,"IPAM":{"Config":[{"Subnet":"10.0.9.0/24"}]}}`: "yes",
+		`{"Name":"edge","Scope":"swarm","Attachable":false}`:                                             "no",
+		`{"Config":[{"Subnet":"10.0.9.0/24"}]}`:                                                          "",
+	} {
+		if got := parseAttachable(out); got != want {
+			t.Errorf("parseAttachable(%s) = %q, want %q", out, got, want)
+		}
+	}
+	if got := parseSubnets(`{"Name":"edge","IPAM":{"Config":[{"Subnet":"10.0.9.0/24"}]}}`); len(got) != 1 {
+		t.Errorf("subnets from a whole network object: %v", got)
 	}
 }

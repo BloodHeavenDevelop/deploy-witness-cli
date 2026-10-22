@@ -1,0 +1,5 @@
+services:
+  web:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    deploy: {resources: {reservations: {memory: 16M}}}

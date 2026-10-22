@@ -1,0 +1,14 @@
+id: DW-80-unreachable-engine-external-volume
+task: DW-80
+kind: false-alarm
+found: review
+summary: >-
+  An unprivileged audit reported "External volume does not exist" as a blocker while the engine never answered.
+cause: >-
+  Absence was concluded from an engine volume list that had not been read.
+recheck_minutes: 0
+fixed_in: unreleased
+expect:
+  rules:
+    witness.volume_name_conflict: unknown
+  no_blocker_for: [witness.volume_name_conflict]

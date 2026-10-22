@@ -229,6 +229,7 @@ func listNetworks(runner *run.Runner, kind string, caps *model.Capabilities, res
 			continue
 		}
 		networks[i].Subnets = parseSubnets(detail)
+		networks[i].Attachable = parseAttachable(detail)
 	}
 
 	if skipped > 0 {
@@ -257,12 +258,13 @@ func listNetworks(runner *run.Runner, kind string, caps *model.Capabilities, res
 	return networks
 }
 
-// networkInspectArgs is the allowlisted inspect form for each engine. Docker is
-// asked for the IPAM block alone; podman keeps its subnets on the network object
-// itself, so it is asked for the whole thing.
+// networkInspectArgs is the allowlisted inspect form for each engine. Both are
+// asked for the whole network object: the subnets are in its IPAM block (podman:
+// at the top), and whether a swarm network takes a standalone container is its
+// Attachable flag. A network's inspect names no secret.
 func networkInspectArgs(kind, name string) []string {
 	if kind == kindDocker {
-		return []string{"network", "inspect", name, "--format", "{{json .IPAM}}"}
+		return []string{"network", "inspect", name, "--format", "{{json .}}"}
 	}
 	return []string{"network", "inspect", name, "--format", "{{json .}}"}
 }
@@ -347,6 +349,7 @@ func listImages(runner *run.Runner, kind string, caps *model.Capabilities, resul
 		if known {
 			image.Architecture = detail.Architecture
 			image.OS = detail.OS
+			image.User = detail.User
 			if detail.SizeBytes > 0 {
 				image.SizeBytes = detail.SizeBytes
 			}

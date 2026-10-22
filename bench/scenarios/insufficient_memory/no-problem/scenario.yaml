@@ -1,0 +1,13 @@
+id: insufficient_memory/no-problem
+rule: witness.insufficient_memory
+situation: no-problem
+description: >-
+  The plan reserves 16 MiB.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: advisory

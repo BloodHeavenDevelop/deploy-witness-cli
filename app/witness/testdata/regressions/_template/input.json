@@ -1,0 +1,16 @@
+{
+  "project": "app",
+  "plan": {"projectDirectory": "/srv/app", "projectName": "app", "started": ["web"]},
+  "manifest": {
+    "path": "/srv/app/docker-compose.yml",
+    "services": [{"name": "web", "image": {"raw": "nginx:1.27", "repository": "nginx", "tag": "1.27"}, "hasHealthcheck": true}]
+  },
+  "capabilities": {
+    "arch": "x86_64",
+    "memTotalBytes": 8589934592,
+    "memAvailableBytes": 6442450944,
+    "runtime": {"kind": "docker", "version": "27.5.1", "composeKind": "plugin", "composeVersion": "2.33.0", "reachable": true},
+    "rebootRequired": "no",
+    "observations": []
+  }
+}
