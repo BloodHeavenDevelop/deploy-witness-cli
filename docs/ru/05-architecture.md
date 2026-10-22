@@ -8,6 +8,8 @@ main.go
   └─ --commands? напечатать run.Commands() и выйти      (сам применяемый список)
   └─ logging.New(stderr, level)      диагностика никогда не попадает в stdout
   └─ audit.New(cfg, log).Prepare()   только Compose preflight: разрешение планируемого запуска (plan.go: движок, docker compose config), иначе код 2 без отчёта
+  └─ --recheck? auditor.Recheck()    заново разрешить план, спросить ID движка, сравнить с
+                                     отчётом (recheck.go); напечатать ok/re-run, код 0 или 4, ничего не писать
   └─ auditor.Run()
        ├─ model.ReadOSRelease()      /etc/os-release → идентичность дистрибутива
        ├─ pkgmgr.Detect(os, runner)  какой пакетный менеджер реально есть на хосте
@@ -21,10 +23,11 @@ main.go
                  ├─ манифест, разобранный Prepare   сторона требований
                  ├─ host/docker/proxy/panels/         сторона возможностей,
                  │  scheduler/certs/backup + databases в порядке зависимостей
-                 └─ witness.Evaluate()              24 правила: находки, итог каждого правила, изменения, откат
+                 └─ witness.Evaluate()              25 правил: находки, итог каждого правила, изменения, откат
             каждый даёт model.SectionResult: статус, счётчики, длительность, замечания
        └─ аудит хоста: строка `witness` not-applicable с пометкой host-audit (вне рамок, не пробел)
        └─ report.Commands = runner.Journal()   каждая команда, включая отклонённые
+       └─ report.Provenance = provenance()     сборка, правила, дайджест плана, движок, хронология + проверки времени
   └─ redact.Report(result)           последнее действие перед любой записью
   └─ report.WriteDir() | WriteCombined() | WriteJSONFile() | WriteJSON()
   └─ report.Upload()                 только при --upload и --upload-token
@@ -75,9 +78,10 @@ main.go
 | `app/collect/certs` | TLS-сертификаты на диске, разбираемые `crypto/x509`, и то, обновляет ли их вообще что-нибудь. |
 | `app/collect/scheduler` | Запланированная работа: cron во всех его видах плюс systemd-таймеры. |
 | `app/collect/backup` | Инструменты бэкапа, задания бэкапа и дата самого свежего файла в каждом каталоге бэкапов. |
-| `app/witness` | 24 правила, список изменений и план отката. Чистые функции от манифеста и возможностей; ничего не наблюдают. `outcomes.go` даёт каждому правилу ровно один итог (problem, no-problem, unknown, manual-check, not-applicable) и проверяет инварианты серьёзности и итога. |
+| `app/witness` | 25 правил, список изменений и план отката. Чистые функции от манифеста и возможностей; ничего не наблюдают. `outcomes.go` даёт каждому правилу ровно один итог (problem, no-problem, unknown, manual-check, not-applicable) и проверяет инварианты серьёзности и итога. `testdata/regressions` — случаи регрессий пилотов ([13](13-pilot-regressions.md)). |
 | `app/report` | Рендеринг CSV через `app/csv`, JSON-документ, общий контракт аудита и отправка. |
 | `app/audit` | Оркестрация разделов, кеш общего инвентаря и сетевой план/запись (`network.go`), которые печатаются до запуска и пишутся в `network.csv`. |
+| `bench/` | Не часть бинарника. `bench/dwbench` — обвязка испытательного стенда (`make bench`, [11](11-test-bench.md)), `bench/result` — форма его результатов, `bench/scenarios` — подготовленные ситуации, `bench/score` + `bench/dwscore` — показатели качества и шлюз выпуска ([12](12-quality-and-release.md)), `bench/baseline` и `bench/history` — закоммиченные прогоны, с которыми они сравнивают. Управляет одноразовым движком Docker-in-Docker через docker CLI и ничего не импортирует из `app/`. |
 
 Зависимости направлены в одну сторону: `audit` → коллекторы → `pkgmgr`/`run` →
 `model`. Ничто в `model` не импортирует то, что выше, — поэтому компараторы,

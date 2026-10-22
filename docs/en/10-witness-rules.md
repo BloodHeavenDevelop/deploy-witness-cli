@@ -1,7 +1,7 @@
 # 10. Witness rules
 
 The `witness` section compares one `docker-compose.yml` against one host and
-states every disagreement. This page is the catalogue: 24 rules, 24 finding codes,
+states every disagreement. This page is the catalogue: 25 rules, 25 finding codes,
 what each one is looking at, and what makes it fire.
 
 **The codes are stable identifiers.** They are what an integration matches on, and
@@ -37,6 +37,15 @@ Three invariants hold for every finding here:
 - **"Not checked" is never rendered as "fine".** A rule whose input was not
   observed ends `unknown` and says so in a finding of its own rather than staying
   quiet — see [Outcomes](#outcomes-problem-no-problem-insufficient-data).
+
+**The evidence is the observation; the description is the interpretation.** Each
+piece of evidence says what it observed (`Origin`: the `plan`, the `host`, or a
+`rule` about the run itself), from which source, and **when that source was read** —
+not when the rules compared. The report's `provenance.csv` ties all of it to one
+build, one rule set (`rules-version`, which changes whenever a rule's logic does),
+one resolved plan (`plan-digest`), one server and one engine (`engine-id`), with the
+run's timeline and its consistency. A report confirms only that plan on that engine
+while it is fresh — see [04 — Recheck before deploying](04-cli-reference.md#recheck-before-deploying).
 
 Findings are sorted worst first, then by rule, then by the rule's own ordering,
 then by subject, so two runs of the same audit produce the same file.
@@ -111,10 +120,11 @@ are under each rule below; thresholds are in [Thresholds](#thresholds).
 | Code | Needs | `problem` when | `no-problem` when | `unknown` when | `not-applicable` / `manual-check` when |
 |---|---|---|---|---|---|
 | `port_conflict` | published ports; sockets (ports section); container publications | a binding is certainly held by something that is not this deployment's own container | nothing holds the bindings, or only this deployment's own container does | sockets not read; overlap undecidable offline (`[::]`, no `host_ip`, unresolved `host_ip`); a socket holds it and the engine's containers were not listed, so it may be our own `docker-proxy` | n/a: nothing published · manual: protocol with no socket table (`sctp`) |
-| `container_name_conflict` | `container_name`; container list | a container of that name exists and is not this project's | no container of that name, or it is this project's | the engine did not answer | n/a: no `container_name` |
-| `volume_name_conflict` | external volumes; volume list (complete) | an external volume is missing from a complete list, or carries another project's label | every external volume exists and is not someone else's | the volume list was not read in full | n/a: no external volume |
-| `bind_path_conflict` | bind mounts | a source is a sensitive host path (`/`, `/etc`, the runtime socket, `/var/lib/docker`, `/proc`, `/sys`, a home) | no source is sensitive | — (the plan is the whole input) | n/a: no bind mount |
-| `network_name_conflict` | external networks; network list (complete) | an external network is missing from a complete list | every external network exists | the network list was not read in full | n/a: no external network · manual: it is shared with another stack |
+| `container_name_conflict` | `container_name`; container list | a container of that name exists and is not this deployment's service | no container of that name, or it is this deployment's | the engine did not answer; its labels were not reported | n/a: no `container_name` |
+| `project_ownership` | containers with their Compose labels; the plan's project, directory, services | another checkout uses this project name | every container of the project is this deployment's previous version, or there is none | the engine did not answer; a container's labels were not reported | manual: this directory under another project name; orphans left running |
+| `volume_name_conflict` | mounted named volumes by engine name; volume list (complete) | an external volume is missing from a complete list or carries another project's label; a volume Compose would create exists without this project's label | every external volume exists; every created one is absent (a planned creation) or this project's | the volume list was not read in full | n/a: no named volume mounted |
+| `bind_path_conflict` | bind mounts, resolved; each source's stat on this host; the container user | a source is a sensitive host path; missing with `create_host_path: false`; mounted read/write on a read-only filesystem | no source is sensitive, each exists or is created by the engine, and no mode bits refuse the container user (access itself is never proven) | the sources were not examined; one could not be stat'ed; a dangling symlink; missing with the engine's behaviour unknown or a file-like name; mode bits deny the container user | n/a: no bind mount |
+| `network_name_conflict` | networks by engine name; network list (complete) with scope and attachability | an external network is missing from a complete list, or is a non-attachable swarm network; a network Compose would create exists without this project's label | every external network exists and can be joined; every created one is absent or this project's | the network list was not read in full; a swarm network's attachability was not read | n/a: no network · manual: an external network shared with another stack |
 | `subnet_overlap` | explicit IPAM subnets; every network's subnets | a requested subnet overlaps another project's network | no overlap with any network | networks not listed, or the subnets of some were not read | n/a: no explicit subnet |
 | `insufficient_memory` | reservations/limits; `/proc/meminfo` | the declared amount exceeds what is available | it fits | `/proc/meminfo` unreadable | n/a: nothing declared |
 | `insufficient_disk` | images to pull; image list; container-store filesystem | images must be pulled and less than 2 GiB is free | nothing to pull, or headroom | no filesystem measured; images not listed | — |
@@ -168,8 +178,8 @@ or address range this deployment wants?
 
 | Case | Severity | Confidence | Fires when |
 |---|---|---|---|
-| Own container | `info` | `high` | The binding is held by a container carrying this deployment's project label |
-| Taken | **blocker** | `high` | The binding is certainly held — by a listening socket from `ports.csv`, or by a container of another project |
+| Own container | `info` | `high` | The binding is held by a container the planned run releases first — this deployment's previous version (recreated or kept), an orphan with `--remove-orphans` — see [`project_ownership`](#witnessproject_ownership) |
+| Taken | **blocker** | `high` | The binding is certainly held — by a listening socket from `ports.csv`, or by a container the plan does not release: another project, this directory under an older project name, an orphan left running, a one-off run |
 | Undecidable | **warning** | `medium` | Something is on that port and whether the two bindings overlap cannot be established offline |
 | Owner unknown | **warning** (`unknown`) | `medium` | A socket certainly holds the binding, but the engine's containers were not listed — the socket may be this deployment's own `docker-proxy`, which Compose replaces |
 | Not checked | **warning** | `low` | The publish uses a protocol the kernel has no socket table for (anything other than TCP or UDP) |
@@ -187,19 +197,46 @@ name of the `/proc/net` table the socket came from, and the collector normalises
 an IPv4-mapped address such as `::ffff:127.0.0.1` into dotted form, so it is
 matched as IPv4. The `*` that `ss` prints means every interface, both families.
 
-Three things cannot be decided from what this tool reads offline, and each one
-produces the **warning** rather than a blocker or silence:
+Two questions of address family are settled from the host itself where they can
+be:
 
-- a listener on the IPv6 wildcard `[::]` against an IPv4 publish — whether it
-  also answers IPv4 is `net.ipv6.bindv6only`, which is not read;
-- a publish that names no `host_ip` against a specific IPv6 listener — the engine
-  adds an IPv6 binding only when the daemon has IPv6 enabled;
-- a `host_ip` that is not an address, such as an unresolved `${HOST_IP}`.
+- **A listener on the IPv6 wildcard against an IPv4 publish.** It also answers IPv4
+  unless the socket is IPv6-only — a per-socket option (`IPV6_V6ONLY`) that
+  `/proc/net` does not show and `ss` does: `*:port` is dual-stack, `[::]:port`
+  IPv6-only. The ports section runs `ss -lntupH` for exactly this and records it as
+  `V6 only` in `ports.csv`. Dual-stack is a certain overlap, IPv6-only certainly
+  none. `net.ipv6.bindv6only` is only the default a socket may override, so it is
+  quoted, never relied on.
+- **A publish with no `host_ip` against an IPv6 listener.** On a host with IPv6
+  the engine publishes on `[::]` as well as `0.0.0.0` (as `docker ps` shows); on a
+  host without IPv6 (`/proc/sys/net/ipv6` absent, or `disable_ipv6=1`) it cannot.
 
-The finding names the two commands that settle it: `ss -lntup | grep ':<port> '`
-and `cat /proc/sys/net/ipv6/bindv6only`. Reporting them as blockers would be the
-false blocker this rule exists to avoid; reporting them as clean would break the
-second promise.
+What remains undecidable produces the **warning** (`unknown`) rather than a
+blocker or silence: an IPv6 wildcard whose kind `ss` could not tell (not installed,
+or both kinds on one port), a host whose IPv6 state could not be read, and a
+`host_ip` that is not an address, such as an unresolved `${HOST_IP}`. The finding
+names the command that settles it: `ss -lntup | grep ':<port> '`. Reporting them as
+blockers would be the false blocker this rule exists to avoid; reporting them as
+clean would break the second promise.
+
+Publishes that are not one host port per number:
+
+- **A host range to one container port** (`8000-8010:80`) binds **one** port of
+  the range, the first the engine finds free. It is a conflict only when every port
+  of it is held (`problem`); one free port settles it (no finding), and none free
+  with some undecided is `unknown`. `8000-8001:8000-8001` binds both, and each is
+  checked like any other port.
+- **No host port** (`"80"`, `127.0.0.1::80`) gets an ephemeral port from the
+  engine: it cannot collide, and `changes.csv` says so (`ephemeral/tcp`).
+- **The container port is not a host port.** `18080:8080` claims host port 18080;
+  a listener on 8080 is irrelevant. `expose:` publishes nothing.
+- **`network_mode: host`** publishes nothing: the engine discards `ports:` and the
+  application binds its declared ports (the container side of `ports:`, and
+  `expose:`) directly on the host, at addresses of its own choosing. A wildcard
+  holder of such a port is a `problem`; a holder on a specific address, or one that
+  may be the service's own previous container (a host-network socket carries no
+  label), is `unknown`; a host-network service that declares no port at all is a
+  `manual-check`.
 
 `Subject` is the whole binding — `127.0.0.1:8080/tcp`, `[fd00::1]:8080/tcp`. A
 publish that names no address keeps the shorter `8080/tcp` form, because there is
@@ -222,44 +259,119 @@ happens unprivileged — the finding says "an unidentified process listening on
 
 | | |
 |---|---|
-| Severity | **blocker**, or `info` when the existing container is this deployment's own |
+| Severity | **blocker**, or `info` when the existing container is this deployment's own (same project **and** service); **warning** (`unknown`) when the engine reported no labels for it |
 | Fires when | A service sets `container_name:` and a container with that name already exists |
 
 An explicit `container_name` is precisely the case Compose cannot work around by
 prefixing the project name, so the deployment fails outright.
 
+### `witness.project_ownership`
+
+| | |
+|---|---|
+| Severity | **warning** (`problem`) when another checkout uses this project name; `info` (`manual-check`) for this directory under another project name, and for orphans left running; **warning** (`unknown`) when the engine reported no labels |
+| Fires when | An existing container is tied to this deployment by name or directory but is not simply its previous version |
+
+Whose a container is comes from what Compose wrote on it when it created it, read
+through the engine that was inspected: `com.docker.compose.project`, `.service`,
+`.project.working_dir`, `.project.config_files`, `.oneoff` and `.config-hash`.
+Against the planned run (project name, project directory, services, `up` options)
+every existing container is one of:
+
+| Ownership | What `up` does to it | Released before the new containers bind? |
+|---|---|---|
+| this deployment — the project, a planned service | **kept** when its config hash equals the plan's (`docker compose config --hash`), **recreated** when it differs (stopped and removed, then created), per `--force-recreate`/`--no-recreate` | yes |
+| an orphan — the project, a service the plan does not start | left running; removed with `--remove-orphans` | only with `--remove-orphans` |
+| a one-off `docker compose run` of the project | left as it is | no |
+| another checkout — the project name, another `working_dir` | taken over: Compose cannot tell the two apart | yes — and that is the finding |
+| this directory under another project name | left as it is | no |
+| another Compose project, or no Compose labels | left as it is | no |
+| labels not reported by the engine | unknown | no — and that is a finding |
+
+The same classification decides `port_conflict` (a port held by a container the
+plan releases is not a conflict; one held by an orphan, a one-off run, an older
+project name or anything else is), `container_name_conflict` and the `container`
+rows of `changes.csv`, so the three never disagree.
+
 ### `witness.volume_name_conflict`
 
 | | |
 |---|---|
-| Severity | **blocker** when the volume is missing from a complete volume list; **warning** when it exists under another project; **warning** (`unknown`) when the engine's volumes could not be listed — absence is not concluded from a list that was not read |
-| Fires when | A volume declared `external: true` is either absent from the host, or present with a different project label |
+| Severity | **blocker** when an external volume is missing from a complete volume list; **warning** when an external volume carries another project's label, or when a volume Compose would create already exists without this project's label; **warning** (`unknown`) when the engine's volumes could not be listed — absence is never concluded from a list that was not read |
+| Fires when | A named volume a planned service mounts is compared, **by its name in the engine**, with the engine's volume list |
 
-Only external volumes are checked. Compose prefixes a project's own volumes with
-the project name, so a plain declaration cannot collide with an unrelated stack; an
-`external` volume is referenced by its literal name, which can.
+A volume is matched by the name it has in the engine, not by the key the services
+use: `name:` if the plan sets one, the key itself for an external volume (or the
+legacy `external: {name: …}`), and `<project>_<key>` for one Compose creates —
+exactly as `docker compose config` resolves it. Only the volumes a planned service
+mounts are checked; Compose looks up no other. Three questions stay separate:
 
-The warning case is the more interesting one: it does not fail. It succeeds, and
-the new service starts on top of existing data belonging to something else — which
-is worse, because nothing announces it.
+| | Absent | Present, this project's | Present, no label | Present, another project's |
+|---|---|---|---|---|
+| external | `problem` (blocker) — Compose refuses to start; `unknown` if the list was not read in full | fine | fine — what `external: true` is for | `problem` (warning): its data is attached |
+| created by Compose | fine — a planned creation (`changes.csv`: `created empty by Compose`), not a conflict | fine — reused with its data | `problem` (warning): Compose warns "already exists but was not created by Docker Compose" and mounts it, data and all | `problem` (warning): the same, "created for project …" |
+
+The warning cases are the interesting ones: nothing fails. The deployment
+succeeds, and the new service starts on top of existing data nobody declared it
+would use. Every observation names the engine it came from (`engine <ID>`), so the
+same volume name on two servers is never one answer.
 
 ### `witness.bind_path_conflict`
 
 | | |
 |---|---|
-| Severity | **warning** |
-| Fires when | A service bind-mounts an absolute host path where a container writing through the mount changes how the host itself behaves: `/`, `/etc` or below, `/run`, `/var/run`, anything ending in `docker.sock` or `podman.sock`, `/home`, `/root`, `/var/lib/docker` or below, `/sys` or `/proc` or below |
+| Severity | **warning** for a sensitive source or a read/write mount on a read-only filesystem; **blocker** for a missing source with `create_host_path: false`; **warning** (`unknown`) when the source could not be examined, is a dangling symlink, is missing with the engine's behaviour unknown or with a file-like name, or its mode bits deny the container user |
+| Fires when | A bind mount's source, resolved and examined on this host, is sensitive, missing in a way that breaks the start, unwritable, or possibly unreachable for the container's user |
 
-A relative bind source is reported as-is rather than resolved and judged. The list
-of sensitive paths is short on purpose — a longer one would fire on ordinary
-layouts and teach the reader to skip the category.
+**The source is the path Compose mounts.** Relative sources resolve against the
+project directory and `~` against the home directory — by Compose itself when it
+resolves the plan; by the built-in parser otherwise, which can only use the home of
+the account running the audit and says so in a parser warning.
+
+**Sensitive paths.** A source where a container writing through the mount changes
+how the host itself behaves: `/`, `/etc` or below, `/run`, `/var/run`, anything
+ending in `docker.sock` or `podman.sock`, `/home`, `/root`, `/var/lib/docker` or
+below, `/sys` or `/proc` or below. The list is short on purpose — a longer one would
+fire on ordinary layouts and teach the reader to skip the category.
+
+**What the host shows, by stat alone.** Every source is `lstat`ed (and the symlink
+followed, since the engine mounts its target); nothing is created, opened or read —
+a missing directory stays missing:
+
+| On this host | Outcome |
+|---|---|
+| exists — directory, file, socket … | fine as far as the path goes; type, mode and owner in `changes.csv` |
+| missing, and the engine creates it (short syntax; Compose's resolved model unless `create_host_path: false`) | a planned change — `changes.csv`: "creates it as an empty directory owned by root" — unless the name looks like a file (`app.conf`): then `unknown`, since a directory where the container expects a file fails it |
+| missing, `create_host_path: false` | `problem` (blocker): the container is not created |
+| missing, long syntax without `create_host_path`, resolved by the built-in parser | `unknown`: Compose 5.x creates it, older versions refuse |
+| could not be stat'ed by this account | `unknown` — never "missing" |
+| a dangling symlink | `unknown` |
+| on a read-only filesystem, mounted read/write | `problem` (warning): every write fails |
+
+**Access for the container's user is never claimed.** The user is the service's
+`user:`, else the image's default (`Config.User` from `image inspect`, root when
+empty), else unknown. When it is numeric, the source's mode bits are checked for
+read, write (unless `:ro`) and, for a directory, enter; mode bits that refuse it are
+`unknown`, not `problem`, because ACLs, user-namespace remapping, rootless engines
+and SELinux labels are not read — and mode bits that allow it are not proof either:
+every bind row of `changes.csv` ends "access for the container user (…) not
+verified". A user name cannot be mapped to a uid without the image's `/etc/passwd`,
+which is not read. SELinux relabelling (`z`, `Z`), propagation and consistency are
+listed as "options not evaluated".
 
 ### `witness.network_name_conflict`
 
 | | |
 |---|---|
-| Severity | **blocker** when the network is missing from a complete network list; `info` (`manual-check`) when it exists under another project; **warning** (`unknown`) when the engine's networks could not be listed |
-| Fires when | A network declared `external: true` is absent, or present and owned by another stack |
+| Severity | **blocker** when an external network is missing from a complete network list, or exists but is a swarm network that is not attachable; **warning** when a network Compose would create already exists without this project's label (Compose warns and joins it); `info` (`manual-check`) when an external network belongs to another stack; **warning** (`unknown`) when the networks could not be listed, or a swarm network's attachability was not read |
+| Fires when | A network of the plan is compared, by its name in the engine, with the engine's network list |
+
+Networks are matched by engine name exactly as volumes are (`name:`, the key of an
+external one, `<project>_<key>` — `<project>_default` included when Compose lists
+it). Presence is kept apart from **usability**: a network can exist and still refuse
+the deployment's containers — a swarm-scoped network that is not attachable takes no
+standalone container, which is what Compose creates. The scope comes from `network
+ls`, attachability from `network inspect`.
 
 The `info` case says the deployment will join a shared network: often the intent,
 and also a statement that a service here becomes reachable from whatever else is on

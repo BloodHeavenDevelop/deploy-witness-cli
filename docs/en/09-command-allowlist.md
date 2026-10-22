@@ -137,7 +137,7 @@ deploy-witness --commands
 
 It prints the list it enforces, grouped by the section that needs it, with the
 reason each entry is read for. What follows is that output as of the release after
-1.4.0 — **72 commands**. Where two entries share a purpose line reading "the same, …", the
+1.4.0 — **73 commands**. Where two entries share a purpose line reading "the same, …", the
 line above it is the one being described.
 
 ```
@@ -146,9 +146,10 @@ line above it is the one being described.
 
 [ports]
   ss -lntupH                        listening sockets with the owning process, when /proc/net
-                                    alone cannot attribute them
+                                    alone cannot attribute them, and whether each IPv6 wildcard
+                                    socket is IPv6-only ([::]:port) or dual-stack (*:port)
 
-[witness]                         37 entries
+[witness]                         38 entries
   nginx -T                          the effective nginx configuration — server names, ports and
                                     certificate paths already in use, with includes resolved
   nginx -v                          the nginx version
@@ -163,13 +164,16 @@ line above it is the one being described.
                  config --format json [--no-env-resolution]
                                     the final model of the planned run, exactly as Compose
                                     resolves it (two entries: with and without the flag)
+  docker compose [<options>]... config --hash *
+                                    each service's configuration hash, which Compose compares with a
+                                    container's label to keep or recreate it
   docker context show               the name of the active docker context
   docker context inspect --format {{json .Endpoints.docker.Host}}
                                     its endpoint, to refuse a preflight of a remote engine
   docker-compose version --short
   docker ps -a --format {{json .}}
   docker network ls --format {{json .}}
-  docker network inspect <container> --format {{json .IPAM}}
+  docker network inspect <container> --format {{json .}}
   docker volume ls --format {{json .}}
   docker image ls --all --digests --format {{json .}}
   docker image inspect <image> --format {{json .}}
@@ -215,7 +219,7 @@ line above it is the one being described.
 ```
 
 The grouping above collapses the near-identical Podman and yum entries for
-readability; `--commands` prints every one of the 72 separately, and it is the
+readability; `--commands` prints every one of the 73 separately, and it is the
 list that is enforced. **If this page and `--commands` ever disagree, `--commands`
 is right.**
 

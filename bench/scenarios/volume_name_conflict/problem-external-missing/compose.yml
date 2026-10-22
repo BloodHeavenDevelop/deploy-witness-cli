@@ -1,0 +1,10 @@
+services:
+  web:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    volumes: ["shared:/data"]
+
+volumes:
+  shared:
+    external: true
+    name: shared-data

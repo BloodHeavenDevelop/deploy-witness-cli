@@ -1,0 +1,16 @@
+id: env_file_missing/problem
+rule: witness.env_file_missing
+situation: problem
+description: >-
+  The plan reads env_file ./app.env, which does not exist. A Compose without --no-env-resolution (2.x) reads the env files while resolving the plan and rejects it, so the preflight is refused (exit 2) instead — equally correct.
+critical: true
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+  also: [refused]
+docker:
+  outcome: fails
+  pattern: "env"

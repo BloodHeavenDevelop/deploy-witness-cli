@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/run"
@@ -80,7 +81,13 @@ func Collect(runner *run.Runner, caps *model.Capabilities, result *model.Section
 	// driver, but reachability is not decided from it: some docker versions print
 	// the client half of `info` and exit 0 even when the daemon is unreachable.
 	info, infoErr := runner.Output(kind, "info", "--format", "{{json .}}")
+	answered := time.Now()
 	if infoErr == nil {
+		if clock, ok := parseEngineClock(info); ok {
+			// Measured against the moment the answer arrived: the skew is at most
+			// off by the command's own run time, which is what a reader is told.
+			runtime.ClockSkew = fmt.Sprintf("%+.1fs", clock.Sub(answered).Seconds())
+		}
 		runtime.StorageDriver = parseStorageDriver(info)
 		runtime.EngineID, runtime.EngineName = parseEngineIdentity(info)
 	}
@@ -222,6 +229,7 @@ func listNetworks(runner *run.Runner, kind string, caps *model.Capabilities, res
 			continue
 		}
 		networks[i].Subnets = parseSubnets(detail)
+		networks[i].Attachable = parseAttachable(detail)
 	}
 
 	if skipped > 0 {
@@ -250,12 +258,13 @@ func listNetworks(runner *run.Runner, kind string, caps *model.Capabilities, res
 	return networks
 }
 
-// networkInspectArgs is the allowlisted inspect form for each engine. Docker is
-// asked for the IPAM block alone; podman keeps its subnets on the network object
-// itself, so it is asked for the whole thing.
+// networkInspectArgs is the allowlisted inspect form for each engine. Both are
+// asked for the whole network object: the subnets are in its IPAM block (podman:
+// at the top), and whether a swarm network takes a standalone container is its
+// Attachable flag. A network's inspect names no secret.
 func networkInspectArgs(kind, name string) []string {
 	if kind == kindDocker {
-		return []string{"network", "inspect", name, "--format", "{{json .IPAM}}"}
+		return []string{"network", "inspect", name, "--format", "{{json .}}"}
 	}
 	return []string{"network", "inspect", name, "--format", "{{json .}}"}
 }
@@ -340,6 +349,7 @@ func listImages(runner *run.Runner, kind string, caps *model.Capabilities, resul
 		if known {
 			image.Architecture = detail.Architecture
 			image.OS = detail.OS
+			image.User = detail.User
 			if detail.SizeBytes > 0 {
 				image.SizeBytes = detail.SizeBytes
 			}

@@ -2,7 +2,7 @@
 
 ## Файлы
 
-По умолчанию инструмент пишет один каталог с четырнадцатью файлами:
+По умолчанию инструмент пишет один каталог с пятнадцатью файлами:
 
 ```
 audit-<хост>-<метка UTC>/
@@ -15,6 +15,7 @@ audit-<хост>-<метка UTC>/
 ├── witness.csv         находки
 ├── rules.csv             по одному итогу на правило, с находкой или без
 ├── plan.csv              точный запуск Compose, который проверял preflight
+├── provenance.csv        сборка, правила, план, сервер, движок, хронология, полнота
 ├── evidence.csv          на чём каждая находка стоит
 ├── changes.csv           что деплой реально сделает
 ├── rollback.csv          и как это откатить
@@ -25,7 +26,9 @@ audit-<хост>-<метка UTC>/
 Последние пять появились в 0.2.0. Четыре из них принадлежат разделу `witness`;
 `commands.csv` принадлежит самому прогону и пишется всегда, что бы ни было в
 `--sections`. Так же пишется `network.csv`, добавленный в релизе после 1.2.0.
-`rules.csv` и `plan.csv`, добавленные в релизе после 1.4.0, принадлежат разделу `witness`.
+`rules.csv` и `plan.csv`, добавленные в релизе после 1.4.0, принадлежат разделу
+`witness`; `provenance.csv`, добавленный там же, — самому прогону (он пишется и в
+аудите хоста).
 
 **Раздел, не давший ни одной строки, всё равно получает файл со строкой
 заголовков.** Отсутствующий файл неотличим от раздела, который вообще не
@@ -36,7 +39,7 @@ audit-<хост>-<метка UTC>/
 
 С `--stdout` те же таблицы пишутся в один поток, каждая с предваряющей строкой
 `# <имя>` и пустой строкой-разделителем. И табличные процессоры, и `csvkit` это
-читают; одна плоская таблица не вместит четырнадцать разных наборов колонок.
+читают; одна плоская таблица не вместит пятнадцать разных наборов колонок.
 
 С `--format json` вместо CSV-файлов пишется один `report.json` — см.
 [report.json](#reportjson) ниже.
@@ -180,6 +183,7 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 | `Process` | Имя процесса |
 | `User` | Владелец, с откатом на числовой UID |
 | `Command` | Командная строка, обрезанная до 200 символов |
+| `V6 only` | Для сокета на IPv6-wildcard: `yes` (только IPv6, `ss` показывает `[::]:port`), `no` (dual-stack, `ss` показывает `*:port`, отвечает и на IPv4), пусто, если не установлено (добавлено в конец в релизе после 1.4.0) |
 
 Сортировка по `Exposure` выводит наверх поверхность, обращённую в сеть. `PID`,
 равный `0`, означает, что процесс не удалось прочитать, а не что сокетом никто не
@@ -249,7 +253,7 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 число блокеров, `High` — число предупреждений, **только среди доказанных проблем**:
 находка с итогом `unknown` или `manual-check` не считается никогда, поэтому прогон,
 который не смог посмотреть, не выглядит как нашедший. Замечания строки заканчиваются
-на `rule outcomes: 24 rules — N problem (коды); N unknown (коды); …`.
+на `rule outcomes: 25 rules — N problem (коды); N unknown (коды); …`.
 
 ## rules.csv
 
@@ -291,8 +295,35 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 | `note` | Что разрешение не смогло воспроизвести |
 
 Замечания `witness` несут то же одной строкой (`plan: project shop (from
---project-name), 2 Compose file(s), …`), поэтому это есть и у коллектора `witness` в
-отправке.
+--project-name), 2 Compose file(s), …`) — для человека, читающего `summary.csv`.
+Отправка несёт план собственным полем (`plan`, см. [report.json](#reportjson));
+замечание больше не единственный его носитель.
+
+## provenance.csv
+
+На чём стоит каждый вывод отчёта, строками `Key`,`Value`. Пишется в каждом прогоне; в
+аудите хоста строки плана пусты.
+
+| Key | Value |
+|---|---|
+| `tool`, `rules-version` | Сборка и набор правил (`witness.RulesVersion`), который меняется при любом изменении логики правила — независимо от версии инструмента |
+| `host`, `server-fingerprint` | Имя хоста и солёный хэш `/etc/machine-id`, который несёт отправка |
+| `engine`, `engine-id`, `compose` | Движок и его ID из `docker info`, реализация Compose |
+| `engine-fingerprint` | Солёный хэш ID движка, вычисленный так же, как `server-fingerprint`, — единственная форма идентичности движка, которую несёт отправка |
+| `plan-source`, `plan-digest` | Кто разрешил план и его дайджест — то, что сравнивает `--recheck` |
+| `started-at`, `plan-resolved-at`, `observed-from`, `observed-until`, `compared-at`, `finished-at` | Хронология прогона, RFC 3339 UTC |
+| `clock-synchronized` | `yes`, `no` или `unknown` (`NTPSynchronized` из timedatectl) |
+| `engine-clock-skew` | Часы движка минус часы этого хоста, в момент ответа `docker info` |
+| `completeness` | `N of M sources read in full; partial: …; failed: …` |
+| `recheck-after` | `finished-at` + 1 ч: позже — `--recheck` (или новый аудит) перед деплоем, см. [04](04-cli-reference.md#повторная-проверка-перед-деплоем) |
+| `observation` | По строке на источник: `<источник>: <состояние> at <время> — <как прочитан>` |
+| `time-check` | `consistent` или по строке на несогласованность: часы пошли назад, наблюдение или доказательство вне интервала прогона, часы не синхронизированы, часы движка расходятся больше чем на 5 с, наблюдения разнесены больше чем на 10 мин |
+
+Замечания `witness` несут это одной строкой (`provenance: deploy-witness 1.5.0, rules
+2; engine docker 29.7.2 (id …); …`), а каждую несогласованность времени — замечанием
+`time:` — для человека, читающего `summary.csv`. Отправка несёт это собственным полем
+(`provenance`, вместе с наблюдениями); в отправке ID движка в этих замечаниях заменён
+его отпечатком.
 
 ## evidence.csv
 
@@ -308,7 +339,9 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 | `Command` | Что запустить, чтобы увидеть то же самое: команда из опубликованного белого списка, либо путь на диске, либо манифест и сервис (`docker-compose.yml (service db)`) |
 | `Output` | Что наблюдалось, компактно, из разобранных значений |
 | `Truncated` | `true`, если фрагмент обрезан на 1500 символах. Обрезанный фрагмент, который об этом не признаётся, провоцирует читателя на лишние выводы |
-| `Captured at` | RFC 3339, UTC: момент, когда раздел witness сравнил манифест с собранным. Он позже `Checked at` из `summary.csv` (начало прогона) на время сбора и раньше строки лога `wrote …`. Все три относятся к одному прогону |
+| `Captured at` | RFC 3339, UTC: **когда наблюдалось то, что показывает `Output`**, — момент чтения его источника на хосте (строки `observation` в `provenance.csv`), а для манифеста — момент разрешения плана. Не момент сравнения правилами (это `compared-at`). Лежит между `started-at` и `finished-at` прогона; если нет — это проверка времени в `provenance.csv` (с релиза после 1.4.0; до него каждая строка несла время сравнения) |
+| `Origin` | `plan` (разрешённая модель Compose), `host` (машина и её движок) или `rule` (что правило установило о самом прогоне, например проверку, которую сделать не смогло). Доказательство — это наблюдение; `Description` находки — интерпретация (добавлено в конец в релизе после 1.4.0) |
+| `Source` | Источник наблюдения — `containers`, `volumes`, `networks`, `network-subnets`, `images`, `sockets`, `arch`, `memory`, `filesystems`, `proxy` — или пусто (добавлено в конец в релизе после 1.4.0) |
 
 **Находка без доказательств не публикуется никогда.** Движок её отбрасывает и
 считает отброшенные в замечаниях раздела — как баг `deploy-witness`, а не как свойство
@@ -329,11 +362,14 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 
 | Kind | Какие строки даёт |
 |---|---|
-| `container` | По одной на сервис плюс по одной на каждую не-external сеть манифеста. Строка сервиса говорит одно из: `created from <образ>`; `replaced (currently <состояние>, image <образ>) with <образ>` — только для контейнера **этого** Compose-проекта; `not created: a container named <имя> already exists … and does not belong to this deployment` — контейнер другого проекта или созданный вручную (запущенный или нет): на нём `docker compose up` падает (`witness.container_name_conflict`); `created from <образ>, but it cannot start: host port <порт> is already held` (`witness.port_conflict`); либо, если движок не отвечает, `created … unless a container named <имя> already exists — … could not be checked` |
+| `container` | По одной на сервис плюс по одной на каждую не-external сеть манифеста. Строка сервиса говорит одно из: `created from <образ>`; `replaced (currently <состояние>, image <образ>) with <образ> — recreated: its configuration changed (config hash …)` или `kept: its configuration is unchanged` — только для контейнера **этого** деплоя, решается так же, как решает Compose, по хэшу конфигурации (с учётом `--force-recreate`/`--no-recreate`); `taken over: it carries this project's name but was deployed from <каталог>` — другая копия (`witness.project_ownership`); `not created: a container named <имя> already exists … and does not belong to this deployment` — контейнер другого проекта или созданный вручную (запущенный или нет): на нём `docker compose up` падает (`witness.container_name_conflict`); `created from <образ>, but it cannot start: host port <порт> is already held` (`witness.port_conflict`); либо, если движок не отвечает, `created … unless a container named <имя> already exists — … could not be checked` |
 | `command` | Образ, который придётся тянуть, с реестром, откуда он придёт; либо сервис, который собирается локально, с его контекстом сборки |
-| `firewall-port` | По одной на каждый опубликованный порт хоста, с указанием, насколько далеко он будет доступен — порт, опубликованный без адреса хоста, попадает на все интерфейсы, и этого как раз не ожидают. Если привязку уже держит кто-то другой, строка говорит `not opened: … already held by …`, а если это не удалось решить — добавляет `if the binding is free, which could not be established`; сопоставление то же, что у `witness.port_conflict`. Без раздела `ports` добавляется `if the binding is free, which was not checked` |
+| `firewall-port` | По одной на каждый опубликованный порт хоста, с указанием, насколько далеко он будет доступен — порт, опубликованный без адреса хоста, попадает на все интерфейсы, и этого как раз не ожидают. Если привязку уже держит кто-то другой, строка говорит `not opened: … already held by …`, а если это не удалось решить — добавляет `if the binding is free, which could not be established`; сопоставление то же, что у `witness.port_conflict`. Без раздела `ports` добавляется `if the binding is free, which was not checked`. Диапазон хоста на один порт контейнера — одна строка `8000-8010/tcp`: `one port of 8000-8010, the first the engine finds free … (N free, N held, N undecided)` или `not opened`, если заняты все порты. Публикация без порта хоста — `ephemeral/<протокол>`. Сервис с `network_mode: host` получает `bound directly by <сервис> on the host network` на каждый объявленный порт |
 | `file` | Каждый bind-монтаж (с пометкой чтение/запись или только чтение) и каждый именованный том |
 | `disk-space` | Сколько места свободно на файловой системе с хранилищем контейнеров и сколько образов ещё предстоит скачать |
+| `file` (bind) | Разрешённый путь источника: `bind-mounted into <сервис> at <цель> (read/write\|read only)`, затем что показывает хост (`directory, mode 0755, owner 0:0` или `it does not exist, so the engine creates it as an empty directory owned by root`) и всегда `access for the container user (<пользователь>) not verified — ACLs, user namespaces and SELinux are not read`, плюс `options not evaluated: …`, если план их задаёт |
+| `file` (том) | `volume <имя в движке>`: `created empty by Compose`, `reused: it exists and was created by this project, with its data`, `reused with its data although it was not created by Compose for this project`, `external, exists` или `external and missing, so docker compose up fails` — затем куда монтируется. Строка `network <имя в движке>` (`container`) так же говорит `created`, `reused …`, `joined (external, exists)` или `not joined …` |
+| `container` (существующий) | По одной на каждый существующий контейнер, которого план касается, не называя его: orphan проекта (`left running …` или `removed (--remove-orphans)`), контейнер другой копии (`taken over …`), этот каталог под другим именем проекта или одноразовый run (`left as it is …`) |
 
 Строка про диск сознательно неполна и говорит об этом: сколько нужно отсутствующим
 образам, нельзя узнать без обращения к реестру, а этот аудит его не делает.
@@ -437,8 +473,8 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
 | Ключ | Содержание | Уходит с машины? |
 |---|---|---|
 | `schemaVersion` | Версия контракта половины `upload`. Получатель проверяет её первой, поэтому агент, собранный месяцы назад, получит ответ «твой отчёт не понят», а не будет прочитан наполовину | — |
-| `upload` | Общий контракт `bloodheaven.audit.v1` в виде protojson: `findings` с доказательствами, `collectors` (результаты разделов), `changes`, `rollback`, `command_journal`, плюс `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` и `producer` | **Да** — это ровно те байты, которые отправляет `--upload` |
-| `audit` | Всё, что остаётся локальным: режим прогона `mode` (`host-audit` или `compose-preflight`), инвентарь хоста, список обновлений, список CVE, разобранный манифест, наблюдённые возможности (с `observations`: насколько полно прочитан каждый источник — контейнеры, тома, сокеты, память…), сетевая запись (`network`, как в `network.csv`), те же находки во внутренней форме этого инструмента (каждая со своим `outcome`), `rules`, как в `rules.csv`, и `plan`, как в `plan.csv` | Нет |
+| `upload` | Общий контракт `bloodheaven.audit.v1` в виде protojson: `findings` с доказательствами и `outcome`, `collectors` (результаты разделов), `changes`, `rollback`, `command_journal`, `rule_results` (по одному на правило), `plan` (только в preflight), `provenance` (с `observations`), плюс `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` и `producer` | **Да** — это ровно те байты, которые отправляет `--upload` |
+| `audit` | Всё, что остаётся локальным: режим прогона `mode` (`host-audit` или `compose-preflight`), инвентарь хоста, список обновлений, список CVE, разобранный манифест, наблюдённые возможности (с `observations`: насколько полно прочитан каждый источник — контейнеры, тома, сокеты, память…), сетевая запись (`network`, как в `network.csv`), те же находки во внутренней форме этого инструмента (каждая со своим `outcome`, доказательства с `origin` и `source`), `rules`, как в `rules.csv`, `plan`, как в `plan.csv`, и `provenance`, как в `provenance.csv` | Нет |
 
 Клиент может прочитать файл, увидеть, какая половина покинула бы его машину, и
 сверить её с тем, что реально пришло. Это куда убедительнее обещания — и разойтись
@@ -479,14 +515,36 @@ decide (unknown), N need a manual check, N found no problem, N not applicable
   различает режимы. Замечание `host-audit: not applicable` остаётся в
   `audit.sections` файла `report.json`; чтобы режим или статус `NOT_APPLICABLE`
   передавался в самом контракте, нужно изменение в репозитории `contracts`.
-- **В контракте нет поля итога.** Находка уходит со своей серьёзностью, и по одной
-  находке получатель не отличит доказанную проблему от вопроса, который этот прогон
-  не смог решить. Пока контракт этого не умеет, итог передают две вещи: `note`
-  коллектора `witness` заканчивается на `rule outcomes: 24 rules — N problem (коды);
-  N unknown (коды); …`, а заголовок нерешённой находки говорит об этом прямо («…
-  could not be established», «… could not be decided», «… needs a manual check»).
-  Чтобы `outcome` передавался у каждой находки, нужно изменение в репозитории
-  `contracts`.
+- **Каждая находка сообщает свой `outcome`, у каждого правила есть запись в
+  `rule_results`** (contracts v0.15.0): `OUTCOME_PROBLEM`, `OUTCOME_NO_PROBLEM`,
+  `OUTCOME_UNKNOWN`, `OUTCOME_MANUAL_CHECK` или `OUTCOME_NOT_APPLICABLE` — пять
+  значений `rules.csv`. Обнаруженная проблема — только `OUTCOME_PROBLEM`; unknown —
+  вопрос, который прогон не смог решить. Находка без итога уходит как
+  `OUTCOME_UNSPECIFIED` и читается по серьёзности; в проблему она не угадывается.
+  `note` коллектора `witness` по-прежнему заканчивается на `rule outcomes: 25 rules
+  — N problem (коды); N unknown (коды); …`, а заголовок нерешённой находки
+  по-прежнему говорит об этом прямо — для читающего человека, но уже не как
+  единственный носитель.
+- **`plan` — план запуска, который проверил preflight**, как в `plan.csv`, без двух
+  вещей: адреса движка (движок называют `engine_context` и `engine_local`) и хэшей
+  конфигурации сервисов. Аудит хоста план не проверял и оставляет `plan` пустым.
+  Значений переменных в нём нет — план несёт только имена, а env-файлы — путями и
+  дайджестами SHA-256.
+- **`provenance` — это `provenance.csv` вместе с наблюдениями**, у каждого свой
+  `OBSERVATION_STATE_*` и время. Имя хоста и отпечаток сервера там не повторяются (это
+  `server_hostname`/`server_fingerprint`).
+- **Движок называется `engine_fingerprint`, никогда своим ID.** Как и
+  `server_fingerprint`, это солёный SHA-256 — от ID из `docker info`, по той же схеме
+  и с той же солью. Правила пишут сырой ID в доказательства, чтобы различать ответы
+  двух движков, и замечание provenance его называет; перед тем как отрисовать
+  отправку, все строки документа просматриваются и сырой ID заменяется отпечатком,
+  так что получатель всё ещё может сопоставить эти строки с `engine_fingerprint`.
+  Локальная половина (`audit`, CSV-файлы) хранит сырой ID рядом с отпечатком — для
+  ручной сверки с `docker info`.
+- **`schema_version` остаётся `1.0`.** Новые поля аддитивны: получатель декодирует с
+  отбрасыванием неизвестных полей и сравнивает версию на равенство, поэтому старый
+  получатель читает новый отчёт как раньше, а новый читает старый отчёт по
+  серьёзностям.
 - **Инвентаря пакетов, списка обновлений и списка CVE в `upload` нет.** Контракт —
   это документ находок, а отправлять их значило бы добровольно передавать полный
   инвентарь ПО чьего-то продакшн-хоста сервису, который об этом не просил.

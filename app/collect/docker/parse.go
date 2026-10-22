@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/model"
 )
@@ -40,6 +41,12 @@ const (
 	labelDockerService = "com.docker.compose.service"
 	labelPodmanProject = "io.podman.compose.project"
 	labelPodmanService = "io.podman.compose.service"
+
+	labelWorkingDir       = "com.docker.compose.project.working_dir"
+	labelPodmanWorkingDir = "io.podman.compose.project.working_dir"
+	labelConfigFiles      = "com.docker.compose.project.config_files"
+	labelConfigHash       = "com.docker.compose.config-hash"
+	labelOneOff           = "com.docker.compose.oneoff"
 )
 
 // noneValue is what docker prints for an absent repository, tag or digest. It is
@@ -106,8 +113,16 @@ func (l *flexLabels) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	pairs := make(map[string]string)
+	last := ""
 	for _, item := range splitList(packed) {
 		key, value, found := strings.Cut(item, "=")
+		if !found && last != "" {
+			// No `=`: the rest of the previous value, which itself contained a
+			// comma — com.docker.compose.project.config_files lists every file of a
+			// multi-file project that way.
+			pairs[last] += "," + strings.TrimSpace(item)
+			continue
+		}
 		if key = strings.TrimSpace(key); key == "" {
 			continue
 		}
@@ -116,6 +131,7 @@ func (l *flexLabels) UnmarshalJSON(raw []byte) error {
 			continue
 		}
 		pairs[key] = strings.TrimSpace(value)
+		last = key
 	}
 	*l = pairs
 	return nil
@@ -245,6 +261,14 @@ func parseContainers(out string) ([]model.Container, []string) {
 			Networks: entry.Networks,
 			Project:  labelValue(entry.Labels, labelDockerProject, labelPodmanProject),
 			Service:  labelValue(entry.Labels, labelDockerService, labelPodmanService),
+			// What Compose recorded about the run that created the container: where
+			// it was deployed from, with which files, and the configuration hash it
+			// compares to decide between keeping and recreating it.
+			WorkingDir:  labelValue(entry.Labels, labelWorkingDir, labelPodmanWorkingDir),
+			ConfigFiles: labelValue(entry.Labels, labelConfigFiles),
+			ConfigHash:  labelValue(entry.Labels, labelConfigHash),
+			OneOff:      strings.EqualFold(labelValue(entry.Labels, labelOneOff), "true"),
+			Labelled:    entry.Labels != nil,
 		}
 		containers = append(containers, container)
 		return nil
@@ -392,6 +416,7 @@ func parsePortRange(spec string) (start, end int) {
 type networkEntry struct {
 	Name   string     `json:"Name"`
 	Driver string     `json:"Driver"`
+	Scope  string     `json:"Scope"`
 	Labels flexLabels `json:"Labels"`
 }
 
@@ -411,6 +436,7 @@ func parseNetworkList(out string) ([]model.ContainerNetwork, []string) {
 		networks = append(networks, model.ContainerNetwork{
 			Name:    name,
 			Driver:  strings.TrimSpace(entry.Driver),
+			Scope:   strings.TrimSpace(entry.Scope),
 			Project: labelValue(entry.Labels, labelDockerProject, labelPodmanProject),
 		})
 		return nil
@@ -481,6 +507,21 @@ func (p subnetProbe) collect() []string {
 		out = append(out, p.IPAM.collect()...)
 	}
 	return out
+}
+
+// parseAttachable reads whether a whole docker network object is attachable:
+// "yes", "no", or "" when the field is absent (podman, or an IPAM-only answer).
+func parseAttachable(out string) string {
+	var probe struct {
+		Attachable *bool `json:"Attachable"`
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(out)), &probe) != nil || probe.Attachable == nil {
+		return ""
+	}
+	if *probe.Attachable {
+		return "yes"
+	}
+	return "no"
 }
 
 // ─────────────────────────────────────────────────────────────── volumes
@@ -600,6 +641,7 @@ type imageDetail struct {
 	OS           string
 	SizeBytes    int64
 	Digest       string
+	User         string
 }
 
 type imageInspectEntry struct {
@@ -608,6 +650,10 @@ type imageInspectEntry struct {
 	Size         flexBytes `json:"Size"`
 	Digest       string    `json:"Digest"`
 	RepoDigests  []string  `json:"RepoDigests"`
+	// Config is read for the default user alone; its environment is never decoded.
+	Config struct {
+		User string `json:"User"`
+	} `json:"Config"`
 }
 
 // parseImageInspect reads one `image inspect`. It reports false when the output
@@ -629,6 +675,7 @@ func parseImageInspect(out string) (imageDetail, bool) {
 			OS:           strings.TrimSpace(entry.OS),
 			SizeBytes:    int64(entry.Size),
 			Digest:       cleanDigest(entry.Digest),
+			User:         strings.TrimSpace(entry.Config.User),
 		}
 		if detail.Digest == "" {
 			for _, repoDigest := range entry.RepoDigests {
@@ -683,6 +730,22 @@ func parseEngineIdentity(out string) (id, name string) {
 		name = strings.TrimSpace(info.Host.Hostname)
 	}
 	return strings.TrimSpace(info.ID), name
+}
+
+// parseEngineClock reads the engine's own clock from `info` (docker's SystemTime,
+// RFC 3339 with nanoseconds). Podman reports none, and false says so.
+func parseEngineClock(out string) (time.Time, bool) {
+	var info struct {
+		SystemTime string `json:"SystemTime"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &info); err != nil || info.SystemTime == "" {
+		return time.Time{}, false
+	}
+	at, err := time.Parse(time.RFC3339Nano, info.SystemTime)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return at, true
 }
 
 // parseEngineVersion reads `version --format {{json .}}`. The server version is

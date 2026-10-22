@@ -57,6 +57,11 @@ type Config struct {
 	ProjectName      string
 	ProjectDirectory string
 	ComposeServices  []string
+	// The `docker compose up` options of the planned run that decide what happens
+	// to the containers already there.
+	RemoveOrphans bool
+	ForceRecreate bool
+	NoRecreate    bool
 	// Egress permits the one outbound check in the witness section: whether the
 	// registries the manifest pulls from are reachable. Off by default, like every
 	// other network path in this tool.
@@ -75,6 +80,10 @@ type Config struct {
 	// environment and ignored, so the run can say so instead of silently doing
 	// something other than what the operator may expect.
 	IgnoredEnv []string
+	// Recheck is a report.json to confirm against the current plan and engine
+	// instead of running an audit; MaxAge is how old it may be. See audit.Recheck.
+	Recheck string
+	MaxAge  time.Duration
 	// ShowCommands prints the allowlist and exits. It is meant to be the first
 	// thing somebody runs: the answer to "what will this do to my server?" should
 	// be available without running the audit itself.
@@ -151,6 +160,12 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		"the project name the planned run uses, as docker compose -p (default: what Compose derives)")
 	fs.StringVar(&cfg.ProjectDirectory, "project-directory", env("AUDIT_PROJECT_DIRECTORY", ""),
 		"the project directory of the planned run, as docker compose --project-directory (default: the first file's directory)")
+	fs.BoolVar(&cfg.RemoveOrphans, "remove-orphans", envBool("AUDIT_REMOVE_ORPHANS", false),
+		"the planned run uses docker compose up --remove-orphans")
+	fs.BoolVar(&cfg.ForceRecreate, "force-recreate", envBool("AUDIT_FORCE_RECREATE", false),
+		"the planned run uses docker compose up --force-recreate")
+	fs.BoolVar(&cfg.NoRecreate, "no-recreate", envBool("AUDIT_NO_RECREATE", false),
+		"the planned run uses docker compose up --no-recreate")
 	fs.Var(&services, "compose-service",
 		"a service the planned run starts, as in docker compose up <service>; repeatable (default: every service)")
 	fs.StringVar(&mode, "mode", env("AUDIT_MODE", ""),
@@ -163,6 +178,11 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		"https:// base URL of a witness service to send the report to (off unless given; flag only, no AUDIT_UPLOAD; needs a token)")
 	fs.StringVar(&cfg.UploadToken, "upload-token", "",
 		"one-time token authorising the upload; prefer AUDIT_UPLOAD_TOKEN, which keeps it out of the process list")
+	var maxAge string
+	fs.StringVar(&cfg.Recheck, "recheck", "",
+		"confirm that a report.json still describes this plan on this engine, instead of auditing; needs the same --compose flags (exit 0 confirmed, 4 re-run the audit)")
+	fs.StringVar(&maxAge, "max-age", env("AUDIT_MAX_AGE", "1h"),
+		"with --recheck: how old a report may be and still confirm the plan")
 	fs.BoolVar(&cfg.ShowVersion, "version", false, "print the version and exit")
 	fs.BoolVar(&cfg.ShowCommands, "commands", false,
 		"print every command this binary is able to run, and exit — the tool cannot execute anything outside that list")
@@ -226,6 +246,19 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		return nil, fmt.Errorf("invalid --timeout %q: must be positive", timeout)
 	}
 	cfg.Timeout = parsed
+
+	if cfg.MaxAge, err = time.ParseDuration(maxAge); err != nil || cfg.MaxAge <= 0 {
+		return nil, fmt.Errorf("invalid --max-age %q: expected a positive duration such as 30m or 2h", maxAge)
+	}
+	if cfg.Recheck != "" {
+		if err := checkPlanFile("--recheck", cfg.Recheck); err != nil {
+			return nil, err
+		}
+		if cfg.Compose == "" {
+			return nil, fmt.Errorf("--recheck confirms a report against the planned run, and needs the same " +
+				"--compose (and --env-file, --profile, … ) flags the report was made with")
+		}
+	}
 
 	cfg.Sections, err = parseSections(sections)
 	if err != nil {
@@ -292,9 +325,14 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 			}
 		}
 	} else if len(cfg.EnvFiles) > 0 || len(cfg.Profiles) > 0 || cfg.ProjectName != "" ||
-		cfg.ProjectDirectory != "" || len(cfg.ComposeServices) > 0 {
-		return nil, fmt.Errorf("--env-file, --profile, --project-name, --project-directory and --compose-service " +
-			"describe a planned Compose run and need --compose; a host audit has none")
+		cfg.ProjectDirectory != "" || len(cfg.ComposeServices) > 0 || cfg.RemoveOrphans || cfg.ForceRecreate ||
+		cfg.NoRecreate {
+		return nil, fmt.Errorf("--env-file, --profile, --project-name, --project-directory, --compose-service, " +
+			"--remove-orphans, --force-recreate and --no-recreate describe a planned Compose run and need --compose; " +
+			"a host audit has none")
+	}
+	if cfg.ForceRecreate && cfg.NoRecreate {
+		return nil, fmt.Errorf("--force-recreate and --no-recreate are incompatible, as they are for docker compose up")
 	}
 
 	// The two upload flags are useless apart, and a partially configured upload that

@@ -57,8 +57,9 @@ func (w *warner) ports(node *yaml.Node, where string) []model.PortMapping {
 //	"3000-3005:3000-3005"      a range of host ports
 //	"[::1]:8080:80"            a bracketed IPv6 host address
 //
-// The container end of a range is not kept: model.PortMapping has one container
-// port, and the host range is the part a port-conflict check needs.
+// A container range is kept as ContainerPortEnd: "8000-8001:8000-8001" binds both
+// host ports, while "8000-8010:80" binds one of them, and the two must not be read
+// alike.
 func parseShortPort(spec string) (model.PortMapping, error) {
 	mapping := model.PortMapping{Protocol: "tcp"}
 
@@ -106,11 +107,14 @@ func parseShortPort(spec string) (model.PortMapping, error) {
 		return mapping, fmt.Errorf("%q: too many colon-separated parts (an IPv6 address must be written in brackets)", spec)
 	}
 
-	containerStart, _, err := parsePortRange(containerSpec)
+	containerStart, containerEnd, err := parsePortRange(containerSpec)
 	if err != nil {
 		return mapping, fmt.Errorf("%q: container port: %w", spec, err)
 	}
 	mapping.ContainerPort = containerStart
+	if containerEnd > containerStart {
+		mapping.ContainerPortEnd = containerEnd
+	}
 
 	if strings.TrimSpace(hostSpec) != "" {
 		start, end, err := parsePortRange(hostSpec)

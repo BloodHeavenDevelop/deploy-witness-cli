@@ -41,6 +41,12 @@ type Auditor struct {
 	parseNotes model.SectionResult
 	// plan is the exact run the preflight checks, resolved by Prepare.
 	plan *model.LaunchPlan
+	// portsAt is when the ports section read the sockets; comparedAt when the
+	// witness rules ran. Both feed the report's provenance.
+	portsAt, comparedAt time.Time
+	// startedAt is when the run began: Prepare, which resolves the plan, is part of
+	// it, so the report's start is not later than the plan resolution.
+	startedAt time.Time
 
 	// What the network paths actually did, for network.csv: requests sent to the
 	// OSV API, and the host:port of every registry --egress dialled.
@@ -70,6 +76,7 @@ func New(cfg *config.Config, log *logging.Logger, version string) *Auditor {
 // is the one shape a missing preflight must never take. A host audit has no input,
 // and Prepare does nothing.
 func (a *Auditor) Prepare() error {
+	a.startedAt = time.Now().UTC()
 	if a.cfg.Mode != model.ModeComposePreflight {
 		return nil
 	}
@@ -83,8 +90,11 @@ func (a *Auditor) Prepare() error {
 func (a *Auditor) Run() *model.Report {
 	hostname, _ := os.Hostname()
 
+	if a.startedAt.IsZero() {
+		a.startedAt = time.Now().UTC()
+	}
 	report := &model.Report{
-		GeneratedAt: time.Now().UTC(),
+		GeneratedAt: a.startedAt,
 		Hostname:    hostname,
 		Tool:        "deploy-witness",
 		Version:     a.version,
@@ -134,6 +144,7 @@ func (a *Auditor) Run() *model.Report {
 			result.Records = len(report.Vulnerabilities)
 			result.Critical, result.High = gradeCounts(report.Vulnerabilities)
 		case model.SectionPorts:
+			a.portsAt = time.Now().UTC()
 			report.Ports = ports.Collect(a.runner, &result)
 			result.Records = len(report.Ports)
 			a.noteExposure(report.Ports, &result)
@@ -163,6 +174,16 @@ func (a *Auditor) Run() *model.Report {
 
 	report.Commands = journal(a.runner)
 	report.Network = a.networkRecord(report.Commands)
+
+	report.Provenance = a.provenance(report, time.Now().UTC())
+	for i := range report.Sections {
+		if report.Sections[i].Section == model.SectionWitness && report.Sections[i].Status != model.StatusNotApplicable {
+			report.Sections[i].Note(ProvenanceSummary(report.Provenance))
+			for _, check := range report.Provenance.TimeChecks {
+				report.Sections[i].Note("time: " + check)
+			}
+		}
+	}
 	if refused := refusedCommands(report.Commands); refused > 0 {
 		// A refusal means a collector asked for something the published allowlist
 		// does not cover: a defect in this tool. It is stated at error level and in

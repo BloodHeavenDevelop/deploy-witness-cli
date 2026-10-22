@@ -198,6 +198,11 @@ func Report(report *model.Report) int {
 			sweep(&plan.Notes[i])
 		}
 	}
+	if p := report.Provenance; p != nil {
+		for i := range p.TimeChecks {
+			sweep(&p.TimeChecks[i])
+		}
+	}
 
 	if caps := report.Capabilities; caps != nil {
 		for i := range caps.Jobs {
@@ -211,6 +216,9 @@ func Report(report *model.Report) int {
 		}
 		for i := range caps.Observations {
 			sweep(&caps.Observations[i].Note)
+		}
+		for i := range caps.BindSources {
+			sweep(&caps.BindSources[i].Error)
 		}
 		// The backup posture carries cron lines too — `Jobs` is a list of the
 		// commands that looked like a backup, and a mysqldump password is exactly

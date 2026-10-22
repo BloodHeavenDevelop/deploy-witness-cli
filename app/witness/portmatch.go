@@ -42,6 +42,20 @@ type portClaim struct {
 	ip       net.IP // the parsed address; nil when none was named or it is unreadable
 	anyAddr  bool   // the literal "*" that `ss` prints: every interface, both families
 	readable bool   // the recorded address could be understood as an address
+	v6only   string // for a socket on [::]: "yes" (IPv6 only), "no" (dual-stack), "" unknown
+}
+
+// ipStack is what the host's IPv6 configuration settles about a binding.
+type ipStack struct {
+	ipv6       string // "enabled", "disabled" or "" (unknown)
+	bindV6Only string // the net.ipv6.bindv6only default, "0", "1" or ""
+}
+
+func stackOf(in Input) ipStack {
+	if in.Caps == nil {
+		return ipStack{}
+	}
+	return ipStack{ipv6: in.Caps.IPv6, bindV6Only: in.Caps.BindV6Only}
 }
 
 // claimFromMapping reduces one published host port of a manifest service — or of
@@ -74,6 +88,7 @@ func claimFromSocket(socket model.Port) portClaim {
 		port:     socket.Port,
 		address:  strings.Trim(strings.TrimSpace(socket.Address), "[]"),
 		readable: true,
+		v6only:   socket.V6Only,
 	}
 	if claim.address == "" || claim.address == "*" {
 		// `ss` prints "*" for a socket bound to every interface, and the collector
@@ -140,15 +155,21 @@ const (
 	covSpecific                 // exactly one address, returned alongside
 )
 
-func (c portClaim) coverage(v4 bool) (coverage, net.IP) {
+func (c portClaim) coverage(v4 bool, st ipStack) (coverage, net.IP) {
 	switch {
 	case c.anyAddr:
 		return covAll, nil
 	case c.address == "":
-		// Compose's default. The engine binds every IPv4 address, and adds the IPv6
-		// wildcard only when the daemon has IPv6 turned on — which this tool does
-		// not read.
+		// Compose's default. The engine binds every IPv4 address, and on a host with
+		// IPv6 it binds the IPv6 wildcard as well (docker ps shows both 0.0.0.0 and
+		// [::]); on a host without IPv6 it cannot.
 		if v4 {
+			return covAll, nil
+		}
+		switch st.ipv6 {
+		case "disabled":
+			return covNone, nil
+		case "enabled":
 			return covAll, nil
 		}
 		return covMaybeAll, nil
@@ -161,9 +182,16 @@ func (c portClaim) coverage(v4 bool) (coverage, net.IP) {
 			}
 			return covNone, nil
 		}
-		// "::" — every IPv6 address, and every IPv4 one too unless
-		// net.ipv6.bindv6only is set, which this tool does not read.
+		// "::" — every IPv6 address, and every IPv4 one too unless the socket is
+		// IPv6-only. That is a per-socket option (IPV6_V6ONLY), which `ss` shows and
+		// /proc/net does not; net.ipv6.bindv6only only sets its default.
 		if v4 {
+			switch c.v6only {
+			case "no":
+				return covAll, nil
+			case "yes":
+				return covNone, nil
+			}
 			return covMaybeAll, nil
 		}
 		return covAll, nil
@@ -181,7 +209,7 @@ func isIPv4(ip net.IP) bool { return ip.To4() != nil }
 
 // collides answers whether the manifest's binding (want) is held by another one
 // (held), and when the answer is "unknown", why.
-func collides(want, held portClaim) (overlap, string) {
+func collides(st ipStack, want, held portClaim) (overlap, string) {
 	if want.port != held.port || want.protocol != held.protocol {
 		return overlapNone, ""
 	}
@@ -198,7 +226,7 @@ func collides(want, held portClaim) (overlap, string) {
 
 	best, why := overlapNone, ""
 	for _, v4 := range []bool{true, false} {
-		result, reason := familyOverlap(want, held, v4)
+		result, reason := familyOverlap(st, want, held, v4)
 		if result > best {
 			best, why = result, reason
 		}
@@ -206,15 +234,15 @@ func collides(want, held portClaim) (overlap, string) {
 	return best, why
 }
 
-func familyOverlap(want, held portClaim, v4 bool) (overlap, string) {
-	wantCov, wantIP := want.coverage(v4)
-	heldCov, heldIP := held.coverage(v4)
+func familyOverlap(st ipStack, want, held portClaim, v4 bool) (overlap, string) {
+	wantCov, wantIP := want.coverage(v4, st)
+	heldCov, heldIP := held.coverage(v4, st)
 
 	switch {
 	case wantCov == covNone || heldCov == covNone:
 		return overlapNone, ""
 	case wantCov == covMaybeAll || heldCov == covMaybeAll:
-		return overlapUnknown, maybeReason(want, held, wantCov, heldCov)
+		return overlapUnknown, maybeReason(st, want, held, wantCov, heldCov)
 	case wantCov == covSpecific && heldCov == covSpecific && !wantIP.Equal(heldIP):
 		return overlapNone, ""
 	default:
@@ -222,22 +250,27 @@ func familyOverlap(want, held portClaim, v4 bool) (overlap, string) {
 	}
 }
 
-func maybeReason(want, held portClaim, wantCov, heldCov coverage) string {
+func maybeReason(st ipStack, want, held portClaim, wantCov, heldCov coverage) string {
 	var parts []string
 	if wantCov == covMaybeAll {
-		parts = append(parts, sideReason("The manifest", want))
+		parts = append(parts, sideReason(st, "The manifest", want))
 	}
 	if heldCov == covMaybeAll {
-		parts = append(parts, sideReason("The binding already on that port", held))
+		parts = append(parts, sideReason(st, "The binding already on that port", held))
 	}
 	return strings.Join(parts, " ")
 }
 
-func sideReason(who string, c portClaim) string {
+func sideReason(st ipStack, who string, c portClaim) string {
 	if c.address == "" {
-		return who + " names no host address, so the engine binds every IPv4 address and adds IPv6 only when the " +
-			"daemon has IPv6 enabled — this tool does not read the daemon's configuration."
+		return who + " names no host address, so the engine binds every IPv4 address and, on a host with IPv6, " +
+			"the IPv6 wildcard too — and whether this host has IPv6 could not be read."
 	}
-	return who + " is the IPv6 wildcard [::], which also answers IPv4 connections unless net.ipv6.bindv6only is " +
-		"set — this tool does not read that sysctl."
+	def := "unknown"
+	if st.bindV6Only != "" {
+		def = st.bindV6Only
+	}
+	return who + " is the IPv6 wildcard [::], which also answers IPv4 unless the socket is IPv6-only — a " +
+		"per-socket option `ss` shows (`*:port` dual-stack, `[::]:port` IPv6-only) and could not be read here; " +
+		"the net.ipv6.bindv6only default is " + def + ", which a socket may override."
 }

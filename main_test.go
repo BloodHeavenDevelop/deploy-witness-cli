@@ -269,3 +269,30 @@ func TestPlanFlagsNeedACompose(t *testing.T) {
 		t.Errorf("exit = %d, log = %q", code, log)
 	}
 }
+
+// DW-82: a report confirms only the plan it checked, on the engine it inspected,
+// while it is fresh. The same plan rechecks as confirmed (exit 0); a changed plan
+// does not (exit 4), and neither does a report past --max-age.
+func TestRecheckConfirmsOnlyTheSamePlan(t *testing.T) {
+	if exec.Command("docker", "info").Run() != nil {
+		t.Skip("no container engine answers here; a report without an engine identity never rechecks as confirmed")
+	}
+	dir := t.TempDir()
+	out := filepath.Join(dir, "report")
+	compose := writeFile(t, dir, "docker-compose.yml", "services:\n  app:\n    image: nginx:1.27\n    ports: [\"18080:80\"]\n", 0o600)
+	if code, log := cli(t, "--compose", compose, "--sections", "witness", "--format", "json", "--out", out); code != exitOK {
+		t.Fatalf("audit exit %d: %s", code, log)
+	}
+	saved := filepath.Join(out, "report.json")
+
+	if code, log := cli(t, "--recheck", saved, "--compose", compose); code != exitOK {
+		t.Errorf("same plan: exit %d, log %s", code, log)
+	}
+	if code, _ := cli(t, "--recheck", saved, "--compose", compose, "--max-age", "1ns"); code != exitRecheck {
+		t.Errorf("stale report: exit %d, want %d", code, exitRecheck)
+	}
+	writeFile(t, dir, "docker-compose.yml", "services:\n  app:\n    image: nginx:1.27\n    ports: [\"18081:80\"]\n", 0o600)
+	if code, _ := cli(t, "--recheck", saved, "--compose", compose); code != exitRecheck {
+		t.Errorf("changed plan: exit %d, want %d", code, exitRecheck)
+	}
+}

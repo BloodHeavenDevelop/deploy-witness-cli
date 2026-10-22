@@ -1,0 +1,15 @@
+id: port_conflict/problem-foreign-container
+rule: witness.port_conflict
+situation: problem
+description: >-
+  Host port 18080/tcp is published by an unrelated container; the plan publishes the same binding.
+critical: true
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: fails
+  pattern: "port is already allocated"

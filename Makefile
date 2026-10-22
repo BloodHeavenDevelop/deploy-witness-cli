@@ -11,12 +11,13 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # releases they were copied from. Building needs neither — that is the point; only
 # refreshing the copies does. See app/csv/doc.go and app/contract/auditv1/doc.go.
 UTILS_VERSION     := v0.9.0
-CONTRACTS_VERSION := v0.9.0
+CONTRACTS_VERSION := v0.15.0
 UTILS             ?= ../utils
 CONTRACTS         ?= ../contracts
 
 .PHONY: development build run clean lint test vet fmt sync-shared \
-        build-linux-amd64 build-linux-arm64 build-all install dist
+        build-linux-amd64 build-linux-arm64 build-all install dist bench \
+        bench-score release-gate bench-baseline regression
 
 # Run the audit straight from source. Pass flags with ARGS, e.g.
 #   make development ARGS="--sections ports,services --stdout"
@@ -74,6 +75,46 @@ sync-shared:
 	install -m 0644 $(CONTRACTS)/gen/go/bloodheaven/audit/v1/report.pb.go \
 		app/contract/auditv1/report.pb.go
 	go build ./... && go test ./app/csv/ ./app/report/
+
+# The reproducible test bench (DW-83): every scenario under bench/scenarios, staged in
+# one disposable Docker-in-Docker container (pinned image, images loaded from this
+# machine, nothing pulled), audited, then deployed — prediction against Docker's
+# actual behaviour. Needs Docker that can run a privileged container. Results land in
+# bench/out/<UTC timestamp>/. Narrow it with BENCH_ARGS="-only port_conflict".
+bench: build
+	go run ./bench/dwbench -bin ./$(BINARY) -commit "$$(git rev-parse --short HEAD 2>/dev/null)" $(BENCH_ARGS)
+
+# Quality of the latest bench run, per rule, against the committed baseline
+# (DW-84). RESULTS=<results.json> scores another run.
+bench-score:
+	go run ./bench/dwscore $(if $(RESULTS),-results $(RESULTS))
+
+# The release criteria: a fresh bench run must pass the gate — no bench error, no
+# audit side effect, no broken ground truth, no failing critical or regression
+# scenario, nothing that passed in the baseline failing now, no baseline scenario
+# missing. Run it before cutting a release.
+release-gate: bench
+	go run ./bench/dwscore -gate
+
+# Make the latest run the new baseline. Only after release-gate passes, and with a
+# CHANGELOG line saying why the baseline moved.
+bench-baseline:
+	@latest=$$(ls -1d bench/out/*/ 2>/dev/null | sort | tail -1); \
+	test -n "$$latest" || { echo "no run under bench/out — make bench first"; exit 2; }; \
+	go run ./bench/dwscore -gate -results "$${latest}results.json" && \
+	install -m 0644 "$${latest}results.json" bench/baseline/results.json && \
+	echo "bench/baseline/results.json <- $${latest}results.json"
+
+# Start a regression case for a confirmed defect (DW-90): make regression NAME=DW-123-short-slug
+# copies the template; fill case.yaml and input.json with artificial data, watch
+# `make test` fail, then fix the CLI. The cases run in every `make test`.
+regression:
+	@test -n "$(NAME)" || { echo "usage: make regression NAME=<TASK>-<short-slug>"; exit 2; }
+	@test ! -e app/witness/testdata/regressions/$(NAME) || { echo "$(NAME) exists"; exit 2; }
+	cp -r app/witness/testdata/regressions/_template app/witness/testdata/regressions/$(NAME)
+	sed -i 's/^id: TASK-short-slug/id: $(NAME)/; s/^task: TASK/task: $(firstword $(subst -, ,$(NAME)))-$(word 2,$(subst -, ,$(NAME)))/' \
+		app/witness/testdata/regressions/$(NAME)/case.yaml
+	@echo "app/witness/testdata/regressions/$(NAME)/: fill case.yaml and input.json"
 
 clean:
 	rm -rf $(BINARY) bin

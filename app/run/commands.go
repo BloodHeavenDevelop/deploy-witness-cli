@@ -92,7 +92,8 @@ var commands = []Spec{
 	{
 		Binary: "ss", Args: []string{"-lntupH"},
 		Section: "ports",
-		Purpose: "listening sockets with the owning process, when /proc/net alone cannot attribute them",
+		Purpose: "listening sockets with the owning process, when /proc/net alone cannot attribute them, and " +
+			"whether each IPv6 wildcard socket is IPv6-only ([::]:port) or dual-stack (*:port)",
 	},
 
 	// ── witness: the container runtime ────────────────────────────────────────
@@ -118,8 +119,9 @@ var commands = []Spec{
 		Section: "witness", Purpose: "existing networks, to find a name collision",
 	},
 	{
-		Binary: "docker", Args: []string{"network", "inspect", "<container>", "--format", "{{json .IPAM}}"},
-		Section: "witness", Purpose: "one network's subnet, to find an address-range overlap",
+		Binary: "docker", Args: []string{"network", "inspect", "<container>", "--format", "{{json .}}"},
+		Section: "witness",
+		Purpose: "one network's subnet, to find an address-range overlap, and whether a swarm network is attachable",
 	},
 	{
 		Binary: "docker", Args: []string{"volume", "ls", "--format", "{{json .}}"},
@@ -155,6 +157,12 @@ var commands = []Spec{
 		Binary: "docker", Args: []string{"compose", OptionsToken, "config", "--format", "json"},
 		Options: composeOptions, MaxRepeat: 64,
 		Section: "witness", Purpose: "the same, on a Compose too old for --no-env-resolution",
+	},
+	{
+		Binary: "docker", Args: []string{"compose", OptionsToken, "config", "--hash", "*"},
+		Options: composeOptions, MaxRepeat: 64,
+		Section: "witness",
+		Purpose: "each service's configuration hash, which Compose compares with a container's label to keep or recreate it",
 	},
 	// Which engine the engineer's own `docker compose up` would talk to. Both read
 	// the CLI's local context store only; neither contacts an engine.

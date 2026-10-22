@@ -1,6 +1,7 @@
 package witness
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -92,16 +93,42 @@ var situations = map[string][]situation{
 		}, model.OutcomeUnknown},
 		{"no fixed name", nil, model.OutcomeNotApplicable},
 	},
+	"witness.project_ownership": {
+		{"another checkout uses the project name", func(in *Input) {
+			planAt(in, "/srv/app")
+			in.Caps.Containers = []model.Container{{Name: "app-web-1", Project: "app", Service: "web",
+				WorkingDir: "/home/dev/app", State: "running", Labelled: true}}
+		}, model.OutcomeProblem},
+		{"the previous version of this deployment", func(in *Input) {
+			planAt(in, "/srv/app")
+			in.Caps.Containers = []model.Container{{Name: "app-web-1", Project: "app", Service: "web",
+				WorkingDir: "/srv/app", State: "running", Labelled: true}}
+		}, model.OutcomeNoProblem},
+		{"engine did not answer", func(in *Input) { unreachableEngine(in) }, model.OutcomeUnknown},
+		{"this directory under an older project name", func(in *Input) {
+			planAt(in, "/srv/app")
+			in.Caps.Containers = []model.Container{{Name: "shop-web-1", Project: "shop", Service: "web",
+				WorkingDir: "/srv/app", State: "running", Labelled: true}}
+		}, model.OutcomeManualCheck},
+		{"an orphan left running", func(in *Input) {
+			planAt(in, "/srv/app")
+			in.Caps.Containers = []model.Container{{Name: "app-old-1", Project: "app", Service: "old",
+				WorkingDir: "/srv/app", State: "running", Labelled: true}}
+		}, model.OutcomeManualCheck},
+		{"no labels reported", func(in *Input) {
+			in.Caps.Containers = []model.Container{{Name: "mystery", State: "running"}}
+		}, model.OutcomeUnknown},
+	},
 	"witness.volume_name_conflict": {
 		{"external volume missing", func(in *Input) {
-			in.Manifest.Volumes = []model.ManifestVolume{{Name: "shared", External: true}}
+			mountShared(in)
 		}, model.OutcomeProblem},
 		{"external volume present", func(in *Input) {
-			in.Manifest.Volumes = []model.ManifestVolume{{Name: "shared", External: true}}
+			mountShared(in)
 			in.Caps.ContainerVolumes = []model.ContainerVolume{{Name: "shared", Project: "app"}}
 		}, model.OutcomeNoProblem},
 		{"engine did not answer", func(in *Input) {
-			in.Manifest.Volumes = []model.ManifestVolume{{Name: "shared", External: true}}
+			mountShared(in)
 			unreachableEngine(in)
 		}, model.OutcomeUnknown},
 		{"no external volume", nil, model.OutcomeNotApplicable},
@@ -111,8 +138,34 @@ var situations = map[string][]situation{
 			in.Manifest.Services[0].Volumes = []model.VolumeMount{{Kind: model.MountBind, Source: "/etc", Target: "/x"}}
 		}, model.OutcomeProblem},
 		{"binds a data directory", func(in *Input) {
-			in.Manifest.Services[0].Volumes = []model.VolumeMount{{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"}}
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"},
+				model.PathInfo{Path: "/srv/app/data", State: "exists", Type: "directory", Mode: "0755", UID: 0, GID: 0})
 		}, model.OutcomeNoProblem},
+		{"missing, and the engine creates it", func(in *Input) {
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x", CreateHostPath: boolp(true)},
+				model.PathInfo{Path: "/srv/app/data", State: "missing"})
+		}, model.OutcomeNoProblem},
+		{"missing, create_host_path: false", func(in *Input) {
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x", CreateHostPath: boolp(false)},
+				model.PathInfo{Path: "/srv/app/data", State: "missing"})
+		}, model.OutcomeProblem},
+		{"read/write on a read-only filesystem", func(in *Input) {
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"},
+				model.PathInfo{Path: "/srv/app/data", State: "exists", Type: "directory", Mode: "0755", ReadOnlyFS: true})
+		}, model.OutcomeProblem},
+		{"this account could not stat it", func(in *Input) {
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/root/secret", Target: "/x"},
+				model.PathInfo{Path: "/root/secret", State: "unknown", Error: "permission denied"})
+		}, model.OutcomeUnknown},
+		{"mode bits deny the container user", func(in *Input) {
+			in.Manifest.Services[0].User = "1000:1000"
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"},
+				model.PathInfo{Path: "/srv/app/data", State: "exists", Type: "directory", Mode: "0700", UID: 0, GID: 0})
+		}, model.OutcomeUnknown},
+		{"sources not examined", func(in *Input) {
+			in.Manifest.Services[0].Volumes = []model.VolumeMount{{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"}}
+			in.Caps.Observe(model.SourceBindSources, model.ObservedNotCollected, "")
+		}, model.OutcomeUnknown},
 		{"no bind mount", nil, model.OutcomeNotApplicable},
 	},
 	"witness.network_name_conflict": {
@@ -470,7 +523,82 @@ func TestEveryRuleEndsInExactlyOneOutcome(t *testing.T) {
 		}
 	}
 	summary := OutcomeSummary(result.Rules)
-	if !strings.HasPrefix(summary, "rule outcomes: 24 rules") || !strings.Contains(summary, "problem (") {
+	if !strings.HasPrefix(summary, fmt.Sprintf("rule outcomes: %d rules", len(rules()))) || !strings.Contains(summary, "problem (") {
 		t.Errorf("summary: %s", summary)
+	}
+}
+
+// DW-82: evidence is an observation with its own time and origin — the moment its
+// source was read, or the moment the plan was resolved — not the time the rules ran.
+func TestEvidenceCarriesItsObservation(t *testing.T) {
+	in := cleanInput()
+	in.PlanResolvedAt = fixedNow.Add(-time.Minute)
+	in.Caps.ObserveAt(model.SourceSockets, model.ObservedComplete, "/proc/net", fixedNow.Add(-30*time.Second))
+	in.Caps.Ports = []model.Port{{Protocol: "tcp", Address: "0.0.0.0", Port: 8080, State: "LISTEN", Pid: 7, Process: "python3"}}
+
+	f, ok := find(portConflicts(in), "witness.port_conflict")
+	if !ok || len(f.Evidence) != 2 {
+		t.Fatalf("finding = %+v", f)
+	}
+	plan, socket := f.Evidence[0], f.Evidence[1]
+	if plan.Origin != model.OriginPlan || plan.CapturedAt != "2026-08-17T11:59:00Z" {
+		t.Errorf("plan evidence = %+v", plan)
+	}
+	if socket.Origin != model.OriginHost || socket.Source != model.SourceSockets || socket.CapturedAt != "2026-08-17T11:59:30Z" {
+		t.Errorf("socket evidence = %+v", socket)
+	}
+}
+
+func planAt(in *Input, dir string) {
+	in.Plan = &model.LaunchPlan{ProjectDirectory: dir, ProjectName: in.Project}
+}
+
+// mountShared declares the external volume "shared" and mounts it into the plan's
+// service — Compose looks up only the volumes a service mounts.
+func mountShared(in *Input) {
+	in.Manifest.Volumes = []model.ManifestVolume{{Name: "shared", External: true}}
+	in.Manifest.Services[0].Volumes = append(in.Manifest.Services[0].Volumes,
+		model.VolumeMount{Kind: model.MountVolume, Source: "shared", Target: "/shared"})
+}
+
+func bindAt(in *Input, mount model.VolumeMount, info model.PathInfo) {
+	in.Manifest.Services[0].Volumes = []model.VolumeMount{mount}
+	in.Caps.BindSources = []model.PathInfo{info}
+}
+
+func boolp(b bool) *bool { return &b }
+
+func TestDeniedByMode(t *testing.T) {
+	dir := model.PathInfo{Type: "directory", Mode: "0750", UID: 1000, GID: 1000}
+	for _, tc := range []struct {
+		uid, gid int
+		write    bool
+		want     string
+	}{
+		{0, 0, true, ""}, {1000, 1000, true, ""}, {1001, 1000, false, ""}, {1001, 1000, true, "write"},
+		{1001, 1001, false, "read"},
+	} {
+		if got := deniedByMode(dir, tc.uid, tc.gid, tc.write); got != tc.want {
+			t.Errorf("uid %d gid %d write %v: %q, want %q", tc.uid, tc.gid, tc.write, got, tc.want)
+		}
+	}
+	noEnter := model.PathInfo{Type: "directory", Mode: "0744", UID: 0, GID: 0}
+	if got := deniedByMode(noEnter, 1000, -1, false); got != "enter" {
+		t.Errorf("r-- on a directory cannot be entered: %q", got)
+	}
+}
+
+// DW-88: the change list never presents access as proven, and says which options
+// were not evaluated.
+func TestBindChangeAdmitsWhatIsNotVerified(t *testing.T) {
+	in := cleanInput()
+	bindAt(&in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x", Options: []string{"z"}},
+		model.PathInfo{Path: "/srv/app/data", State: "missing"})
+	in.Manifest.Services[0].Volumes[0].CreateHostPath = boolp(true)
+	row, _ := changeFor(Changes(in), "file", "/srv/app/data")
+	for _, want := range []string{"creates it as an empty directory owned by root", "not verified", "options not evaluated: z"} {
+		if !strings.Contains(row.Detail, want) {
+			t.Errorf("missing %q in %q", want, row.Detail)
+		}
 	}
 }

@@ -154,11 +154,45 @@ report written:
 | `--project-name <name>` | `AUDIT_PROJECT_NAME` | what Compose derives | The project name, as `docker compose -p`. The name decides which existing containers, networks and volumes are this deployment's own — see [10 — The project name](10-witness-rules.md#the-project-name-and-why-it-matters). |
 | `--project-directory <dir>` | `AUDIT_PROJECT_DIRECTORY` | the first file's directory | As `docker compose --project-directory`: where `.env` is read and relative paths resolve. |
 | `--compose-service <name>` | `AUDIT_COMPOSE_SERVICES` (comma-separated) | every service of the active profiles | A service the planned run starts, as `docker compose up <service>`; repeatable. Its dependencies are included, as Compose includes them. |
+| `--remove-orphans`, `--force-recreate`, `--no-recreate` | `AUDIT_REMOVE_ORPHANS`, `AUDIT_FORCE_RECREATE`, `AUDIT_NO_RECREATE` | `false` | The `docker compose up` options of the planned run. They decide what happens to the containers already there — an orphan holding a port is a conflict without `--remove-orphans` and not with it — see [10 — `project_ownership`](10-witness-rules.md#witnessproject_ownership). `--force-recreate` and `--no-recreate` are refused together. |
 | `--egress` | — | `false` | Permit the one outbound check: a TCP connect to each registry the manifest pulls from — port 443, or the port the image reference names (`registry.local:5000/app`) — 5 s per registry. The address actually dialled is what the evidence and the section note name. No TLS handshake, no HTTP request, no authentication, no image manifest fetched. Without it the reachability rule reports "not checked" rather than concluding anything. |
 
 Without `--compose` the run is a host audit and the witness section is out of its
 scope (see [Modes](#modes)); the report says so in its `report` row and in the
 `preflight` and `witness` rows, both `not-applicable`.
+
+## Recheck before deploying
+
+| Flag | Environment | Default | Meaning |
+|---|---|---|---|
+| `--recheck <report.json>` | — | none | Instead of auditing, confirm that a `report.json` (from `--format json` or `csv,json`) still describes **this plan on this engine, now**. Needs the same plan flags the report was made with (`--compose`, `--env-file`, `--profile`, …). |
+| `--max-age <duration>` | `AUDIT_MAX_AGE` | `1h` | How old the report may be and still confirm the plan. |
+
+A preflight describes one plan on one engine at one moment. Between the audit and
+the deployment the plan can change (a commit, another `-f`), the host can change (a
+port taken), and a report can be carried to the wrong server. `--recheck` resolves
+the plan again exactly as the audit did, asks the engine who it is (`docker info`),
+and compares:
+
+| Compared | Re-run when |
+|---|---|
+| The plan digest (`plan-digest` in `provenance.csv`) — a SHA-256 over the resolved requirements, project name, profiles and started services | The plan resolves to another digest: the report says nothing about this run |
+| The engine ID | Another engine answers (another server, a reinstalled engine), or none does |
+| The report's age | Older than `--max-age`, or finished in the future of this host's clock |
+| The rules version | The report was made with rules this build no longer applies |
+| The report's own time checks | The report's timeline was inconsistent |
+
+It prints one `ok:` or `re-run:` line per comparison on stdout and exits `0` when
+every comparison holds, `4` otherwise. Nothing is collected and nothing is written:
+the report stays the only record, held by whoever ran the audit — the CLI keeps no
+state between runs, and DeployWitness stores no infrastructure data for it. A
+deployment script gates on it:
+
+```bash
+deploy-witness --compose compose.yml --format json --out ./preflight     # review the report
+deploy-witness --recheck ./preflight/report.json --compose compose.yml \
+  && docker compose -f compose.yml up -d
+```
 
 ## Vulnerabilities
 
@@ -292,6 +326,7 @@ Child processes:
 | `1` | The report was written, but at least one section failed outright. |
 | `2` | Bad arguments — including an `--upload`/`--osv-url` address that is not `https://`, a mode conflict, or a `--compose` file that is missing, unreadable or does not parse (no report is written) — or the report could not be written. |
 | `3` | The report was written, but `--upload` could not deliver it — including when the address answered with a redirect, which is never followed. |
+| `4` | `--recheck`: the report does not confirm this plan on this engine now — re-run the preflight before deploying (see [Recheck before deploying](#recheck-before-deploying)). Nothing was written. |
 
 A `partial` section does not change the exit code — a partial section still
 produced usable rows. Read `summary.csv` to see which.

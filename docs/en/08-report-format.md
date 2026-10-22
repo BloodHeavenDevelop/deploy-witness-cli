@@ -2,7 +2,7 @@
 
 ## Files
 
-By default the tool writes one directory containing fourteen files:
+By default the tool writes one directory containing fifteen files:
 
 ```
 audit-<host>-<UTC timestamp>/
@@ -15,6 +15,7 @@ audit-<host>-<UTC timestamp>/
 ├── witness.csv         the findings
 ├── rules.csv             one outcome per rule, finding or not
 ├── plan.csv              the exact Compose run the preflight checked
+├── provenance.csv        build, rules, plan, server, engine, timeline, completeness
 ├── evidence.csv          what each finding rests on
 ├── changes.csv           what deploying will actually do
 ├── rollback.csv          and how to undo it
@@ -25,7 +26,9 @@ audit-<host>-<UTC timestamp>/
 The last five are new in 0.2.0. Four of them belong to the `witness` section;
 `commands.csv` belongs to the run itself and is written on every run, whatever
 `--sections` said. So does `network.csv`, added in the release after 1.2.0.
-`rules.csv` and `plan.csv`, added in the release after 1.4.0, belong to `witness`.
+`rules.csv` and `plan.csv`, added in the release after 1.4.0, belong to `witness`;
+`provenance.csv`, added in the same release, to the run (it is written in a host
+audit too).
 
 **A section that produced no rows still gets a file containing its header row.**
 An absent file is indistinguishable from a section that was never run, and the
@@ -35,7 +38,7 @@ audit ran no commands at all" should be a visible claim, not a missing file.
 
 With `--stdout` the same tables are written to one stream, each preceded by a
 `# <name>` line and separated by a blank line. Spreadsheets and `csvkit` both
-read this; a single flat table cannot hold fourteen different column sets.
+read this; a single flat table cannot hold fifteen different column sets.
 
 With `--format json` one `report.json` is written *instead of* the CSV files. See
 [report.json](#reportjson) below.
@@ -177,6 +180,7 @@ Sorted by port.
 | `Process` | Process name |
 | `User` | Owning user, falling back to the numeric UID |
 | `Command` | Command line, truncated at 200 characters |
+| `V6 only` | For a socket on the IPv6 wildcard: `yes` (IPv6 only, `ss` shows `[::]:port`), `no` (dual-stack, `ss` shows `*:port`, also answers IPv4), empty when not established (appended in the release after 1.4.0) |
 
 Sort by `Exposure` to get the network-facing surface first. A `PID` of `0` means
 the process could not be read, not that no process owns the socket — run as root
@@ -245,7 +249,7 @@ In `summary.csv` the `witness` row reuses the two counters: `Critical` holds the
 blocker count and `High` the warning count **of proven problems only** — a finding
 whose outcome is `unknown` or `manual-check` is never counted, so a run that could
 not look does not read as one that found. The row's notes end with
-`rule outcomes: 24 rules — N problem (codes); N unknown (codes); …`.
+`rule outcomes: 25 rules — N problem (codes); N unknown (codes); …`.
 
 ## rules.csv
 
@@ -287,8 +291,35 @@ audit. See [04 — The planned run](04-cli-reference.md#the-planned-run).
 | `note` | What the resolution could not reproduce |
 
 The `witness` notes carry the same in one line (`plan: project shop (from
---project-name), 2 Compose file(s), …`), so the upload's `witness` collector has it
-too.
+--project-name), 2 Compose file(s), …`) for a person reading `summary.csv`. The
+upload carries the plan as a field of its own (`plan`, see
+[report.json](#reportjson)); the note is no longer its only carrier.
+
+## provenance.csv
+
+What every conclusion of the report rests on, as `Key`,`Value` rows. Written on every
+run; in a host audit the plan rows are empty.
+
+| Key | Value |
+|---|---|
+| `tool`, `rules-version` | The build, and the rule set (`witness.RulesVersion`), which changes whenever a rule's logic does — independently of the tool version |
+| `host`, `server-fingerprint` | The host name, and the salted hash of `/etc/machine-id` the upload carries |
+| `engine`, `engine-id`, `compose` | The engine and its `docker info` ID, the Compose implementation |
+| `engine-fingerprint` | The salted hash of the engine ID, computed like `server-fingerprint` — the only form of the engine's identity the upload carries |
+| `plan-source`, `plan-digest` | The plan's resolver and its digest — what `--recheck` compares |
+| `started-at`, `plan-resolved-at`, `observed-from`, `observed-until`, `compared-at`, `finished-at` | The run's timeline, RFC 3339 UTC |
+| `clock-synchronized` | `yes`, `no` or `unknown` (timedatectl `NTPSynchronized`) |
+| `engine-clock-skew` | The engine's clock minus this host's, measured when `docker info` answered |
+| `completeness` | `N of M sources read in full; partial: …; failed: …` |
+| `recheck-after` | `finished-at` + 1 h: past it, `--recheck` (or a new audit) before deploying — see [04](04-cli-reference.md#recheck-before-deploying) |
+| `observation` | One row per source: `<source>: <state> at <time> — <how it was read>` |
+| `time-check` | `consistent`, or one row per inconsistency: the clock going backwards, an observation or evidence timed outside the run, an unsynchronised clock, an engine clock more than 5 s off, observations more than 10 min apart |
+
+The `witness` notes carry it in one line (`provenance: deploy-witness 1.5.0, rules
+2; engine docker 29.7.2 (id …); …`) and each time inconsistency as a `time:` note,
+for a person reading `summary.csv`. The upload carries it as a field of its own
+(`provenance`, with the observations); in the upload the engine ID in those notes is
+replaced by its fingerprint.
 
 ## evidence.csv
 
@@ -304,7 +335,9 @@ that the reader can check them.
 | `Command` | What to run to see the same thing: a command from the published allowlist, or a path on disk, or the manifest and the service (`docker-compose.yml (service db)`) |
 | `Output` | What was observed, rendered compactly from the parsed values |
 | `Truncated` | `true` when the capture was cut at 1500 characters. A shortened capture that does not admit it invites the reader to conclude too much from it |
-| `Captured at` | RFC 3339 UTC: the moment the witness section compared the manifest with what it had collected. It is later than the run's `Checked at` in `summary.csv` (the start of the run) by however long the collection took, and earlier than the log's `wrote …` line. All three belong to the same run |
+| `Captured at` | RFC 3339 UTC: **when what `Output` shows was observed** — the moment its source was read on the host (`provenance.csv`, `observation` rows), or, for the manifest, the moment the plan was resolved. Not the moment the rules compared (that is `compared-at`). Between the run's `started-at` and `finished-at`; one that is not is a time check in `provenance.csv` (since the release after 1.4.0 — before it, every row carried the comparison time) |
+| `Origin` | `plan` (the resolved Compose model), `host` (the machine and its engine) or `rule` (what a rule established about the run, such as a check it could not make). The evidence is the observation; the finding's `Description` is the interpretation (appended in the release after 1.4.0) |
+| `Source` | The observation source the evidence came from — `containers`, `volumes`, `networks`, `network-subnets`, `images`, `sockets`, `arch`, `memory`, `filesystems`, `proxy` — or empty (appended in the release after 1.4.0) |
 
 **A finding with no evidence is never published.** The engine discards it and
 counts the discard in the section's notes, as a bug in `deploy-witness` rather than
@@ -325,11 +358,14 @@ be updated" is worth nothing to the person who has to answer for it.
 
 | Kind | Rows it produces |
 |---|---|
-| `container` | One per service, plus one per non-external network the manifest declares. A service's row says one of: `created from <image>`; `replaced (currently <state>, image <image>) with <image>` — only for a container of **this** Compose project; `not created: a container named <name> already exists … and does not belong to this deployment` — another project's container, or one created by hand (running or not), on which `docker compose up` fails (`witness.container_name_conflict`); `created from <image>, but it cannot start: host port <port> is already held` (`witness.port_conflict`); or, with the engine unreachable, `created … unless a container named <name> already exists — … could not be checked` |
+| `container` | One per service, plus one per non-external network the manifest declares. A service's row says one of: `created from <image>`; `replaced (currently <state>, image <image>) with <image> — recreated: its configuration changed (config hash …)` or `kept: its configuration is unchanged` — only for a container of **this** deployment, decided as Compose decides, by the configuration hash (`--force-recreate`/`--no-recreate` respected); `taken over: it carries this project's name but was deployed from <dir>` — another checkout (`witness.project_ownership`); `not created: a container named <name> already exists … and does not belong to this deployment` — another project's container, or one created by hand (running or not), on which `docker compose up` fails (`witness.container_name_conflict`); `created from <image>, but it cannot start: host port <port> is already held` (`witness.port_conflict`); or, with the engine unreachable, `created … unless a container named <name> already exists — … could not be checked` |
 | `command` | An image that has to be pulled, with the registry it comes from; or a service that is built locally, with its build context |
-| `firewall-port` | One per published host port, with how far it will be reachable — a port published without a host IP is on every interface, which is the part people do not expect. When something else already holds the binding the row says `not opened: … already held by …`, and when that could not be decided it adds `if the binding is free, which could not be established` — the same matching as `witness.port_conflict`. Without the `ports` section it adds `if the binding is free, which was not checked` |
+| `firewall-port` | One per published host port, with how far it will be reachable — a port published without a host IP is on every interface, which is the part people do not expect. When something else already holds the binding the row says `not opened: … already held by …`, and when that could not be decided it adds `if the binding is free, which could not be established` — the same matching as `witness.port_conflict`. Without the `ports` section it adds `if the binding is free, which was not checked`. A host range to one container port is one row, `8000-8010/tcp`: `one port of 8000-8010, the first the engine finds free … (N free, N held, N undecided)`, or `not opened` when every port is held. A publish with no host port is `ephemeral/<protocol>`. A `network_mode: host` service gets `bound directly by <service> on the host network` per declared port |
 | `file` | Every bind mount (with read/write or read only) and every named volume |
 | `disk-space` | Space available on the filesystem holding the container store, and how many images still have to be pulled |
+| `file` (bind) | The resolved source path: `bind-mounted into <service> at <target> (read/write\|read only)`, then what the host shows (`directory, mode 0755, owner 0:0`, or `it does not exist, so the engine creates it as an empty directory owned by root`), and always `access for the container user (<user>) not verified — ACLs, user namespaces and SELinux are not read`, plus `options not evaluated: …` when the plan sets any |
+| `file` (volume) | `volume <engine name>`: `created empty by Compose`, `reused: it exists and was created by this project, with its data`, `reused with its data although it was not created by Compose for this project`, `external, exists`, or `external and missing, so docker compose up fails` — then where it is mounted. A `network <engine name>` row (`container`) says `created`, `reused …`, `joined (external, exists)` or `not joined …` the same way |
+| `container` (existing) | One per existing container the plan affects without naming it: an orphan of the project (`left running …` or `removed (--remove-orphans)`), another checkout's container (`taken over …`), this directory under another project name or a one-off run (`left as it is …`) |
 
 The disk row is deliberately incomplete and says so: how much the missing images
 need cannot be known without contacting a registry, which this audit does not do.
@@ -432,8 +468,8 @@ the naming is the point:
 | Key | Contents | Leaves the machine? |
 |---|---|---|
 | `schemaVersion` | The contract version of the `upload` half. A receiver checks it first, so an agent built months ago is told its report is not understood rather than having it half-read | — |
-| `upload` | The shared `bloodheaven.audit.v1` contract, rendered as protojson: `findings` with their evidence, `collectors` (the section outcomes), `changes`, `rollback`, `command_journal`, plus `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` and `producer` | **Yes** — these are the exact bytes `--upload` sends |
-| `audit` | Everything that stays local: the run's `mode` (`host-audit` or `compose-preflight`), the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities (with `observations`: how completely each source — containers, volumes, sockets, memory… — was read), the network record (`network`, as in `network.csv`), the same findings in this tool's own shape (each with its `outcome`), `rules`, as in `rules.csv`, and `plan`, as in `plan.csv` | No |
+| `upload` | The shared `bloodheaven.audit.v1` contract, rendered as protojson: `findings` with their evidence and `outcome`, `collectors` (the section outcomes), `changes`, `rollback`, `command_journal`, `rule_results` (one per rule), `plan` (preflight only), `provenance` (with `observations`), plus `level`, `server_fingerprint`, `server_hostname`, `generated_at`, `stale_after` and `producer` | **Yes** — these are the exact bytes `--upload` sends |
+| `audit` | Everything that stays local: the run's `mode` (`host-audit` or `compose-preflight`), the host inventory, the pending updates, the CVE list, the parsed manifest, the observed capabilities (with `observations`: how completely each source — containers, volumes, sockets, memory… — was read), the network record (`network`, as in `network.csv`), the same findings in this tool's own shape (each with its `outcome`, evidence with `origin` and `source`), `rules`, as in `rules.csv`, `plan`, as in `plan.csv`, and `provenance`, as in `provenance.csv` | No |
 
 A client can read the file, see which half would leave their machine, and diff it
 against what actually arrives. That is a good deal more convincing than a promise
@@ -474,13 +510,35 @@ Details worth knowing:
   applicable` note stays in `audit.sections` of `report.json`; carrying the mode or a
   `NOT_APPLICABLE` status in the contract itself needs a change in the `contracts`
   repository.
-- **The contract has no outcome field.** A finding goes out with its severity,
-  and the receiver cannot tell a proven problem from a question this run could not
-  settle by the finding alone. Two things carry it until the contract does: the
-  `witness` collector's `note` ends with `rule outcomes: 24 rules — N problem
-  (codes); N unknown (codes); …`, and an undecided finding's title says so ("…
-  could not be established", "… could not be decided", "… needs a manual check").
-  Carrying `outcome` on each finding needs a change in the `contracts` repository.
+- **Every finding states its `outcome`, and every rule has a `rule_results` entry**
+  (contracts v0.15.0): `OUTCOME_PROBLEM`, `OUTCOME_NO_PROBLEM`, `OUTCOME_UNKNOWN`,
+  `OUTCOME_MANUAL_CHECK` or `OUTCOME_NOT_APPLICABLE` — the five values of
+  `rules.csv`. Only `OUTCOME_PROBLEM` is a detected problem; an unknown is a
+  question the run could not settle. A finding that states no outcome goes out as
+  `OUTCOME_UNSPECIFIED` and is read by its severity, never guessed into a problem.
+  The `witness` collector's `note` still ends with `rule outcomes: 25 rules — N
+  problem (codes); N unknown (codes); …`, and an undecided finding's title still
+  says so — for a person reading them, no longer as the only carrier.
+- **`plan` is the launch plan the preflight checked**, as in `plan.csv`, with two
+  things left out: the engine's endpoint (`engine_context` and `engine_local` name
+  the engine instead) and the per-service configuration hashes. A host audit
+  checked no plan and leaves `plan` unset. No variable value is in it — the plan
+  carries names only, and env files appear as paths and SHA-256 digests.
+- **`provenance` is `provenance.csv` with the observations**, each with its
+  `OBSERVATION_STATE_*` and time. Host name and server fingerprint are not repeated
+  there (they are `server_hostname`/`server_fingerprint`).
+- **The engine is named by `engine_fingerprint`, never by its ID.** Like
+  `server_fingerprint` it is a salted SHA-256 — of the `docker info` ID, the same
+  scheme and salt. The rules write the raw ID into evidence to tell two engines'
+  answers apart, and the provenance note names it; before the upload is rendered
+  every string of the document is swept and the raw ID replaced by the
+  fingerprint, so the receiver can still match those lines against
+  `engine_fingerprint`. The local half (`audit`, the CSV files) keeps the raw ID
+  beside the fingerprint, for matching against `docker info` by hand.
+- **`schema_version` stays `1.0`.** The new fields are additive: the receiver
+  decodes with unknown fields discarded and checks the version for equality, so an
+  older receiver reads a new report as before and a newer one reads an older
+  report by its severities.
 - **The package inventory, the pending updates and the CVE list are not in
   `upload`.** The contract is a findings document, and sending them would be
   volunteering a full software inventory of somebody's production host to a

@@ -1,0 +1,14 @@
+id: port_conflict/no-problem-other-address
+rule: witness.port_conflict
+situation: no-problem
+description: >-
+  The unrelated container publishes 127.0.0.1:18080; the plan publishes 127.0.0.2:18080 — addresses that do not overlap.
+critical: true
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

@@ -54,8 +54,8 @@ func tables(r *model.Report) []table {
 		},
 		{
 			name:    string(model.SectionPorts),
-			headers: []string{"Protocol", "Address", "Port", "Exposure", "State", "PID", "Process", "User", "Command"},
-			paths:   []string{"protocol", "address", "port", "exposure", "state", "pid", "process", "user", "command"},
+			headers: []string{"Protocol", "Address", "Port", "Exposure", "State", "PID", "Process", "User", "Command", "V6 only"},
+			paths:   []string{"protocol", "address", "port", "exposure", "state", "pid", "process", "user", "command", "v6Only"},
 			rows:    anySlice(r.Ports),
 		},
 		{
@@ -85,8 +85,8 @@ func tables(r *model.Report) []table {
 			// cell: a finding may have several pieces, each with a multi-line capture,
 			// and the whole promise is that the reader can check them.
 			name:    "evidence",
-			headers: []string{"Code", "Subject", "Command", "Output", "Truncated", "Captured at"},
-			paths:   []string{"code", "subject", "command", "output", "truncated", "capturedAt"},
+			headers: []string{"Code", "Subject", "Command", "Output", "Truncated", "Captured at", "Origin", "Source"},
+			paths:   []string{"code", "subject", "command", "output", "truncated", "capturedAt", "origin", "source"},
 			rows:    anySlice(evidenceRows(r)),
 		},
 		{
@@ -96,6 +96,14 @@ func tables(r *model.Report) []table {
 			headers: []string{"Key", "Value"},
 			paths:   []string{"key", "value"},
 			rows:    anySlice(planRows(r.Plan)),
+		},
+		{
+			// What every conclusion rests on: build, rules, plan, server, engine, the
+			// run's timeline and how completely each source was read.
+			name:    "provenance",
+			headers: []string{"Key", "Value"},
+			paths:   []string{"key", "value"},
+			rows:    anySlice(provenanceRows(r.Provenance, r.Capabilities)),
 		},
 		{
 			name:    "changes",
@@ -172,6 +180,8 @@ type evidenceRow struct {
 	Output     string `json:"output"`
 	Truncated  bool   `json:"truncated"`
 	CapturedAt string `json:"capturedAt"`
+	Origin     string `json:"origin"`
+	Source     string `json:"source"`
 }
 
 func evidenceRows(r *model.Report) []evidenceRow {
@@ -181,6 +191,7 @@ func evidenceRows(r *model.Report) []evidenceRow {
 			out = append(out, evidenceRow{
 				Code: f.Code, Subject: f.Subject, Command: e.Command,
 				Output: e.Output, Truncated: e.Truncated, CapturedAt: e.CapturedAt,
+				Origin: e.Origin, Source: e.Source,
 			})
 		}
 	}
@@ -335,6 +346,49 @@ func planRows(plan *model.LaunchPlan) []planRow {
 	add("engine-version", plan.Engine.Version)
 	for _, note := range plan.Notes {
 		add("note", note)
+	}
+	return rows
+}
+
+// provenanceRows renders the provenance as key/value rows, with one row per
+// observation source and one per time check.
+func provenanceRows(p *model.Provenance, caps *model.Capabilities) []planRow {
+	if p == nil {
+		return nil
+	}
+	rows := []planRow{
+		{"tool", p.Tool + " " + p.ToolVersion},
+		{"rules-version", p.RulesVersion},
+		{"host", p.Host},
+		{"server-fingerprint", p.ServerFingerprint},
+		{"engine", p.Engine},
+		{"engine-id", p.EngineID},
+		{"engine-fingerprint", p.EngineFingerprint},
+		{"compose", p.Compose},
+		{"plan-source", p.PlanSource},
+		{"plan-digest", p.PlanDigest},
+		{"started-at", p.StartedAt},
+		{"plan-resolved-at", p.PlanResolvedAt},
+		{"observed-from", p.ObservedFrom},
+		{"observed-until", p.ObservedUntil},
+		{"compared-at", p.ComparedAt},
+		{"finished-at", p.FinishedAt},
+		{"clock-synchronized", p.ClockSynchronized},
+		{"engine-clock-skew", p.EngineClockSkew},
+		{"completeness", p.Completeness},
+		{"recheck-after", p.RecheckAfter},
+	}
+	if caps != nil {
+		for _, o := range caps.Observations {
+			rows = append(rows, planRow{"observation", fmt.Sprintf("%s: %s at %s — %s", o.Source, o.State,
+				o.ObservedAt, o.Note)})
+		}
+	}
+	if len(p.TimeChecks) == 0 {
+		rows = append(rows, planRow{"time-check", "consistent"})
+	}
+	for _, check := range p.TimeChecks {
+		rows = append(rows, planRow{"time-check", check})
 	}
 	return rows
 }

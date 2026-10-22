@@ -7,7 +7,162 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-20
+
 ### Added
+
+- **The upload states outcomes, the plan and the provenance in fields of their own**
+  (DW-94, [app/report/contract.go](app/report/contract.go),
+  `docs/<lang>/08-report-format.md`). `app/contract/auditv1` is refreshed to
+  contracts v0.15.0 through `make sync-shared` (`CONTRACTS_VERSION` bumped; still a
+  verbatim copy, `go.mod` unchanged). Every finding carries its `outcome`
+  (`OUTCOME_PROBLEM` … `OUTCOME_NOT_APPLICABLE`; a finding without one goes out as
+  `OUTCOME_UNSPECIFIED`, never guessed into a problem); `rule_results` has one entry
+  per rule; `plan` is the launch plan a preflight checked — `engine_context` and
+  `engine_local`, never the engine's endpoint, no per-service config hashes, no
+  variable value — and stays unset in a host audit; `provenance` carries the
+  timeline, completeness and every observation with its `OBSERVATION_STATE_*`.
+  `schema_version` stays `1.0`: the fields are additive both ways. The
+  `rule outcomes:`, `plan:`, `provenance:` and `time:` lines stay in the witness notes
+  for a human reader, but are no longer the only carrier.
+
+- **The engine is identified by a fingerprint** (DW-94,
+  [app/model/fingerprint.go](app/model/fingerprint.go)): `engine_fingerprint` is a
+  salted SHA-256 of the `docker info` ID, the same scheme and salt as
+  `server_fingerprint`. The raw ID never reaches the upload: the evidence lines and
+  the provenance note that name it have it replaced by the fingerprint across every
+  string of the document. Locally the ID stays, with `engineFingerprint` beside it in
+  `report.json` and an `engine-fingerprint` row in `provenance.csv`, so a reader can
+  match the upload against `docker info`.
+
+## [1.5.0] - 2026-10-19
+
+### Added
+
+- **Pilot errors become permanent tests** (DW-90, `docs/<lang>/13-pilot-regressions.md`):
+  a confirmed false alarm, miss or unjustified unknown goes error → cause → scenario
+  on artificial data → expected outcome → fix → permanent test, as a case under
+  `app/witness/testdata/regressions/<task>-<slug>/` (`case.yaml` + `input.json` in the
+  report's own manifest/capabilities shapes). `TestPilotRegressions` runs every case
+  in `make test` — so before every release — and names the defect that came back;
+  pilot cases record the minutes their manual recheck took.
+  `TestRegressionArchiveHoldsNoClientData` refuses a case with anything the
+  credential sweep masks, a public IP, a non-reserved domain, an e-mail address, or an
+  engine/machine/image id. `make regression NAME=<task>-<slug>` starts one from the
+  template. Seeded with the seven defects fixed so far (DW-24, DW-52, DW-79, DW-80,
+  DW-81, DW-83, DW-87); each was checked to fail with its fix reverted. Seven bench
+  scenarios carry the same tasks as `regression:`, which the release gate blocks on.
+
+- **Quality measurement and release criteria** (DW-84, [bench/score](bench/score/score.go),
+  `docs/<lang>/12-quality-and-release.md`): `make bench-score` gives every rule its
+  detected problems, misses, false findings, unknowns and situation coverage from a
+  bench run, compared scenario by scenario with the committed baseline
+  (`bench/baseline/results.json`); unknown is never a detection — it counts against
+  the detection rate. `make release-gate` blocks a release on a bench error, an audit
+  side effect, broken ground truth, a failing critical or regression scenario, a
+  scenario that passed in the baseline and fails now, or a baseline scenario missing
+  from the run. The released 1.4.0, graded on the same 46 scenarios
+  (`bench/history/1.4.0.json`): 25/46 as specified, detection 76%, false findings
+  32%; this tree: 46/46, 100%, 0%, gate PASS. The bench grades a CLI that predates
+  rule outcomes by its severities, so versions stay comparable.
+
+- **A reproducible test bench** (DW-83): `make bench` stages every scenario under
+  `bench/scenarios` in one disposable Docker-in-Docker container (pinned
+  `docker:27.5.1-dind` — Engine 27.5.1, Compose 2.33.0 — `--network none`, images
+  loaded from this machine, nothing pulled), runs the audit (the prediction), then
+  the planned `docker compose up` (the actual behaviour), and writes
+  `bench/out/<timestamp>/results.json` and `results.csv`: per scenario the input,
+  the expected outcome, the CLI's prediction, Docker's exit, output and whether its
+  containers stayed up, and two verdicts. Bench failures and anything the audit
+  itself changed in the engine or the scenario directory are recorded apart. 46
+  scenarios over 15 rules — problem, a similar situation without it, and
+  insufficient data (an unprivileged audit) for each engine-dependent rule
+  ([bench/dwbench](bench/dwbench/main.go), `docs/<lang>/11-test-bench.md`). First full
+  run: prediction as specified 46/46, Docker as expected 36/36 (10 advisory), no
+  bench error, no side effect.
+
+- **Bind mount sources examined on the host** (DW-88,
+  [app/collect/host/binds.go](app/collect/host/binds.go),
+  [app/witness/binds.go](app/witness/binds.go)): every source is resolved as Compose
+  resolves it (relative to the project directory, `~` to the home directory — the
+  built-in parser warns that it can only use the audit account's) and examined by
+  `lstat`/`stat` alone — nothing is created, opened or read. `bind_path_conflict`
+  now also states a missing source with `create_host_path: false` (blocker), a
+  read/write mount on a read-only filesystem (warning), and as `unknown`: a source
+  this account could not stat (never "missing"), a dangling symlink, a missing
+  source whose creation depends on the Compose version, a missing file-like source
+  the engine would create as a directory, and mode bits that refuse the container
+  user. The container user is the service's `user:`, else the image's `Config.User`
+  (now read by `image inspect`), else unknown; access is never claimed proven —
+  every bind row of `changes.csv` says it is not verified (ACLs, user namespaces,
+  SELinux are not read) and lists the options not evaluated (`z`, `Z`, propagation,
+  consistency). `VolumeMount` gains `declared`, `createHostPath`, `options`;
+  `capabilities.bindSources` records what each stat showed.
+
+- **Volumes and networks matched by their names in the engine** (DW-87): `name:`,
+  the key of an external resource (or `external: {name: …}`), `<project>_<key>` for
+  what Compose creates — as `docker compose config` resolves it, and by
+  `manifest.ResolveEngineNames` for the built-in parser. A volume or network Compose
+  would create and that already exists without this project's label is now a warning
+  (Compose warns and reuses it, data included) instead of passing unnoticed; one not
+  there yet is a planned creation in `changes.csv`, never a conflict; only volumes a
+  planned service mounts are checked. Presence is kept apart from usability: a
+  swarm network that is not attachable is a blocker, one whose attachability was not
+  read is `unknown`. Every volume/network observation names the engine it came from
+  (`engine <ID>, <name>`). `docker network inspect` now asks for the whole network
+  object (`{{json .}}`) to read `Attachable`; `network ls` contributes the scope.
+
+- **Port conflicts decided from the binding, not the number** (DW-86): whether an
+  IPv6 wildcard socket also answers IPv4 is now read per socket from `ss` (`*:port`
+  dual-stack, `[::]:port` IPv6-only) into a new appended `V6 only` column of
+  `ports.csv`, and whether the host has IPv6 (`/proc/sys/net/ipv6`) decides whether a
+  publish without `host_ip` also lands on `[::]` — both used to be `unknown` on
+  every host. A host range to one container port (`8000-8010:80`) binds one free
+  port of it and is a conflict only when all are held; a publish with no host port is
+  ephemeral and never collides; `network_mode: host` services are checked on their
+  declared ports, with the application's choice of address kept undecided; built-in
+  parsing keeps the container end of a range (`ContainerPortEnd`) so `8000-8001:8000-8001`
+  and `8000-8001:80` are no longer read alike. `changes.csv` follows (`ephemeral/tcp`,
+  one row per dynamic range, host-network rows). Verified on Docker 29.7.2: a
+  dual-stack listener blocks `0.0.0.0:<port>` exactly as predicted, an IPv6-only one
+  does not.
+
+- **Container ownership and the replacement plan** (DW-85,
+  [app/witness/ownership.go](app/witness/ownership.go)): every existing container is
+  classified from the Compose labels it carries (`project`, `service`,
+  `project.working_dir`, `project.config_files`, `oneoff`, `config-hash`) against the
+  planned run — this deployment (kept when its config hash equals the plan's from
+  `docker compose config --hash`, recreated otherwise), an orphan, a one-off run,
+  another checkout using the same project name, this directory under another project
+  name, another project, unmanaged, or unknown (no labels). New rule
+  `witness.project_ownership` (25 rules) states another checkout (`problem`), an older
+  project name and orphans left running (`manual-check`) and unlabelled containers
+  (`unknown`). `port_conflict`, `container_name_conflict` and the `container` rows of
+  `changes.csv` follow the same classification, so an update is never a conflict with
+  itself and a port held by an orphan, a one-off run or the previous project name is.
+- **`--remove-orphans`, `--force-recreate`, `--no-recreate`** (DW-85) describe the
+  planned `docker compose up`; allowlist `docker compose <options> config --hash *`
+  (73 commands).
+
+- **Evidence provenance** (DW-82): every report carries `provenance.csv` /
+  `audit.provenance` — tool and rules version (`witness.RulesVersion`, `2`), host and
+  server fingerprint, engine and its `docker info` ID, Compose, the plan's resolver
+  and digest, the run's timeline (started, plan resolved, observed from/until,
+  compared, finished), NTP state, the engine's clock skew, completeness per source,
+  and `recheck-after`. The timeline is checked: a clock going backwards, an
+  observation or evidence timed outside the run, an unsynchronised clock, an engine
+  clock more than 5 s off and observations more than 10 min apart are each a
+  `time-check` row and a `time:` note. The `witness` notes carry a `provenance: …`
+  line, so the upload has it too.
+- **Evidence separates observation from interpretation** (DW-82): `evidence.csv`
+  gains `Origin` (`plan`, `host`, `rule`) and `Source` (the observation source), and
+  `Captured at` is now the moment the source was read or the plan resolved — no longer
+  the comparison time for every row ([app/witness/preflight.go](app/witness/preflight.go)).
+- **`--recheck <report.json>`** (DW-82, [app/audit/recheck.go](app/audit/recheck.go)):
+  before deploying, confirm that a report still describes this plan (plan digest),
+  on this engine (engine ID), within `--max-age` (default 1 h), under the same rules
+  and with a consistent timeline. Prints `ok:`/`re-run:` lines, exits `0` or the new
+  `4`; collects and writes nothing. A changed plan is never confirmed by an old report.
 
 - **A Compose preflight checks the exact planned run** (DW-81): `--compose` is
   repeatable (merge order kept), plus `--env-file`, `--profile`, `--project-name`,
@@ -70,6 +225,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   The `preflight` row adds `result: …` — counts per outcome — after its status.
 
 ### Fixed
+
+- **Found by the bench** (DW-83): a hand-made external network (no project label)
+  is no longer "shared with another stack"; `create_host_path` in Compose's resolved
+  model is decoded by the Compose version that printed it — 2.x omits `false`, 5.x
+  omits `true` — so a missing source with `create_host_path: false` is a blocker on
+  Compose 2.x too.
+- **An external volume created by hand is not "somebody else's data"** (DW-87): a
+  volume with no project label is what `external: true` is for; only one carrying
+  another project's label is a warning.
+- **A multi-file Compose project's labels are read whole** (DW-85): docker packs
+  labels as `k=v,k=v`, and `config_files` of a two-file project contains a comma; the
+  rest of the value was read as a label of its own.
 
 - **A docker context pointing at a remote engine no longer makes a host audit
   connect to it** (DW-81): the context is read and every docker command is pinned to
