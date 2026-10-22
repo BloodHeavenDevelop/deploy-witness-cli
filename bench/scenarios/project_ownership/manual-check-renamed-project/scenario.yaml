@@ -1,0 +1,13 @@
+id: project_ownership/manual-check-renamed-project
+rule: witness.project_ownership
+situation: manual-check
+description: >-
+  This directory is already deployed under the project name "oldname"; the plan deploys it as "bench".
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: manual-check
+docker:
+  outcome: advisory

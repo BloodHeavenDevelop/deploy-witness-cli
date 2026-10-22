@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 // This file holds the three vocabularies the witness section is built from, and
 // they are deliberately separate:
 //
@@ -23,8 +25,12 @@ package model
 
 // Manifest is one parsed docker-compose file: the requirements side of witness.
 type Manifest struct {
-	// Path is where the file was read from, as given on the command line.
+	// Path is where the file was read from, as given on the command line — the
+	// first file when the plan merges several.
 	Path string `json:"path"`
+	// Name is the project name the file declares with a top-level `name:`, or the
+	// one Compose resolved.
+	Name string `json:"name"`
 	// Version is the `version:` key when the file still declares one. Absent is
 	// normal for Compose V2 and is not a problem.
 	Version  string            `json:"version"`
@@ -36,6 +42,133 @@ type Manifest struct {
 	// guess at. They surface in the report, because a requirement that was not
 	// understood is not a requirement that was met.
 	Warnings []string `json:"warnings"`
+}
+
+// LaunchPlan is the exact run a Compose preflight checks: the `docker compose`
+// invocation the engineer is about to make, the model Compose resolves from it, and
+// the engine it would be sent to. A preflight of a different file order, a missing
+// profile or another engine is a preflight of a different deployment.
+type LaunchPlan struct {
+	// Files are the Compose files in the order they are merged (`-f`).
+	Files []string `json:"files"`
+	// ProjectDirectory is where relative paths and the default `.env` resolve.
+	ProjectDirectory string `json:"projectDirectory"`
+	// ProjectName is the name Compose will use, and ProjectNameSource where it came
+	// from: --project-name, COMPOSE_PROJECT_NAME, the files' `name:`, or the
+	// project directory.
+	ProjectName       string   `json:"projectName"`
+	ProjectNameSource string   `json:"projectNameSource"`
+	EnvFiles          []string `json:"envFiles"`
+	Profiles          []string `json:"profiles"`
+	// Services are the services named on the planned command line; empty means
+	// every service of the active profiles. Started is what that starts: the named
+	// services and everything they depend on.
+	Services []string `json:"services"`
+	Started  []string `json:"started"`
+	// Resolver is how the model was obtained: "docker compose config" (Compose's
+	// own resolution) or "built-in parser" (an approximation, when Compose is not
+	// available here). ResolverVersion is the Compose version that resolved it.
+	Resolver        string `json:"resolver"`
+	ResolverVersion string `json:"resolverVersion"`
+	// Environment names the variables present in this run's environment that change
+	// what Compose resolves (COMPOSE_*, DOCKER_HOST, DOCKER_CONTEXT). Names only —
+	// a value is never read into the report.
+	Environment []string `json:"environment"`
+	// Engine is the engine the planned run would reach, and whether it is the one
+	// this audit inspected.
+	Engine EngineTarget `json:"engine"`
+	// Digest identifies the resolved plan: a SHA-256 over the requirements the
+	// rules compare (the resolved manifest, project name, profiles, services). A
+	// report proves nothing about a plan with another digest. FileDigests are the
+	// SHA-256 of each Compose and env file's bytes, for the reader; an env file's
+	// hash says it changed, never what it holds.
+	Digest      string       `json:"digest"`
+	FileDigests []FileDigest `json:"fileDigests"`
+	// ResolvedAt is when the plan was resolved, RFC 3339 UTC.
+	ResolvedAt string `json:"resolvedAt"`
+	// ConfigHashes is each service's configuration hash as Compose computes it
+	// (`docker compose config --hash`): equal to an existing container's label, the
+	// container is kept; different, it is recreated.
+	ConfigHashes map[string]string `json:"configHashes"`
+	// The `docker compose up` options the planned run uses, which change what
+	// happens to the containers already there.
+	RemoveOrphans bool `json:"removeOrphans"`
+	ForceRecreate bool `json:"forceRecreate"`
+	NoRecreate    bool `json:"noRecreate"`
+	// Notes say what the resolution could not reproduce.
+	Notes []string `json:"notes"`
+}
+
+// FileDigest is the SHA-256 of one file of the plan.
+type FileDigest struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+}
+
+// Provenance is what every conclusion of a report rests on: which build and which
+// rules produced it, from which plan, on which server and engine, when each source
+// was read, and how completely. DeployWitness keeps none of it between runs — it is
+// in the report, which stays with whoever ran the audit.
+type Provenance struct {
+	Tool         string `json:"tool"`
+	ToolVersion  string `json:"toolVersion"`
+	RulesVersion string `json:"rulesVersion"`
+	// Host is the host name; ServerFingerprint the salted hash of /etc/machine-id
+	// the upload also carries.
+	Host              string `json:"host"`
+	ServerFingerprint string `json:"serverFingerprint"`
+	Engine            string `json:"engine"`
+	// EngineID is the engine's own ID from `docker info`, for matching against the
+	// engine by hand; EngineFingerprint its salted hash (see EngineFingerprint),
+	// which is all the upload carries.
+	EngineID          string `json:"engineId"`
+	EngineFingerprint string `json:"engineFingerprint"`
+	Compose           string `json:"compose"`
+	// PlanSource and PlanDigest are the plan's resolver and digest (empty in a
+	// host audit).
+	PlanSource string `json:"planSource"`
+	PlanDigest string `json:"planDigest"`
+	// The run's timeline, RFC 3339 UTC: started, plan resolved, the earliest and
+	// latest observation of the host, rules compared, finished.
+	StartedAt      string `json:"startedAt"`
+	PlanResolvedAt string `json:"planResolvedAt"`
+	ObservedFrom   string `json:"observedFrom"`
+	ObservedUntil  string `json:"observedUntil"`
+	ComparedAt     string `json:"comparedAt"`
+	FinishedAt     string `json:"finishedAt"`
+	// ClockSynchronized is yes, no or unknown (timedatectl NTPSynchronized);
+	// EngineClockSkew the engine's clock minus this host's.
+	ClockSynchronized string `json:"clockSynchronized"`
+	EngineClockSkew   string `json:"engineClockSkew"`
+	// TimeChecks lists every inconsistency in the timeline; empty when consistent.
+	TimeChecks []string `json:"timeChecks"`
+	// Completeness summarises the observations: how many sources were read in full.
+	Completeness string `json:"completeness"`
+	// RecheckAfter is when this report stops confirming the plan: past it, re-run
+	// `deploy-witness --recheck` (or the audit) before deploying.
+	RecheckAfter string `json:"recheckAfter"`
+}
+
+// Plan resolvers.
+const (
+	ResolverCompose = "docker compose config"
+	ResolverBuiltin = "built-in parser"
+)
+
+// EngineTarget ties the plan to one container engine.
+type EngineTarget struct {
+	// Context is the active docker context of the CLI that would run the
+	// deployment, and Endpoint its engine address.
+	Context  string `json:"context"`
+	Endpoint string `json:"endpoint"`
+	// Local is true when the endpoint is a unix socket on this host — the only kind
+	// of engine an audit of this host can speak for.
+	Local bool `json:"local"`
+	// ID, Name and Version identify the engine the audit inspected, from
+	// `docker info`. Two hosts with the same container names are told apart by ID.
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 // ManifestService is one service block.
@@ -77,9 +210,12 @@ type ManifestService struct {
 	Devices    []string `json:"devices"`
 	// MountsContainerSocket is true when the service bind-mounts the Docker or
 	// Podman socket, which is equivalent to giving it root on the host.
-	MountsContainerSocket bool     `json:"mountsContainerSocket"`
-	ExtraHosts            []string `json:"extraHosts"`
-	DNS                   []string `json:"dns"`
+	MountsContainerSocket bool `json:"mountsContainerSocket"`
+	// User is the service's `user:` — who the container runs as; "" means the
+	// image's default.
+	User       string   `json:"user"`
+	ExtraHosts []string `json:"extraHosts"`
+	DNS        []string `json:"dns"`
 	// Labels are the service's `labels:`. They are configuration rather than
 	// secrets, and they are the only place a compose file states which domain a
 	// service expects to be reached at — a Traefik router rule or a proxy label. A
@@ -108,8 +244,22 @@ type PortMapping struct {
 	HostPort      int    `json:"hostPort"`
 	HostPortEnd   int    `json:"hostPortEnd"`
 	ContainerPort int    `json:"containerPort"`
-	Protocol      string `json:"protocol"`
+	// ContainerPortEnd is the end of a container range ("8000-8001:8000-8001"), or
+	// 0 for a single container port.
+	ContainerPortEnd int    `json:"containerPortEnd"`
+	Protocol         string `json:"protocol"`
 }
+
+// Dynamic reports a host range published to one container port
+// ("8000-8010:80"): the engine binds one port of the range — the first it finds
+// free — not all of them.
+func (p PortMapping) Dynamic() bool {
+	return p.HostPortEnd > p.HostPort && (p.ContainerPortEnd == 0 || p.ContainerPortEnd == p.ContainerPort)
+}
+
+// Ephemeral reports a publish with no host port ("80", "127.0.0.1::80"): the
+// engine picks a free port from the kernel's ephemeral range.
+func (p PortMapping) Ephemeral() bool { return p.HostPort == 0 && p.ContainerPort > 0 }
 
 // HostPorts expands the mapping into the individual host ports it claims.
 func (p PortMapping) HostPorts() []int {
@@ -137,10 +287,41 @@ const (
 // VolumeMount is one entry from a service's `volumes:`.
 type VolumeMount struct {
 	Kind string `json:"kind"`
-	// Source is a host path for a bind mount and a volume name for a volume.
+	// Source is a host path for a bind mount — absolute, resolved against the
+	// project directory — and a volume name for a volume. Declared is the source as
+	// the plan wrote it, when that differs.
 	Source   string `json:"source"`
+	Declared string `json:"declared,omitempty"`
 	Target   string `json:"target"`
 	ReadOnly bool   `json:"readOnly"`
+	// CreateHostPath is whether the engine creates a missing bind source (as an
+	// empty directory owned by root): true for the short syntax and for Compose's
+	// resolved model unless it says false; nil when it could not be established.
+	CreateHostPath *bool `json:"createHostPath,omitempty"`
+	// Options are the mount options this audit does not evaluate — SELinux
+	// relabelling (z, Z), propagation, consistency — reported as not checked.
+	Options []string `json:"options,omitempty"`
+}
+
+// PathInfo is what the host shows about one bind mount source, by stat alone:
+// nothing is created, opened or read.
+type PathInfo struct {
+	Path string `json:"path"`
+	// State is "exists", "missing" or "unknown" (the stat itself failed).
+	State string `json:"state"`
+	// Type is "directory", "file", "socket", "device", "fifo" or "other" — of the
+	// symlink's target when Path is one.
+	Type string `json:"type"`
+	// SymlinkTarget is where Path points when it is a symlink; Dangling is set
+	// when that target does not exist.
+	SymlinkTarget string `json:"symlinkTarget,omitempty"`
+	Dangling      bool   `json:"dangling,omitempty"`
+	Mode          string `json:"mode"`
+	UID           int    `json:"uid"`
+	GID           int    `json:"gid"`
+	// ReadOnlyFS is true when the filesystem holding Path is mounted read-only.
+	ReadOnlyFS bool   `json:"readOnlyFs"`
+	Error      string `json:"error,omitempty"`
 }
 
 // EnvFileRef is a referenced env_file and whether it is actually there. The
@@ -148,13 +329,21 @@ type VolumeMount struct {
 type EnvFileRef struct {
 	Path   string `json:"path"`
 	Exists bool   `json:"exists"`
+	// Optional is `required: false`: Compose skips a missing file instead of failing.
+	Optional bool `json:"optional"`
+	// StatError is set when whether the file exists could not be established.
+	StatError string `json:"statError,omitempty"`
 }
 
 // ManifestNetwork is one declared network.
 type ManifestNetwork struct {
-	Name     string `json:"name"`
-	Driver   string `json:"driver"`
-	External bool   `json:"external"`
+	// Name is the key services reference; EngineName is the name the network has
+	// in the engine — `name:`, or <project>_<key>, or the key itself for an
+	// external network — which is what an existing network is matched by.
+	Name       string `json:"name"`
+	EngineName string `json:"engineName"`
+	Driver     string `json:"driver"`
+	External   bool   `json:"external"`
 	// Subnets are the explicit IPAM subnets, in CIDR form. They are what a
 	// subnet-overlap check needs.
 	Subnets []string `json:"subnets"`
@@ -162,9 +351,12 @@ type ManifestNetwork struct {
 
 // ManifestVolume is one declared named volume.
 type ManifestVolume struct {
-	Name     string `json:"name"`
-	Driver   string `json:"driver"`
-	External bool   `json:"external"`
+	// Name is the key mounts reference; EngineName the name in the engine, as for
+	// networks.
+	Name       string `json:"name"`
+	EngineName string `json:"engineName"`
+	Driver     string `json:"driver"`
+	External   bool   `json:"external"`
 }
 
 // ─────────────────────────────────────────────────────── the host's capabilities
@@ -196,6 +388,15 @@ type Capabilities struct {
 	Jobs         []ScheduledJob `json:"jobs"`
 	Backup       BackupPosture  `json:"backup"`
 	Databases    []Database     `json:"databases"`
+	// BindSources is what the host shows about every bind mount source of the
+	// plan, from stat alone.
+	BindSources []PathInfo `json:"bindSources"`
+	// IPv6 is "enabled" when the host has IPv6 (the engine then publishes on [::]
+	// as well as 0.0.0.0), "disabled", or "" when it could not be read.
+	// BindV6Only is the net.ipv6.bindv6only default ("0" or "1"), which a socket
+	// may override — the per-socket answer is Port.V6Only.
+	IPv6       string `json:"ipv6"`
+	BindV6Only string `json:"bindV6Only"`
 	// RebootRequired is "yes", "no" or "unknown". The third value is a real answer
 	// and must not be collapsed into "no".
 	RebootRequired string `json:"rebootRequired"`
@@ -209,13 +410,20 @@ type Capabilities struct {
 
 // Observe records how completely a source was read, replacing an earlier record.
 func (c *Capabilities) Observe(source string, state ObservationState, note string) {
+	c.ObserveAt(source, state, note, time.Now().UTC())
+}
+
+// ObserveAt is Observe with the time of the observation given — for a source read
+// earlier than it is recorded, such as the sockets the ports section read.
+func (c *Capabilities) ObserveAt(source string, state ObservationState, note string, at time.Time) {
+	o := Observation{Source: source, State: state, Note: note, ObservedAt: at.UTC().Format(time.RFC3339)}
 	for i := range c.Observations {
 		if c.Observations[i].Source == source {
-			c.Observations[i] = Observation{Source: source, State: state, Note: note}
+			c.Observations[i] = o
 			return
 		}
 	}
-	c.Observations = append(c.Observations, Observation{Source: source, State: state, Note: note})
+	c.Observations = append(c.Observations, o)
 }
 
 // Observed returns how completely a source was read. A source nobody recorded is
@@ -259,6 +467,14 @@ type ContainerRuntime struct {
 	ComposeKind    string `json:"composeKind"`
 	ComposeVersion string `json:"composeVersion"`
 	StorageDriver  string `json:"storageDriver"`
+	// EngineID and EngineName identify the engine that answered (`docker info` ID
+	// and Name). Two servers can hold containers, volumes and networks of the same
+	// names; the ID is what tells one engine's answer from another's.
+	EngineID   string `json:"engineId"`
+	EngineName string `json:"engineName"`
+	// ClockSkew is the engine's clock minus this host's, measured when `info`
+	// answered ("+0.3s"), or "" when the engine did not report its time.
+	ClockSkew string `json:"clockSkew"`
 	// Reachable is false when the engine is installed but its socket could not be
 	// queried — usually a permission problem, and the reason every container list
 	// below would otherwise look empty.
@@ -280,6 +496,17 @@ type Container struct {
 	// "this port is taken by the previous version of this very deployment".
 	Project string `json:"project"`
 	Service string `json:"service"`
+	// WorkingDir, ConfigFiles and ConfigHash are what Compose recorded when it
+	// created the container: the project directory, the files, and the hash of the
+	// service configuration it compares to decide whether to keep or recreate it.
+	// OneOff marks a `docker compose run` container, which `up` never replaces.
+	WorkingDir  string `json:"workingDir"`
+	ConfigFiles string `json:"configFiles"`
+	ConfigHash  string `json:"configHash"`
+	OneOff      bool   `json:"oneOff"`
+	// Labelled is false when the engine reported no labels at all, so ownership
+	// cannot be read from them.
+	Labelled bool `json:"labelled"`
 }
 
 // ContainerNetwork is one existing runtime network.
@@ -288,6 +515,11 @@ type ContainerNetwork struct {
 	Driver  string   `json:"driver"`
 	Subnets []string `json:"subnets"`
 	Project string   `json:"project"`
+	// Scope is local or swarm; Attachable is "yes", "no" or "" (not inspected). A
+	// swarm-scoped network that is not attachable cannot take a standalone
+	// container, which is what Compose creates.
+	Scope      string `json:"scope"`
+	Attachable string `json:"attachable"`
 }
 
 // ContainerVolume is one existing runtime volume.
@@ -307,6 +539,9 @@ type ContainerImage struct {
 	Architecture string `json:"architecture"`
 	OS           string `json:"os"`
 	SizeBytes    int64  `json:"sizeBytes"`
+	// User is the image's default user (Config.User), "" for root. It is who a
+	// container runs as when the service sets no `user:`.
+	User string `json:"user"`
 }
 
 // Proxy is the host's web front end, if it has one.
@@ -548,6 +783,7 @@ const (
 	SourceMemory         = "memory"
 	SourceFilesystems    = "filesystems"
 	SourceProxy          = "proxy"
+	SourceBindSources    = "bind-sources"
 )
 
 // Observation is one source of host data and how completely it was read.
@@ -555,6 +791,9 @@ type Observation struct {
 	Source string           `json:"source"`
 	State  ObservationState `json:"state"`
 	Note   string           `json:"note"`
+	// ObservedAt is when the source was read, RFC 3339 UTC. Evidence drawn from the
+	// source carries this time, not the time the rules ran.
+	ObservedAt string `json:"observedAt"`
 }
 
 // FindingSeverity is how much attention a finding deserves.
@@ -619,9 +858,26 @@ type Evidence struct {
 	Output  string `json:"output"`
 	// Truncated says the fragment was cut. A shortened capture that does not admit
 	// it invites the reader to conclude too much from it.
-	Truncated  bool   `json:"truncated"`
+	Truncated bool `json:"truncated"`
+	// CapturedAt is when what Output shows was observed — the time its source was
+	// read on the host, or the time the plan was resolved — RFC 3339 UTC.
 	CapturedAt string `json:"capturedAt"`
+	// Origin says what the evidence is an observation of: "plan" (the resolved
+	// Compose model), "host" (the machine, its engine included) or "rule" (what a
+	// rule established about the run itself, such as a check it could not make).
+	// It is the observation; the finding's Description is the interpretation.
+	Origin string `json:"origin"`
+	// Source is the observation source the evidence came from (containers,
+	// sockets, memory…), when there is one.
+	Source string `json:"source"`
 }
+
+// Evidence origins.
+const (
+	OriginPlan = "plan"
+	OriginHost = "host"
+	OriginRule = "rule"
+)
 
 // ChangeItem is one line of "what the deployment will actually do" — the section
 // somebody shows their own client when asked what they changed.

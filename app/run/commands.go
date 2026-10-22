@@ -92,7 +92,8 @@ var commands = []Spec{
 	{
 		Binary: "ss", Args: []string{"-lntupH"},
 		Section: "ports",
-		Purpose: "listening sockets with the owning process, when /proc/net alone cannot attribute them",
+		Purpose: "listening sockets with the owning process, when /proc/net alone cannot attribute them, and " +
+			"whether each IPv6 wildcard socket is IPv6-only ([::]:port) or dual-stack (*:port)",
 	},
 
 	// ── witness: the container runtime ────────────────────────────────────────
@@ -118,8 +119,9 @@ var commands = []Spec{
 		Section: "witness", Purpose: "existing networks, to find a name collision",
 	},
 	{
-		Binary: "docker", Args: []string{"network", "inspect", "<container>", "--format", "{{json .IPAM}}"},
-		Section: "witness", Purpose: "one network's subnet, to find an address-range overlap",
+		Binary: "docker", Args: []string{"network", "inspect", "<container>", "--format", "{{json .}}"},
+		Section: "witness",
+		Purpose: "one network's subnet, to find an address-range overlap, and whether a swarm network is attachable",
 	},
 	{
 		Binary: "docker", Args: []string{"volume", "ls", "--format", "{{json .}}"},
@@ -136,6 +138,42 @@ var commands = []Spec{
 	{
 		Binary: "docker", Args: []string{"compose", "version", "--short"},
 		Section: "witness", Purpose: "the Compose V2 plugin version",
+	},
+	// The plan itself. `docker compose config` is what Compose will run: it merges
+	// the files in order, applies the env files, the profiles and the project name,
+	// interpolates the variables and resolves every relative path — and it does all
+	// of that from local files, without the daemon and without the network. Its
+	// output is parsed in memory into the requirements this audit compares and is
+	// never written anywhere: it carries interpolated values. --no-env-resolution
+	// keeps the contents of env_file out of it; the second form is for a Compose
+	// older than that flag. A plan with a remote `include:` is refused before this
+	// runs, because resolving it would fetch it.
+	{
+		Binary: "docker", Args: []string{"compose", OptionsToken, "config", "--format", "json", "--no-env-resolution"},
+		Options: composeOptions, MaxRepeat: 64,
+		Section: "witness", Purpose: "the final model of the planned run, exactly as Compose resolves it",
+	},
+	{
+		Binary: "docker", Args: []string{"compose", OptionsToken, "config", "--format", "json"},
+		Options: composeOptions, MaxRepeat: 64,
+		Section: "witness", Purpose: "the same, on a Compose too old for --no-env-resolution",
+	},
+	{
+		Binary: "docker", Args: []string{"compose", OptionsToken, "config", "--hash", "*"},
+		Options: composeOptions, MaxRepeat: 64,
+		Section: "witness",
+		Purpose: "each service's configuration hash, which Compose compares with a container's label to keep or recreate it",
+	},
+	// Which engine the engineer's own `docker compose up` would talk to. Both read
+	// the CLI's local context store only; neither contacts an engine.
+	{
+		Binary: "docker", Args: []string{"context", "show"},
+		Section: "witness", Purpose: "the name of the active docker context",
+	},
+	{
+		Binary: "docker", Args: []string{"context", "inspect", "--format", "{{json .Endpoints.docker.Host}}"},
+		Section: "witness",
+		Purpose: "the endpoint of the active context, to refuse a preflight of a remote engine from this host",
 	},
 	{
 		Binary: "docker-compose", Args: []string{"version", "--short"},
@@ -348,4 +386,15 @@ var commands = []Spec{
 		Binary: "apk", Args: []string{"version", "-l", "<"},
 		Section: "updates", Purpose: "packages with a newer version available",
 	},
+}
+
+// composeOptions are the project flags `docker compose` accepts before its
+// subcommand, each with the class its value must match. They are exactly the
+// parameters of the planned run the audit has to reproduce.
+var composeOptions = map[string]ArgKind{
+	"--file":              ArgPath,
+	"--env-file":          ArgPath,
+	"--profile":           ArgName,
+	"--project-name":      ArgName,
+	"--project-directory": ArgPath,
 }

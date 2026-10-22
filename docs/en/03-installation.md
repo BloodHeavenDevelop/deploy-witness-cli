@@ -20,7 +20,7 @@
   | Copy | From | Why it is needed |
   |---|---|---|
   | `app/csv` | `utils/csv` v0.9.0 | The CSV generator that renders every table. |
-  | `app/contract/auditv1` | `contracts` v0.9.0, `gen/go/bloodheaven/audit/v1` | The generated Go for `bloodheaven.audit.v1`, the report contract `--upload` sends. |
+  | `app/contract/auditv1` | `contracts` v0.15.0, `gen/go/bloodheaven/audit/v1` | The generated Go for `bloodheaven.audit.v1`, the report contract `--upload` sends. |
 
   Both are byte-for-byte copies, each with a `doc.go` recording the release it
   came from. A maintainer with checkouts of the two repositories refreshes them in

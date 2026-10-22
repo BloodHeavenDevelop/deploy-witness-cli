@@ -1,0 +1,13 @@
+id: bind_path_conflict/unknown-unreadable
+rule: witness.bind_path_conflict
+situation: unknown
+description: >-
+  The source lies under a directory the auditing account cannot enter.
+project: bench
+audit:
+  user: unprivileged
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: unknown
+docker:
+  outcome: succeeds

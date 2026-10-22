@@ -1,0 +1,13 @@
+id: insufficient_memory/not-applicable
+rule: witness.insufficient_memory
+situation: not-applicable
+description: >-
+  The plan declares no memory requirement.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: not-applicable
+docker:
+  outcome: advisory

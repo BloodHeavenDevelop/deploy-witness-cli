@@ -21,7 +21,23 @@ func TestAllowedMatchesExactArgv(t *testing.T) {
 			"--property=ActiveEnterTimestamp", "sshd.service", "getty@tty1.service",
 		}, want: true},
 
+		{name: "compose config with the plan's options", binary: "docker", args: []string{
+			"compose", "--project-directory", "/srv/app", "--file", "/srv/app/compose.yml",
+			"--file", "/srv/app/compose.prod.yml", "--env-file", "/srv/app/.env.prod", "--profile", "web",
+			"--project-name", "shop", "config", "--format", "json", "--no-env-resolution",
+		}, want: true},
+		{name: "compose config with no options", binary: "docker", args: []string{
+			"compose", "config", "--format", "json"}, want: true},
+
 		// Everything below is what the allowlist exists to stop.
+		{name: "compose up through the options form", binary: "docker", args: []string{
+			"compose", "--file", "/srv/app/compose.yml", "up", "-d"}},
+		{name: "compose config with an unlisted option", binary: "docker", args: []string{
+			"compose", "--host", "tcp://10.0.0.1:2375", "config", "--format", "json"}},
+		{name: "compose config with a relative file", binary: "docker", args: []string{
+			"compose", "--file", "compose.yml", "config", "--format", "json"}},
+		{name: "compose config with an option missing its value", binary: "docker", args: []string{
+			"compose", "--file", "config", "--format", "json"}},
 		{name: "an unlisted binary", binary: "curl", args: []string{"https://example.com"}},
 		{name: "a shell", binary: "sh", args: []string{"-c", "id"}},
 		{name: "a listed binary with unlisted arguments", binary: "pacman", args: []string{"-Syu"}},
@@ -96,6 +112,17 @@ func TestPublishedListIsWellFormed(t *testing.T) {
 		seen[spec.String()] = true
 
 		for i, arg := range spec.Args {
+			if arg == OptionsToken {
+				if len(spec.Options) == 0 {
+					t.Errorf("%s: %s with no Options", spec, OptionsToken)
+				}
+				for flag, kind := range spec.Options {
+					if _, known := argPatterns[kind]; !known || !strings.HasPrefix(flag, "-") {
+						t.Errorf("%s: option %q of kind %q", spec, flag, kind)
+					}
+				}
+				continue
+			}
 			kind, repeat, ok := placeholder(arg)
 			if !ok {
 				// A bare "<" is `apk version -l <`, apk's own "older than"

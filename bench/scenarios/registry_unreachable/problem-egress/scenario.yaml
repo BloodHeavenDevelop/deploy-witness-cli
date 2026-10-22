@@ -1,0 +1,13 @@
+id: registry_unreachable/problem-egress
+rule: witness.registry_unreachable
+situation: problem
+description: >-
+  With --egress, the registry 127.0.0.1:5999 refuses the connection.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness", "--egress"]
+expect:
+  outcome: problem
+docker:
+  outcome: fails

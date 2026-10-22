@@ -1,0 +1,13 @@
+id: no_healthcheck/no-problem
+rule: witness.no_healthcheck
+situation: no-problem
+description: >-
+  The same service with a healthcheck.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: advisory

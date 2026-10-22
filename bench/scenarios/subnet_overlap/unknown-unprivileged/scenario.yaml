@@ -1,0 +1,14 @@
+id: subnet_overlap/unknown-unprivileged
+rule: witness.subnet_overlap
+situation: unknown
+description: >-
+  The overlapping network exists, and the audit cannot reach the engine.
+project: bench
+audit:
+  user: unprivileged
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: unknown
+docker:
+  outcome: fails
+  pattern: "overlap"
