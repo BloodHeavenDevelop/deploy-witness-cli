@@ -1,0 +1,2041 @@
+{
+  "benchVersion": "1",
+  "cliVersion": "deploy-witness 1.4.0",
+  "cliCommit": "d5d074e",
+  "environment": "docker:27.5.1-dind",
+  "dockerVersion": "27.5.1",
+  "composeVersion": "2.33.0",
+  "startedAt": "2026-10-19T19:03:20Z",
+  "finishedAt": "2026-10-19T19:05:49Z",
+  "results": [
+    {
+      "scenario": {
+        "id": "architecture_mismatch/no-problem",
+        "rule": "witness.architecture_mismatch",
+        "situation": "no-problem",
+        "description": "The plan's image is present and built for the engine's architecture.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "architecture_mismatch/problem-platform",
+        "rule": "witness.architecture_mismatch",
+        "situation": "problem",
+        "description": "The plan pins platform linux/arm64 on an amd64 engine whose only alpine:3.21 is amd64.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "web",
+          "title": "Service \"web\" asks for linux/arm64 on a x86_64 host"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": false,
+        "output": "web Pulling \n web Error Get \"https://registry-1.docker.io/v2/\": dial tcp: lookup registry-1.docker.io on 192.168.88.1:53: dial udp 192.168.88.1:53: connect: network is unreachable\nError response from daemon: Get \"https://registry-1.docker.io/v2/\": dial tcp: lookup registry-1.docker.io on 192.168.88.1:53: dial udp 192.168.88.1:53: connect: network is unreachable"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "architecture_mismatch/unknown-image-absent",
+        "rule": "witness.architecture_mismatch",
+        "situation": "unknown",
+        "description": "The plan's image is not on the engine, so its architecture is unknown until the pull.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "unknown"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails"
+        }
+      },
+      "predicted": "unknown",
+      "findings": [
+        {
+          "severity": "info",
+          "outcome": "unknown",
+          "subject": "",
+          "title": "CPU architecture could not be decided"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": false,
+        "output": "web Pulling \n web Error Get \"http://127.0.0.1:5999/v2/\": dial tcp 127.0.0.1:5999: connect: connection refused\nError response from daemon: Get \"http://127.0.0.1:5999/v2/\": dial tcp 127.0.0.1:5999: connect: connection refused"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "bind_path_conflict/no-problem-created-by-engine",
+        "rule": "witness.bind_path_conflict",
+        "situation": "no-problem",
+        "description": "The plan bind-mounts ./data in the short syntax; it does not exist, so the engine creates it.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "bind_path_conflict/no-problem-existing-dir",
+        "rule": "witness.bind_path_conflict",
+        "situation": "no-problem",
+        "description": "The plan bind-mounts ./data, which exists.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "bind_path_conflict/problem-missing-no-create",
+        "rule": "witness.bind_path_conflict",
+        "situation": "problem",
+        "description": "The plan bind-mounts ./nodir with create_host_path: false, and ./nodir does not exist.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "/bench/bind_path_conflict--problem-missing-no-create/nodir",
+          "title": "Bind source /bench/bind_path_conflict--problem-missing-no-create/nodir does not exist, and the engine will not create it"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\nError response from daemon: invalid mount config for type \"bind\": bind source path does not exist: /bench/bind_path_conflict--problem-missing-no-create/nodir"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "bind_path_conflict/unknown-unreadable",
+        "rule": "witness.bind_path_conflict",
+        "situation": "unknown",
+        "description": "The source lies under a directory the auditing account cannot enter.",
+        "critical": false,
+        "audit": {
+          "user": "unprivileged",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "unknown"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "unknown",
+      "findings": [
+        {
+          "severity": "warning",
+          "outcome": "unknown",
+          "subject": "/root/dwbench-private/data",
+          "title": "Bind source /root/dwbench-private/data could not be examined"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "container_name_conflict/no-problem-own",
+        "rule": "witness.container_name_conflict",
+        "situation": "no-problem",
+        "description": "The plan is already deployed; its own container is named web.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": [
+        {
+          "severity": "info",
+          "outcome": "no-problem",
+          "subject": "web",
+          "title": "Container \"web\" already exists and belongs to this deployment"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Container web  Running"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "container_name_conflict/problem-foreign",
+        "rule": "witness.container_name_conflict",
+        "situation": "problem",
+        "description": "A container named \"web\", created by hand, already exists; the plan fixes container_name: web.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "already in use"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "web",
+          "title": "Container name \"web\" is taken"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container web  Creating\nError response from daemon: Conflict. The container name \"/web\" is already in use by container \"7ff2f678ebc1c87d4883927b1348f514f90fca0d532cab665d0fff7845b5e3c5\". You have to remove (or rename) that container to be able to reuse that name."
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "container_name_conflict/unknown-unprivileged",
+        "rule": "witness.container_name_conflict",
+        "situation": "unknown",
+        "description": "A foreign container named web exists, and the audit cannot reach the engine.",
+        "critical": false,
+        "audit": {
+          "user": "unprivileged",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "unknown"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "already in use"
+        }
+      },
+      "predicted": "unknown",
+      "findings": [
+        {
+          "severity": "info",
+          "outcome": "unknown",
+          "subject": "",
+          "title": "Fixed container names could not be decided"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container web  Creating\nError response from daemon: Conflict. The container name \"/web\" is already in use by container \"0f7feff9c22885011b8a2b8f1c7e7bbc34c269090dbd936a140249ba9110031f\". You have to remove (or rename) that container to be able to reuse that name."
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "env_file_missing/no-problem-optional",
+        "rule": "witness.env_file_missing",
+        "situation": "no-problem",
+        "description": "The same env file, declared required: false. A Compose without --no-env-resolution merges env files into the model and drops the key, so the rule has nothing to check (not-applicable) — equally correct.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem",
+          "also": [
+            "not-applicable"
+          ]
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "not-applicable",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "env_file_missing/problem",
+        "rule": "witness.env_file_missing",
+        "situation": "problem",
+        "description": "The plan reads env_file ./app.env, which does not exist. A Compose without --no-env-resolution (2.x) reads the env files while resolving the plan and rejects it, so the preflight is refused (exit 2) instead — equally correct.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem",
+          "also": [
+            "refused"
+          ]
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "env"
+        }
+      },
+      "predicted": "refused",
+      "findings": null,
+      "auditExit": 2,
+      "preflightStatus": "",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "env file /bench/env_file_missing--problem/app.env not found: stat /bench/env_file_missing--problem/app.env: no such file or directory"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "floating_image_tag/problem",
+        "rule": "witness.floating_image_tag",
+        "situation": "problem",
+        "description": "The image is referenced by a version tag, not a digest. Docker does not refuse it — the rule is about reproducibility.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "advisory"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "info",
+          "outcome": "problem",
+          "subject": "alpine:3.21",
+          "title": "Image alpine:3.21 is pinned by tag, not by digest"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": null,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "insufficient_memory/no-problem",
+        "rule": "witness.insufficient_memory",
+        "situation": "no-problem",
+        "description": "The plan reserves 16 MiB.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "advisory"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": null,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "insufficient_memory/not-applicable",
+        "rule": "witness.insufficient_memory",
+        "situation": "not-applicable",
+        "description": "The plan declares no memory requirement.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "not-applicable"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "advisory"
+        }
+      },
+      "predicted": "not-applicable",
+      "findings": [
+        {
+          "severity": "info",
+          "outcome": "not-applicable",
+          "subject": "",
+          "title": "The manifest declares no memory requirements"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": null,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "insufficient_memory/problem",
+        "rule": "witness.insufficient_memory",
+        "situation": "problem",
+        "description": "The plan reserves 100000 GiB. Docker does not refuse a reservation — the rule is about the kernel killing processes later.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "advisory"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "97.7 TiB",
+          "title": "The deployment asks for 97.7 TiB of memory; 20.4 GiB is available"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": null,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "network_name_conflict/no-problem-external-present",
+        "rule": "witness.network_name_conflict",
+        "situation": "no-problem",
+        "description": "The external network edge exists.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "network_name_conflict/problem-external-missing",
+        "rule": "witness.network_name_conflict",
+        "situation": "problem",
+        "description": "The plan joins an external network edge that does not exist.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "could not be found"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "edge",
+          "title": "External network \"edge\" does not exist"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "network edge declared as external, but could not be found"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "network_name_conflict/unknown-unprivileged",
+        "rule": "witness.network_name_conflict",
+        "situation": "unknown",
+        "description": "The external network is missing, and the audit cannot reach the engine.",
+        "critical": false,
+        "audit": {
+          "user": "unprivileged",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "unknown"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "could not be found"
+        }
+      },
+      "predicted": "unknown",
+      "findings": [
+        {
+          "severity": "warning",
+          "outcome": "unknown",
+          "subject": "edge",
+          "title": "Whether external network \"edge\" exists could not be established"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "network edge declared as external, but could not be found"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "no_healthcheck/no-problem",
+        "rule": "witness.no_healthcheck",
+        "situation": "no-problem",
+        "description": "The same service with a healthcheck.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "advisory"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": null,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "no_healthcheck/problem",
+        "rule": "witness.no_healthcheck",
+        "situation": "problem",
+        "description": "A service without a healthcheck. Docker does not refuse it — the rule is about readiness.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "advisory"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "warning",
+          "outcome": "problem",
+          "subject": "web",
+          "title": "1 of 1 services define no healthcheck"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": null,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "port_conflict/no-problem-dynamic-range",
+        "rule": "witness.port_conflict",
+        "situation": "no-problem",
+        "description": "The plan publishes one port of 18080-18081; only 18080 is held, so the engine takes 18081.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "port_conflict/no-problem-orphan-removed",
+        "rule": "witness.port_conflict",
+        "situation": "no-problem",
+        "description": "The same, deployed with --remove-orphans: Compose removes the orphan and the port is free.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness",
+            "--remove-orphans"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": [
+            "up",
+            "-d",
+            "--remove-orphans"
+          ],
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": [
+        {
+          "severity": "info",
+          "outcome": "no-problem",
+          "subject": "18080/tcp",
+          "title": "Port 18080 is held by this deployment's own container"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d --remove-orphans",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Container bench-legacy-1  Stopping\n Container bench-legacy-1  Stopped\n Container bench-legacy-1  Removing\n Container bench-legacy-1  Removed\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "port_conflict/no-problem-other-address",
+        "rule": "witness.port_conflict",
+        "situation": "no-problem",
+        "description": "The unrelated container publishes 127.0.0.1:18080; the plan publishes 127.0.0.2:18080 — addresses that do not overlap.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "port_conflict/no-problem-other-protocol",
+        "rule": "witness.port_conflict",
+        "situation": "no-problem",
+        "description": "The unrelated container holds 18080/udp; the plan publishes 18080/tcp — two different sockets on one number.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "port_conflict/no-problem-own-update",
+        "rule": "witness.port_conflict",
+        "situation": "no-problem",
+        "description": "The plan is already deployed and holds 18080; deploying it again replaces its own container.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": [
+        {
+          "severity": "info",
+          "outcome": "no-problem",
+          "subject": "18080/tcp",
+          "title": "Port 18080 is held by this deployment's own container"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Container bench-web-1  Running"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "port_conflict/problem-dynamic-range-exhausted",
+        "rule": "witness.port_conflict",
+        "situation": "problem",
+        "description": "The plan publishes one port of 18080-18081; both are held by an unrelated container.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "18080-18081/tcp",
+          "title": "Every port of 18080-18081/tcp is already in use"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\nError response from daemon: driver failed programming external connectivity on endpoint bench-web-1 (dc30be9cb61c04929ef87c6875457b4fc10b4a9e99d710d9cf734d5699db1c92): all ports are allocated"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "port_conflict/problem-foreign-container",
+        "rule": "witness.port_conflict",
+        "situation": "problem",
+        "description": "Host port 18080/tcp is published by an unrelated container; the plan publishes the same binding.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "port is already allocated"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "18080/tcp",
+          "title": "Port 18080 is already in use"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\nError response from daemon: driver failed programming external connectivity on endpoint bench-web-1 (e0d12644435867711dce07ead33a18e551b776be8fa6654ebb74e3d5e80b3d57): Bind for 0.0.0.0:18080 failed: port is already allocated"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "port_conflict/problem-orphan-left-running",
+        "rule": "witness.port_conflict",
+        "situation": "problem",
+        "description": "An earlier version of the project ran service \"legacy\" on 18080; the plan replaces it with service \"web\" on the same port, without --remove-orphans.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "port is already allocated"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "18080/tcp",
+          "title": "Port 18080 is already in use"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "time=\"2026-10-19T19:04:58Z\" level=warning msg=\"Found orphan containers ([bench-legacy-1]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.\"\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\nError response from daemon: driver failed programming external connectivity on endpoint bench-web-1 (64d046667966d9769e69261b17f4c4f1db3d93cb288b3285bf51c6b548a74ab0): Bind for 0.0.0.0:18080 failed: port is already allocated"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "port_conflict/unknown-engine-unreachable",
+        "rule": "witness.port_conflict",
+        "situation": "unknown",
+        "description": "An unrelated container holds 18080, and the audit runs as a user who cannot reach the engine, so the holder cannot be told from this deployment's own docker-proxy.",
+        "critical": false,
+        "audit": {
+          "user": "unprivileged",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "unknown"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "port is already allocated"
+        }
+      },
+      "predicted": "unknown",
+      "findings": [
+        {
+          "severity": "warning",
+          "outcome": "unknown",
+          "subject": "18080/tcp",
+          "title": "Port 18080 is held, and by whom could not be established"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\nError response from daemon: driver failed programming external connectivity on endpoint bench-web-1 (a3b2b67e3834ceccd4fb89f156a338ac31d9fd80eac4d48b73dad1a672460db2): Bind for 0.0.0.0:18080 failed: port is already allocated"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "privileged_container/no-problem",
+        "rule": "witness.privileged_container",
+        "situation": "no-problem",
+        "description": "The same service without host authority.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "advisory"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": null,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "privileged_container/problem",
+        "rule": "witness.privileged_container",
+        "situation": "problem",
+        "description": "A privileged service. Docker runs it — the rule is about authority over the host.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "advisory"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "web",
+          "title": "Service \"web\" is granted authority over the host"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": null,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "project_ownership/manual-check-renamed-project",
+        "rule": "witness.project_ownership",
+        "situation": "manual-check",
+        "description": "This directory is already deployed under the project name \"oldname\"; the plan deploys it as \"bench\".",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "manual-check"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "advisory"
+        }
+      },
+      "predicted": "manual-check",
+      "findings": [
+        {
+          "severity": "info",
+          "outcome": "manual-check",
+          "subject": "oldname-web-1",
+          "title": "This directory is already deployed under another project name"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": null,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "project_ownership/no-problem-own",
+        "rule": "witness.project_ownership",
+        "situation": "no-problem",
+        "description": "This directory is already deployed under the same project name.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Container bench-web-1  Running"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "project_ownership/problem-other-checkout",
+        "rule": "witness.project_ownership",
+        "situation": "problem",
+        "description": "Another checkout of the same plan, in another directory, is deployed under the same project name.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "advisory"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "warning",
+          "outcome": "problem",
+          "subject": "bench-web-1",
+          "title": "Project \"bench\" is already deployed from another directory"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Container bench-web-1  Running"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": null,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "registry_unreachable/problem-egress",
+        "rule": "witness.registry_unreachable",
+        "situation": "problem",
+        "description": "With --egress, the registry 127.0.0.1:5999 refuses the connection.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness",
+            "--egress"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "127.0.0.1:5999",
+          "title": "Registry 127.0.0.1:5999 is not reachable from this host"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": false,
+        "output": "web Pulling \n web Error Get \"http://127.0.0.1:5999/v2/\": dial tcp 127.0.0.1:5999: connect: connection refused\nError response from daemon: Get \"http://127.0.0.1:5999/v2/\": dial tcp 127.0.0.1:5999: connect: connection refused"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "registry_unreachable/unknown-offline",
+        "rule": "witness.registry_unreachable",
+        "situation": "unknown",
+        "description": "The plan pulls from a registry; without --egress reachability is not checked.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "unknown"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails"
+        }
+      },
+      "predicted": "unknown",
+      "findings": [
+        {
+          "severity": "info",
+          "outcome": "unknown",
+          "subject": "",
+          "title": "Registry reachability was not checked"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": false,
+        "output": "web Pulling \n web Error Get \"http://127.0.0.1:5999/v2/\": dial tcp 127.0.0.1:5999: connect: connection refused\nError response from daemon: Get \"http://127.0.0.1:5999/v2/\": dial tcp 127.0.0.1:5999: connect: connection refused"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "runtime_missing_or_old/no-problem",
+        "rule": "witness.runtime_missing_or_old",
+        "situation": "no-problem",
+        "description": "The engine answers and the Compose plugin is installed.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "runtime_missing_or_old/unknown-unprivileged",
+        "rule": "witness.runtime_missing_or_old",
+        "situation": "unknown",
+        "description": "The engine is installed, and the audit runs as a user who cannot reach its socket: whether it works is unknown to the audit.",
+        "critical": false,
+        "audit": {
+          "user": "unprivileged",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "unknown"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "unknown",
+      "findings": [
+        {
+          "severity": "warning",
+          "outcome": "unknown",
+          "subject": "docker",
+          "title": "docker is installed but did not answer"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "subnet_overlap/no-problem",
+        "rule": "witness.subnet_overlap",
+        "situation": "no-problem",
+        "description": "The plan asks for 10.78.0.0/24, outside the existing 10.77.0.0/16.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_back  Creating\n Network bench_back  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "subnet_overlap/problem",
+        "rule": "witness.subnet_overlap",
+        "situation": "problem",
+        "description": "The plan asks for 10.77.1.0/24; an existing network uses 10.77.0.0/16.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "overlap"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "10.77.1.0/24",
+          "title": "Subnet 10.77.1.0/24 overlaps an existing network"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "Network bench_back  Creating\n Network bench_back  Error\nfailed to create network bench_back: Error response from daemon: invalid pool request: Pool overlaps with other one on this address space"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "subnet_overlap/unknown-unprivileged",
+        "rule": "witness.subnet_overlap",
+        "situation": "unknown",
+        "description": "The overlapping network exists, and the audit cannot reach the engine.",
+        "critical": false,
+        "audit": {
+          "user": "unprivileged",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "unknown"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "overlap"
+        }
+      },
+      "predicted": "unknown",
+      "findings": [
+        {
+          "severity": "info",
+          "outcome": "unknown",
+          "subject": "",
+          "title": "Subnet overlaps could not be decided"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "Network bench_back  Creating\n Network bench_back  Error\nfailed to create network bench_back: Error response from daemon: invalid pool request: Pool overlaps with other one on this address space"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "volume_name_conflict/no-problem-external-present",
+        "rule": "witness.volume_name_conflict",
+        "situation": "no-problem",
+        "description": "The external volume shared-data exists.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "no-problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds"
+        }
+      },
+      "predicted": "no-problem",
+      "findings": null,
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": false,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "volume_name_conflict/problem-exists-not-created-by-compose",
+        "rule": "witness.volume_name_conflict",
+        "situation": "problem",
+        "description": "The plan's own volume would be bench_data, and a volume of that name already exists, created by hand.",
+        "critical": false,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "succeeds",
+          "pattern": "already exists but was not created"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "warning",
+          "outcome": "problem",
+          "subject": "bench_data",
+          "title": "Volume \"bench_data\" already exists and was not created by Compose"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 0,
+        "failed": false,
+        "patternSeen": true,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\ntime=\"2026-10-19T19:05:44Z\" level=warning msg=\"volume \\\"bench_data\\\" already exists but was not created by Docker Compose. Use `external: true` to use an existing volume\"\n Container bench-web-1  Creating\n Container bench-web-1  Created\n Container bench-web-1  Starting\n Container bench-web-1  Started"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "volume_name_conflict/problem-external-missing",
+        "rule": "witness.volume_name_conflict",
+        "situation": "problem",
+        "description": "The plan mounts an external volume shared-data that does not exist.",
+        "critical": true,
+        "audit": {
+          "user": "root",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "problem"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "not found"
+        }
+      },
+      "predicted": "problem",
+      "findings": [
+        {
+          "severity": "blocker",
+          "outcome": "problem",
+          "subject": "shared-data",
+          "title": "External volume \"shared-data\" does not exist"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\nexternal volume \"shared-data\" not found"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    },
+    {
+      "scenario": {
+        "id": "volume_name_conflict/unknown-unprivileged",
+        "rule": "witness.volume_name_conflict",
+        "situation": "unknown",
+        "description": "The external volume is missing, and the audit cannot reach the engine.",
+        "critical": false,
+        "audit": {
+          "user": "unprivileged",
+          "args": [
+            "--sections",
+            "ports,witness"
+          ]
+        },
+        "project": "bench",
+        "expect": {
+          "outcome": "unknown"
+        },
+        "docker": {
+          "up": null,
+          "outcome": "fails",
+          "pattern": "not found"
+        }
+      },
+      "predicted": "unknown",
+      "findings": [
+        {
+          "severity": "warning",
+          "outcome": "unknown",
+          "subject": "shared-data",
+          "title": "Whether external volume \"shared-data\" exists could not be established"
+        }
+      ],
+      "auditExit": 0,
+      "preflightStatus": "partial",
+      "docker": {
+        "command": "docker compose -f compose.yml -p bench up -d",
+        "exit": 1,
+        "failed": true,
+        "patternSeen": true,
+        "output": "Network bench_default  Creating\n Network bench_default  Created\nexternal volume \"shared-data\" not found"
+      },
+      "sideEffects": null,
+      "specMatch": true,
+      "dockerMatch": true,
+      "durationMs": 0
+    }
+  ]
+}

@@ -56,7 +56,7 @@ The harness (`bench/dwbench`), for each scenario in id order:
 
 An `unknown` scenario stages a real problem the audit cannot see (the engine does
 not answer): Docker then fails, as expected — and the CLI's `unknown` is **not** a
-detection, and any quality figure computed from a run must count it that way.
+detection — [12 — Quality](12-quality-and-release.md) counts it that way.
 
 ## Coverage
 
@@ -80,8 +80,8 @@ Not staged, with the reason: `insufficient_disk`, `insufficient_inodes` and
 `domain_conflict`, `database_version_mismatch`, `backup_gap`, `no_rollback_plan`,
 `certificate_expiring` and `reboot_required` read host software (nginx, a database,
 certbot, the package manager) the Docker-in-Docker environment does not have. They
-are covered by the outcome-matrix tests (`app/witness/outcomes_test.go`), not by
-Docker's behaviour.
+are covered by the outcome-matrix tests (`app/witness/outcomes_test.go`) and the
+pilot regressions ([13](13-pilot-regressions.md)), not by Docker's behaviour.
 
 ## What the bench found
 

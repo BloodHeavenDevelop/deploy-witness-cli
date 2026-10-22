@@ -13,6 +13,8 @@
 | 09 | [Command allowlist and journal](09-command-allowlist.md) | Everything the binary is able to execute, and the record of what it did |
 | 10 | [Witness rules](10-witness-rules.md) | The 25 finding codes, their severities and what triggers each |
 | 11 | [Test bench](11-test-bench.md) | `make bench`: prediction against Docker's actual behaviour, in staged scenarios, in a disposable environment |
+| 12 | [Quality and release criteria](12-quality-and-release.md) | Detection, misses, false findings and unknowns per rule; version comparison; the release gate |
+| 13 | [Pilot errors become permanent tests](13-pilot-regressions.md) | error → cause → scenario → expected result → fix → permanent test; what never goes into the archive |
 | — | [Site materials](../site-materials/README.md) | Verified runs behind the site's examples and claims: control Compose scenarios, the exact commands, the reports they produced, and the [verification matrix](../site-materials/MATRIX.md). Language-neutral kit, English with a Russian summary |
 
 The same set exists in Russian under [`docs/ru/`](../ru/). Both languages are
