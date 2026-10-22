@@ -140,7 +140,10 @@ gets you `/api/api/...` and a 404.
 exactly the bytes `--upload` sends — and an `audit` half that stays local: the host
 inventory, the pending updates and the CVE list. You can read the file and see
 which half would leave the machine before deciding to send it. The host is
-identified by a salted hash of `/etc/machine-id`, never the id itself.
+identified by a salted hash of `/etc/machine-id`, never the id itself, and the
+container engine by a salted hash of its `docker info` ID. A preflight's upload also
+carries each finding's outcome, one result per rule, the launch plan it checked and
+the run's provenance.
 
 Credentials found in free-form text (a cron line, a process command line) are
 masked with a visible `***redacted***` marker before anything is written.

@@ -118,7 +118,11 @@ type Provenance struct {
 	Host              string `json:"host"`
 	ServerFingerprint string `json:"serverFingerprint"`
 	Engine            string `json:"engine"`
+	// EngineID is the engine's own ID from `docker info`, for matching against the
+	// engine by hand; EngineFingerprint its salted hash (see EngineFingerprint),
+	// which is all the upload carries.
 	EngineID          string `json:"engineId"`
+	EngineFingerprint string `json:"engineFingerprint"`
 	Compose           string `json:"compose"`
 	// PlanSource and PlanDigest are the plan's resolver and digest (empty in a
 	// host audit).

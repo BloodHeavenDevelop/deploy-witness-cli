@@ -321,6 +321,9 @@ type warner struct {
 	result   *model.SectionResult
 	warnings []string
 	seen     map[string]bool
+	// composeMajor is the major version of the Compose that resolved the model
+	// being decoded, or 0 for the built-in parser.
+	composeMajor int
 }
 
 func (w *warner) add(format string, args ...any) {

@@ -363,6 +363,7 @@ func provenanceRows(p *model.Provenance, caps *model.Capabilities) []planRow {
 		{"server-fingerprint", p.ServerFingerprint},
 		{"engine", p.Engine},
 		{"engine-id", p.EngineID},
+		{"engine-fingerprint", p.EngineFingerprint},
 		{"compose", p.Compose},
 		{"plan-source", p.PlanSource},
 		{"plan-digest", p.PlanDigest},

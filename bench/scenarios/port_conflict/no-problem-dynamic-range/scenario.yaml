@@ -1,0 +1,13 @@
+id: port_conflict/no-problem-dynamic-range
+rule: witness.port_conflict
+situation: no-problem
+description: >-
+  The plan publishes one port of 18080-18081; only 18080 is held, so the engine takes 18081.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

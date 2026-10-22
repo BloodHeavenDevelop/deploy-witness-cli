@@ -1,0 +1,14 @@
+id: volume_name_conflict/problem-exists-not-created-by-compose
+rule: witness.volume_name_conflict
+situation: problem
+description: >-
+  The plan's own volume would be bench_data, and a volume of that name already exists, created by hand.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: succeeds
+  pattern: "already exists but was not created"
