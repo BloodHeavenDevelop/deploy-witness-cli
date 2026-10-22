@@ -3,6 +3,7 @@ rule: witness.network_name_conflict
 situation: no-problem
 description: >-
   The external network edge exists.
+regression: DW-83
 project: bench
 audit:
   user: root

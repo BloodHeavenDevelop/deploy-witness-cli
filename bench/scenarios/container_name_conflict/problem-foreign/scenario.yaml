@@ -4,6 +4,7 @@ situation: problem
 description: >-
   A container named "web", created by hand, already exists; the plan fixes container_name: web.
 critical: true
+regression: DW-52
 project: bench
 audit:
   user: root

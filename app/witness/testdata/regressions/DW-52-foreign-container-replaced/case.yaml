@@ -1,0 +1,15 @@
+id: DW-52-foreign-container-replaced
+task: DW-52
+kind: miss
+found: review
+summary: >-
+  changes.csv promised to replace a container of another project that had the same name.
+cause: >-
+  The change list replaced any container of the right name; only the deployment's own may be replaced.
+recheck_minutes: 0
+fixed_in: 1.4.0
+expect:
+  rules:
+    witness.container_name_conflict: problem
+  changes_contain:
+    - "not created: a container named orders-api already exists"

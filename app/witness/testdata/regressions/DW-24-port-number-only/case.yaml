@@ -1,0 +1,14 @@
+id: DW-24-port-number-only
+task: DW-24
+kind: false-alarm
+found: review
+summary: >-
+  53/tcp published by the plan was reported as a blocker because 53/udp was in use.
+cause: >-
+  Port conflicts compared port numbers, not bindings: protocol and address were ignored.
+recheck_minutes: 0
+fixed_in: 1.3.0
+expect:
+  rules:
+    witness.port_conflict: no-problem
+  no_blocker: true

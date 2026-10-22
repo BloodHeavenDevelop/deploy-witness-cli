@@ -69,7 +69,7 @@ A release is blocked by any of:
 | an audit side effect | The audit must change nothing on the host |
 | a scored scenario whose Docker behaviour contradicts it | No ground truth: fix the scenario first |
 | a failing **critical** scenario (`critical: true`) | A known critical miss — a false blocker on a routine update, a missed port, name, volume, network, subnet, bind or env-file problem |
-| a failing **regression** scenario (`regression: <task>`) | A fixed defect has come back |
+| a failing **regression** scenario (`regression: <task>`) | A fixed defect has come back — see [13](13-pilot-regressions.md) |
 | a scenario that passed in the baseline and fails now | A regression, whatever the totals say |
 | a baseline scenario missing from the run | Removing a hard test is not an improvement |
 

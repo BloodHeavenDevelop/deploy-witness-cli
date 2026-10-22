@@ -170,7 +170,10 @@ func upperFirst(text string) string {
 
 // OutcomeSummary is the one-line account of every rule's outcome that the witness
 // row of summary.csv and the upload's witness collector carry: counts first, then
-// the codes of everything that is not settled in the deployment's favour.
+// the codes of everything that is not settled in the deployment's favour. Since
+// DW-94 the upload also states each outcome in a field of its own (Finding.outcome
+// and one RuleResult per rule), so this line is for the reader, no longer the only
+// carrier.
 func OutcomeSummary(results []model.RuleResult) string {
 	byOutcome := map[model.Outcome][]string{}
 	for _, r := range results {

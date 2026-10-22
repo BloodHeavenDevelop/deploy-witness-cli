@@ -1,0 +1,14 @@
+id: DW-81-project-name-flag
+task: DW-81
+kind: false-alarm
+found: review
+summary: >-
+  A deployment made with `docker compose --project-name shop` read its own container as a foreign one holding its port.
+cause: >-
+  The project name was always the directory name; --project-name, COMPOSE_PROJECT_NAME and name: were ignored.
+recheck_minutes: 0
+fixed_in: unreleased
+expect:
+  rules:
+    witness.port_conflict: no-problem
+  no_blocker: true

@@ -259,7 +259,9 @@ func findingCounts(findings []model.Finding) (blockers, warnings int) {
 
 // LaunchSummary is the one line the witness notes give the plan: what was checked,
 // how it was resolved, and against which engine. It reaches summary.csv and the
-// upload's witness collector.
+// upload's witness collector. Since DW-94 the upload also carries the plan as a
+// LaunchPlan message (report.Contract), so this line is for the reader, no longer
+// the only carrier.
 func LaunchSummary(plan *model.LaunchPlan) string {
 	engine := "the local engine"
 	if plan.Engine.Context != "" {
