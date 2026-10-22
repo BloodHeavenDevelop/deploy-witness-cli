@@ -26,6 +26,23 @@ func MachineFingerprint() string {
 	if err != nil || len(strings.TrimSpace(string(raw))) == 0 {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(fingerprintSalt + ":" + strings.TrimSpace(string(raw))))
+	return saltedDigest(string(raw))
+}
+
+// EngineFingerprint identifies a container engine the same way MachineFingerprint
+// identifies the machine: a salted hash of the engine's own ID (`docker info`
+// .ID), never the ID itself. The local report keeps the raw ID beside it so the
+// person who ran the audit can match it against `docker info`; the upload carries
+// this value alone. An empty ID gives an empty fingerprint.
+func EngineFingerprint(engineID string) string {
+	if strings.TrimSpace(engineID) == "" {
+		return ""
+	}
+	return saltedDigest(engineID)
+}
+
+// saltedDigest is the one hashing scheme both fingerprints use.
+func saltedDigest(value string) string {
+	sum := sha256.Sum256([]byte(fingerprintSalt + ":" + strings.TrimSpace(value)))
 	return hex.EncodeToString(sum[:])
 }

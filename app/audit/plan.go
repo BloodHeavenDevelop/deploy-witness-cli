@@ -83,6 +83,7 @@ func (a *Auditor) preparePlan() error {
 	}
 
 	plan.ProjectName, plan.ProjectNameSource = planProjectName(cfg.ProjectName, plan, parsed)
+	manifest.ResolveEngineNames(parsed, plan.ProjectName)
 	if err := selectServices(plan, parsed); err != nil {
 		return err
 	}
@@ -117,7 +118,7 @@ func (a *Auditor) resolve(plan *model.LaunchPlan) (*model.Manifest, error) {
 			return nil, planError("docker compose config rejected the planned run, so Compose would reject it "+
 				"too: %s", redact.String(strings.TrimSpace(err.Error())))
 		}
-		parsed, err := manifest.FromComposeConfig([]byte(raw), plan.Files[0], &a.parseNotes)
+		parsed, err := manifest.FromComposeConfig([]byte(raw), plan.Files[0], version, &a.parseNotes)
 		if err != nil {
 			return nil, planError("%v", err)
 		}

@@ -1,0 +1,4 @@
+services:
+  web:
+    image: 127.0.0.1:5999/bench/app:1
+    command: ["sleep", "3600"]

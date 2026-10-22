@@ -87,7 +87,58 @@ func Changes(in Input) []model.ChangeItem {
 	// published without a host IP is on every interface, which is the part people
 	// do not expect.
 	for _, svc := range in.Manifest.Services {
+		if svc.NetworkMode == "host" {
+			for _, mapping := range svc.Ports {
+				out = append(out, model.ChangeItem{
+					Kind:   "firewall-port",
+					Target: fmt.Sprintf("%d/%s", mapping.ContainerPort, protocolOf(mapping)),
+					Detail: fmt.Sprintf("bound directly by %s on the host network (network_mode: host) — the engine "+
+						"discards the published port, and the application chooses the address", svc.Name),
+				})
+			}
+			continue
+		}
 		for _, mapping := range svc.Ports {
+			reach := "all interfaces"
+			if mapping.HostIP != "" {
+				reach = mapping.HostIP
+			}
+			switch {
+			case mapping.Ephemeral():
+				out = append(out, model.ChangeItem{
+					Kind:   "firewall-port",
+					Target: fmt.Sprintf("ephemeral/%s", protocolOf(mapping)),
+					Detail: fmt.Sprintf("a port the engine picks from the kernel's ephemeral range, opened by %s on %s → "+
+						"container port %d; it cannot collide, and it changes on every recreate", svc.Name, reach,
+						mapping.ContainerPort),
+				})
+				continue
+			case mapping.Dynamic():
+				free, held, unknown := 0, 0, 0
+				for _, port := range mapping.HostPorts() {
+					switch state, _ := portState(in, mapping, port); state {
+					case portFree:
+						free++
+					case portTaken:
+						held++
+					default:
+						unknown++
+					}
+				}
+				detail := fmt.Sprintf("one port of %d-%d, the first the engine finds free, opened by %s on %s → container "+
+					"port %d (%d free, %d held, %d undecided)", mapping.HostPort, mapping.HostPortEnd, svc.Name, reach,
+					mapping.ContainerPort, free, held, unknown)
+				if free == 0 && unknown == 0 {
+					detail = fmt.Sprintf("not opened: every port of %d-%d is already held, so %s cannot start (see "+
+						"witness.port_conflict)", mapping.HostPort, mapping.HostPortEnd, svc.Name)
+				}
+				out = append(out, model.ChangeItem{
+					Kind:   "firewall-port",
+					Target: fmt.Sprintf("%d-%d/%s", mapping.HostPort, mapping.HostPortEnd, protocolOf(mapping)),
+					Detail: detail,
+				})
+				continue
+			}
 			for _, port := range mapping.HostPorts() {
 				reach := "all interfaces"
 				if mapping.HostIP != "" {
@@ -119,37 +170,52 @@ func Changes(in Input) []model.ChangeItem {
 		for _, mount := range svc.Volumes {
 			switch mount.Kind {
 			case model.MountBind:
-				access := "read/write"
-				if mount.ReadOnly {
-					access = "read only"
-				}
 				out = append(out, model.ChangeItem{
 					Kind:   "file",
 					Target: mount.Source,
-					Detail: fmt.Sprintf("bind-mounted into %s at %s (%s)", svc.Name, mount.Target, access),
+					Detail: bindChange(in, svc, mount),
 				})
 			case model.MountVolume:
+				name, state := volumeState(in, mount.Source)
 				out = append(out, model.ChangeItem{
 					Kind:   "file",
-					Target: "volume " + mount.Source,
-					Detail: fmt.Sprintf("mounted into %s at %s", svc.Name, mount.Target),
+					Target: "volume " + name,
+					Detail: fmt.Sprintf("%s; mounted into %s at %s", state, svc.Name, mount.Target),
 				})
 			}
 		}
 	}
 
-	// Networks.
+	// Networks, by their names in the engine: created, reused, or joined.
+	existingNets := map[string]model.ContainerNetwork{}
+	for _, n := range in.Caps.ContainerNetworks {
+		existingNets[n.Name] = n
+	}
+	netsListed, _ := engineList(in, model.SourceNetworks)
 	for _, network := range in.Manifest.Networks {
-		if network.External {
-			continue
-		}
-		detail := "created"
-		if len(network.Subnets) > 0 {
-			detail = "created with subnet " + strings.Join(network.Subnets, ", ")
+		name := engineNameOf(network.EngineName, network.Name)
+		found, exists := existingNets[name]
+		var detail string
+		switch {
+		case !exists && !netsListed:
+			detail = "created if it does not exist yet — the engine's networks could not be listed"
+		case network.External && exists:
+			detail = "joined (external, exists)"
+		case network.External:
+			detail = "not joined: external and missing, so docker compose up fails (see witness.network_name_conflict)"
+		case exists && sameProject(in, found.Project):
+			detail = "reused: it exists and was created by this project"
+		case exists:
+			detail = "reused although it was not created by Compose for this project (see witness.network_name_conflict)"
+		default:
+			detail = "created"
+			if len(network.Subnets) > 0 {
+				detail = "created with subnet " + strings.Join(network.Subnets, ", ")
+			}
 		}
 		out = append(out, model.ChangeItem{
 			Kind:   "container",
-			Target: "network " + network.Name,
+			Target: "network " + name,
 			Detail: detail,
 		})
 	}
@@ -175,6 +241,42 @@ func Changes(in Input) []model.ChangeItem {
 
 	sortChanges(out)
 	return out
+}
+
+// volumeState is what `up` does to one named volume a service mounts, by its name
+// in the engine.
+func volumeState(in Input, key string) (string, string) {
+	var declared *model.ManifestVolume
+	for i := range in.Manifest.Volumes {
+		if in.Manifest.Volumes[i].Name == key {
+			declared = &in.Manifest.Volumes[i]
+		}
+	}
+	if declared == nil {
+		return key, "an undeclared volume, created by the engine"
+	}
+	name := engineNameOf(declared.EngineName, key)
+	listed, _ := engineList(in, model.SourceVolumes)
+	var found *model.ContainerVolume
+	for i := range in.Caps.ContainerVolumes {
+		if in.Caps.ContainerVolumes[i].Name == name {
+			found = &in.Caps.ContainerVolumes[i]
+		}
+	}
+	switch {
+	case found == nil && !listed:
+		return name, "created if it does not exist yet — the engine's volumes could not be listed"
+	case declared.External && found != nil:
+		return name, "external, exists"
+	case declared.External:
+		return name, "external and missing, so docker compose up fails (see witness.volume_name_conflict)"
+	case found != nil && sameProject(in, found.Project):
+		return name, "reused: it exists and was created by this project, with its data"
+	case found != nil:
+		return name, "reused with its data although it was not created by Compose for this project (see witness.volume_name_conflict)"
+	default:
+		return name, "created empty by Compose"
+	}
 }
 
 // containerChange is the change-list line for one service's container.

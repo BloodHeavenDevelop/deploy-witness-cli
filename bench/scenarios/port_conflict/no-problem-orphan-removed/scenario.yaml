@@ -1,0 +1,14 @@
+id: port_conflict/no-problem-orphan-removed
+rule: witness.port_conflict
+situation: no-problem
+description: >-
+  The same, deployed with --remove-orphans: Compose removes the orphan and the port is free.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness", "--remove-orphans"]
+expect:
+  outcome: no-problem
+docker:
+  up: ["up", "-d", "--remove-orphans"]
+  outcome: succeeds

@@ -141,6 +141,10 @@ type Port struct {
 	Process  string `json:"process"`
 	User     string `json:"user"`
 	Command  string `json:"command"`
+	// V6Only says, for a socket on the IPv6 wildcard, whether it is IPv6 only
+	// ("yes") or also answers IPv4 ("no", dual-stack) — read from `ss`, which shows
+	// the two apart. "" when not established.
+	V6Only string `json:"v6Only"`
 }
 
 // Socket exposure classes, in ascending order of reach.

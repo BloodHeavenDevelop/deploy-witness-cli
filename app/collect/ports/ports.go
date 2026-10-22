@@ -70,7 +70,82 @@ func Collect(runner *run.Runner, result *model.SectionResult) []model.Port {
 		}
 		return found[i].Protocol < found[j].Protocol
 	})
+	markV6Only(runner, found, result)
 	return found
+}
+
+// markV6Only tells, for every socket on the IPv6 wildcard, whether it is IPv6 only
+// or dual-stack. /proc/net/tcp6 does not say — IPV6_V6ONLY is a per-socket option,
+// and net.ipv6.bindv6only only sets its default — but `ss` does: it prints a
+// dual-stack wildcard as `*:port` and an IPv6-only one as `[::]:port`. Without `ss`
+// the answer stays unknown, and the port check says so instead of guessing.
+func markV6Only(runner *run.Runner, found []model.Port, result *model.SectionResult) {
+	wildcards := 0
+	for _, p := range found {
+		if strings.HasSuffix(p.Protocol, "6") && p.Address == "::" {
+			wildcards++
+		}
+	}
+	if wildcards == 0 || !run.Available("ss") {
+		if wildcards > 0 {
+			result.Note(fmt.Sprintf("%d socket(s) listen on the IPv6 wildcard and ss is not installed, so whether "+
+				"each also answers IPv4 is unknown", wildcards))
+		}
+		return
+	}
+	out, err := runner.Output("ss", "-lntupH")
+	if err != nil {
+		result.Note("ss could not be run (" + err.Error() + "), so whether the IPv6 wildcard sockets also answer IPv4 is unknown")
+		return
+	}
+	mode := parseWildcards(out)
+	for i := range found {
+		p := &found[i]
+		if !strings.HasSuffix(p.Protocol, "6") || p.Address != "::" {
+			continue
+		}
+		if v, ok := mode[strings.TrimSuffix(p.Protocol, "6")+"/"+strconv.Itoa(p.Port)]; ok {
+			p.V6Only = v
+		}
+	}
+}
+
+// parseWildcards reads `ss -lntupH` into protocol/port → "yes" (`[::]:port`, IPv6
+// only) or "no" (`*:port`, dual-stack). A port with both kinds is ambiguous and
+// left out.
+func parseWildcards(out string) map[string]string {
+	mode := map[string]string{}
+	ambiguous := map[string]bool{}
+	for _, line := range run.Lines(out) {
+		fields := strings.Fields(line)
+		if len(fields) < 5 {
+			continue
+		}
+		local := fields[4]
+		i := strings.LastIndex(local, ":")
+		if i < 0 {
+			continue
+		}
+		host, port := local[:i], local[i+1:]
+		var v string
+		switch host {
+		case "*":
+			v = "no"
+		case "[::]":
+			v = "yes"
+		default:
+			continue
+		}
+		key := fields[0] + "/" + port
+		if prev, seen := mode[key]; seen && prev != v {
+			ambiguous[key] = true
+		}
+		mode[key] = v
+	}
+	for key := range ambiguous {
+		delete(mode, key)
+	}
+	return mode
 }
 
 func parseTable(content, protocol string, owners map[string]processInfo, users map[string]string) []model.Port {

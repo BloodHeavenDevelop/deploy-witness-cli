@@ -1,0 +1,13 @@
+id: runtime_missing_or_old/no-problem
+rule: witness.runtime_missing_or_old
+situation: no-problem
+description: >-
+  The engine answers and the Compose plugin is installed.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

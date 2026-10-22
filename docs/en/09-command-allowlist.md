@@ -146,7 +146,8 @@ line above it is the one being described.
 
 [ports]
   ss -lntupH                        listening sockets with the owning process, when /proc/net
-                                    alone cannot attribute them
+                                    alone cannot attribute them, and whether each IPv6 wildcard
+                                    socket is IPv6-only ([::]:port) or dual-stack (*:port)
 
 [witness]                         38 entries
   nginx -T                          the effective nginx configuration — server names, ports and
@@ -172,7 +173,7 @@ line above it is the one being described.
   docker-compose version --short
   docker ps -a --format {{json .}}
   docker network ls --format {{json .}}
-  docker network inspect <container> --format {{json .IPAM}}
+  docker network inspect <container> --format {{json .}}
   docker volume ls --format {{json .}}
   docker image ls --all --digests --format {{json .}}
   docker image inspect <image> --format {{json .}}

@@ -1,0 +1,9 @@
+services:
+  web:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    networks: [edge]
+
+networks:
+  edge:
+    external: true
