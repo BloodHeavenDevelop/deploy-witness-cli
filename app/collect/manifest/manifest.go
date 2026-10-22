@@ -106,9 +106,41 @@ func Parse(path string, result *model.SectionResult) (*model.Manifest, error) {
 
 	manifest.Networks = w.networks(field(root, "networks"))
 	manifest.Volumes = w.volumes(field(root, "volumes"))
+	w.resolveBindSources(manifest, dir)
 	manifest.Warnings = w.warnings
 
 	return manifest, nil
+}
+
+// resolveBindSources makes every bind source absolute, the way Compose does:
+// relative to the project directory, and `~` to the home directory. Compose expands
+// `~` for the account that deploys, this audit can only expand it for the account
+// it runs as, and the report says so. Declared keeps what the plan wrote.
+func (w *warner) resolveBindSources(m *model.Manifest, dir string) {
+	home, homeErr := os.UserHomeDir()
+	for i := range m.Services {
+		for j := range m.Services[i].Volumes {
+			mount := &m.Services[i].Volumes[j]
+			if mount.Kind != model.MountBind || mount.Source == "" || filepath.IsAbs(mount.Source) {
+				continue
+			}
+			declared := mount.Source
+			switch {
+			case declared == "~" || strings.HasPrefix(declared, "~/"):
+				if homeErr != nil {
+					w.add("services.%s.volumes: %s: the home directory could not be determined, so the path was not "+
+						"resolved", m.Services[i].Name, declared)
+					continue
+				}
+				mount.Source = filepath.Join(home, strings.TrimPrefix(declared, "~"))
+				w.add("services.%s.volumes: %s was resolved against the home directory of the account running this "+
+					"audit (%s); Compose resolves it for the account that deploys", m.Services[i].Name, declared, home)
+			default:
+				mount.Source = filepath.Join(dir, declared)
+			}
+			mount.Declared = declared
+		}
+	}
 }
 
 // networks reads the top-level `networks:` block.
@@ -139,6 +171,7 @@ func (w *warner) networks(node *yaml.Node) []model.ManifestNetwork {
 		default:
 			network.Driver = w.scalar(body, where, "driver")
 			network.External = w.external(body, where)
+			network.EngineName = w.engineName(body, where)
 			network.Subnets = w.subnets(field(body, "ipam"), where+".ipam")
 		}
 		out = append(out, network)
@@ -170,10 +203,48 @@ func (w *warner) volumes(node *yaml.Node) []model.ManifestVolume {
 		default:
 			volume.Driver = w.scalar(body, where, "driver")
 			volume.External = w.external(body, where)
+			volume.EngineName = w.engineName(body, where)
 		}
 		out = append(out, volume)
 	}
 	return out
+}
+
+// engineName reads the name a network or volume has in the engine: `name:`, or the
+// legacy `external: {name: …}`. "" means the default, which depends on the project
+// name and is filled in by ResolveEngineNames.
+func (w *warner) engineName(node *yaml.Node, where string) string {
+	if name := w.scalar(node, where, "name"); name != "" {
+		return name
+	}
+	if external := field(node, "external"); external != nil && external.Kind == yaml.MappingNode {
+		return w.scalar(external, where+".external", "name")
+	}
+	return ""
+}
+
+// ResolveEngineNames fills in the engine name of every network and volume that
+// does not set one, the way Compose does: an external resource is looked up by its
+// key, one Compose creates is named <project>_<key>. Compose's own resolution
+// (docker compose config) has already done this and is left as it is.
+func ResolveEngineNames(m *model.Manifest, project string) {
+	for i := range m.Networks {
+		if m.Networks[i].EngineName == "" {
+			m.Networks[i].EngineName = defaultEngineName(project, m.Networks[i].Name, m.Networks[i].External)
+		}
+	}
+	for i := range m.Volumes {
+		if m.Volumes[i].EngineName == "" {
+			m.Volumes[i].EngineName = defaultEngineName(project, m.Volumes[i].Name, m.Volumes[i].External)
+		}
+	}
+}
+
+func defaultEngineName(project, key string, external bool) string {
+	if external || project == "" {
+		return key
+	}
+	return project + "_" + key
 }
 
 // external reads `external:`, which has a boolean form and a legacy mapping form
@@ -250,6 +321,9 @@ type warner struct {
 	result   *model.SectionResult
 	warnings []string
 	seen     map[string]bool
+	// composeMajor is the major version of the Compose that resolved the model
+	// being decoded, or 0 for the built-in parser.
+	composeMajor int
 }
 
 func (w *warner) add(format string, args ...any) {

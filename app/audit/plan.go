@@ -46,6 +46,9 @@ func (a *Auditor) preparePlan() error {
 		Services:         cfg.ComposeServices,
 		ProjectName:      cfg.ProjectName,
 		Environment:      composeEnvironment(os.Environ()),
+		RemoveOrphans:    cfg.RemoveOrphans,
+		ForceRecreate:    cfg.ForceRecreate,
+		NoRecreate:       cfg.NoRecreate,
 	}
 	if plan.ProjectDirectory == "" {
 		plan.ProjectDirectory = filepath.Dir(cfg.Compose)
@@ -80,8 +83,12 @@ func (a *Auditor) preparePlan() error {
 	}
 
 	plan.ProjectName, plan.ProjectNameSource = planProjectName(cfg.ProjectName, plan, parsed)
+	manifest.ResolveEngineNames(parsed, plan.ProjectName)
 	if err := selectServices(plan, parsed); err != nil {
 		return err
+	}
+	if plan.Resolver == model.ResolverCompose {
+		plan.ConfigHashes = a.configHashes(plan)
 	}
 	plan.Digest = PlanDigest(plan, parsed)
 	plan.FileDigests = fileDigests(plan.Files)
@@ -111,7 +118,7 @@ func (a *Auditor) resolve(plan *model.LaunchPlan) (*model.Manifest, error) {
 			return nil, planError("docker compose config rejected the planned run, so Compose would reject it "+
 				"too: %s", redact.String(strings.TrimSpace(err.Error())))
 		}
-		parsed, err := manifest.FromComposeConfig([]byte(raw), plan.Files[0], &a.parseNotes)
+		parsed, err := manifest.FromComposeConfig([]byte(raw), plan.Files[0], version, &a.parseNotes)
 		if err != nil {
 			return nil, planError("%v", err)
 		}
@@ -399,4 +406,28 @@ func fileDigests(files []string) []model.FileDigest {
 		out = append(out, model.FileDigest{Path: file, SHA256: hex.EncodeToString(sum[:])})
 	}
 	return out
+}
+
+// configHashes asks Compose for each service's configuration hash — the value it
+// stores on a container and compares on the next `up` to decide whether to keep it
+// or recreate it. Without it, an existing container of the plan is "kept or
+// recreated", not one of the two.
+func (a *Auditor) configHashes(plan *model.LaunchPlan) map[string]string {
+	args := composeConfigArgs(plan, false)
+	args = append(args[:len(args)-2], "--hash", "*")
+	out, err := a.runner.Output("docker", args...)
+	if err != nil {
+		plan.Notes = append(plan.Notes, "the services' configuration hashes could not be read ("+
+			redact.String(strings.TrimSpace(err.Error()))+"), so whether an existing container is kept or "+
+			"recreated is not established")
+		return nil
+	}
+	hashes := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 {
+			hashes[fields[0]] = fields[1]
+		}
+	}
+	return hashes
 }

@@ -1,0 +1,13 @@
+id: bind_path_conflict/no-problem-existing-dir
+rule: witness.bind_path_conflict
+situation: no-problem
+description: >-
+  The plan bind-mounts ./data, which exists.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

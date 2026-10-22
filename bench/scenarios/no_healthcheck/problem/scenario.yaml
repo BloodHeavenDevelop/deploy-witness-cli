@@ -1,0 +1,13 @@
+id: no_healthcheck/problem
+rule: witness.no_healthcheck
+situation: problem
+description: >-
+  A service without a healthcheck. Docker does not refuse it — the rule is about readiness.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: advisory

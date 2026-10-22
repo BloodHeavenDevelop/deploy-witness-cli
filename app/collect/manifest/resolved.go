@@ -26,7 +26,12 @@ import (
 //
 // first is the first Compose file of the plan; it becomes Manifest.Path, which is
 // what evidence quotes.
-func FromComposeConfig(raw []byte, first string, result *model.SectionResult) (*model.Manifest, error) {
+//
+// composeVersion is the version of the Compose that printed the model ("2.33.0",
+// "5.5.0"): the model's encoding of create_host_path changed between them — 2.x
+// prints only `true`, 5.x only `false` — so an absent key means the opposite thing
+// in each, and only the version tells which.
+func FromComposeConfig(raw []byte, first, composeVersion string, result *model.SectionResult) (*model.Manifest, error) {
 	var doc composeDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, fmt.Errorf("docker compose config printed something that is not its JSON model: %w", err)
@@ -35,7 +40,7 @@ func FromComposeConfig(raw []byte, first string, result *model.SectionResult) (*
 		return nil, fmt.Errorf("docker compose config printed a model with no services")
 	}
 
-	w := &warner{path: first, result: result, seen: make(map[string]bool)}
+	w := &warner{path: first, result: result, seen: make(map[string]bool), composeMajor: majorOf(composeVersion)}
 	manifest := &model.Manifest{Path: first, Name: doc.Name}
 
 	names := make([]string, 0, len(doc.Services))
@@ -49,7 +54,7 @@ func FromComposeConfig(raw []byte, first string, result *model.SectionResult) (*
 
 	for _, key := range sortedKeys(doc.Networks) {
 		n := doc.Networks[key]
-		network := model.ManifestNetwork{Name: key, Driver: n.Driver, External: bool(n.External)}
+		network := model.ManifestNetwork{Name: key, EngineName: n.Name, Driver: n.Driver, External: bool(n.External)}
 		for _, c := range n.IPAM.Config {
 			if strings.TrimSpace(c.Subnet) != "" {
 				network.Subnets = append(network.Subnets, c.Subnet)
@@ -59,7 +64,8 @@ func FromComposeConfig(raw []byte, first string, result *model.SectionResult) (*
 	}
 	for _, key := range sortedKeys(doc.Volumes) {
 		v := doc.Volumes[key]
-		manifest.Volumes = append(manifest.Volumes, model.ManifestVolume{Name: key, Driver: v.Driver, External: bool(v.External)})
+		manifest.Volumes = append(manifest.Volumes, model.ManifestVolume{Name: key, EngineName: v.Name, Driver: v.Driver,
+			External: bool(v.External)})
 	}
 
 	manifest.Warnings = w.warnings
@@ -123,8 +129,11 @@ type composeMount struct {
 	Target   string `json:"target"`
 	ReadOnly bool   `json:"read_only"`
 	Bind     *struct {
-		CreateHostPath *bool `json:"create_host_path"`
+		CreateHostPath *bool  `json:"create_host_path"`
+		SELinux        string `json:"selinux"`
+		Propagation    string `json:"propagation"`
 	} `json:"bind"`
+	Consistency string `json:"consistency"`
 }
 
 type composeHealthcheck struct {
@@ -218,6 +227,7 @@ func (w *warner) resolvedService(name string, s composeService) model.ManifestSe
 		DNS:           s.DNS,
 		ExtraHosts:    s.ExtraHosts,
 		Labels:        s.Labels,
+		User:          s.User,
 	}
 	if s.Image != "" {
 		svc.Image = parseImage(s.Image)
@@ -251,6 +261,28 @@ func (w *warner) resolvedService(name string, s composeService) model.ManifestSe
 
 	for _, m := range s.Volumes {
 		mount := model.VolumeMount{Kind: strings.ToLower(m.Type), Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly}
+		if mount.Kind == model.MountBind {
+			// An explicit create_host_path is the answer. An absent one is the
+			// version's default: Compose 5.x omits true (and prints false), Compose
+			// 2.x omits false (and prints true). Verified on 2.33.0 and 5.5.0; with
+			// no version it stays unknown.
+			mount.CreateHostPath = w.defaultCreateHostPath()
+			if m.Bind != nil {
+				if m.Bind.CreateHostPath != nil {
+					value := *m.Bind.CreateHostPath
+					mount.CreateHostPath = &value
+				}
+				if m.Bind.SELinux != "" {
+					mount.Options = append(mount.Options, "selinux="+m.Bind.SELinux)
+				}
+				if m.Bind.Propagation != "" {
+					mount.Options = append(mount.Options, "propagation="+m.Bind.Propagation)
+				}
+			}
+			if m.Consistency != "" {
+				mount.Options = append(mount.Options, "consistency="+m.Consistency)
+			}
+		}
 		switch mount.Kind {
 		case model.MountBind, model.MountVolume, model.MountTmpfs:
 		case "":
@@ -348,6 +380,28 @@ func (w *warner) resolvedBytes(raw json.RawMessage, where string) int64 {
 	n, err := parseMemory(text)
 	if err != nil {
 		w.add("%s: %v", where, err)
+		return 0
+	}
+	return n
+}
+
+func (w *warner) defaultCreateHostPath() *bool {
+	switch {
+	case w.composeMajor >= 5:
+		v := true
+		return &v
+	case w.composeMajor >= 2:
+		v := false
+		return &v
+	}
+	return nil
+}
+
+// majorOf is the major number of a version string, 0 when there is none.
+func majorOf(version string) int {
+	head, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(version), "v"), ".")
+	n, err := strconv.Atoi(head)
+	if err != nil {
 		return 0
 	}
 	return n

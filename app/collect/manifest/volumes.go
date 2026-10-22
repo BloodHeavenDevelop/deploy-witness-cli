@@ -82,10 +82,20 @@ func parseShortVolume(spec string) (model.VolumeMount, error) {
 
 	mount.Kind = classifyMount(mount.Source)
 	for _, option := range strings.Split(options, ",") {
-		switch strings.ToLower(strings.TrimSpace(option)) {
+		switch o := strings.ToLower(strings.TrimSpace(option)); o {
 		case "ro", "readonly":
 			mount.ReadOnly = true
+		case "", "rw", "nocopy":
+		default:
+			// z, Z, shared, rslave, cached, … — kept so the report can say they were
+			// not evaluated.
+			mount.Options = append(mount.Options, o)
 		}
+	}
+	if mount.Kind == model.MountBind {
+		// The short syntax always lets the engine create a missing source.
+		create := true
+		mount.CreateHostPath = &create
 	}
 	return mount, nil
 }
@@ -119,6 +129,22 @@ func (w *warner) parseLongVolume(node *yaml.Node, at string) (model.VolumeMount,
 		mount.Kind = classifyMount(mount.Source)
 		w.add("%s.type: %q is not a mount type this parser knows; the kind was inferred from the source instead",
 			at, declared)
+	}
+
+	if bind := field(node, "bind"); bind != nil && bind.Kind == yaml.MappingNode {
+		if create := field(bind, "create_host_path"); create != nil && !isNull(create) {
+			if value, ok := parseBool(create); ok {
+				mount.CreateHostPath = &value
+			}
+		}
+		for _, key := range []string{"selinux", "propagation"} {
+			if text, ok := str(field(bind, key)); ok && strings.TrimSpace(text) != "" {
+				mount.Options = append(mount.Options, key+"="+strings.TrimSpace(text))
+			}
+		}
+	}
+	if consistency, ok := str(field(node, "consistency")); ok && strings.TrimSpace(consistency) != "" {
+		mount.Options = append(mount.Options, "consistency="+strings.TrimSpace(consistency))
 	}
 
 	readOnly := field(node, "read_only")

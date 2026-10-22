@@ -1,0 +1,13 @@
+id: runtime_missing_or_old/unknown-unprivileged
+rule: witness.runtime_missing_or_old
+situation: unknown
+description: >-
+  The engine is installed, and the audit runs as a user who cannot reach its socket: whether it works is unknown to the audit.
+project: bench
+audit:
+  user: unprivileged
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: unknown
+docker:
+  outcome: succeeds

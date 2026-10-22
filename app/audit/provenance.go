@@ -54,6 +54,7 @@ func (a *Auditor) provenance(report *model.Report, finished time.Time) *model.Pr
 		if rt := caps.Runtime; rt != nil {
 			p.Engine = strings.TrimSpace(rt.Kind + " " + rt.Version)
 			p.EngineID, p.EngineClockSkew = rt.EngineID, rt.ClockSkew
+			p.EngineFingerprint = model.EngineFingerprint(rt.EngineID)
 			if rt.ComposeKind != "" {
 				p.Compose = strings.TrimSpace(rt.ComposeKind + " " + rt.ComposeVersion)
 			}
@@ -174,8 +175,11 @@ func timeChecks(report *model.Report, p *model.Provenance, observations []model.
 	return out
 }
 
-// ProvenanceSummary is the one line the witness notes give the provenance, so the
-// upload — whose contract has no field for it — still carries it.
+// ProvenanceSummary is the one line the witness notes give the provenance. Since
+// DW-94 it is no longer the upload's only carrier: the contract has a Provenance
+// message of its own (report.Contract fills it), and this line stays because it
+// is what a person reading summary.csv or the collector note sees. The raw engine
+// ID it names is replaced by its fingerprint before the upload leaves the host.
 func ProvenanceSummary(p *model.Provenance) string {
 	parts := []string{fmt.Sprintf("provenance: %s %s, rules %s", p.Tool, orDash(p.ToolVersion), p.RulesVersion)}
 	if p.Engine != "" {

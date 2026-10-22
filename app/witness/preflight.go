@@ -54,6 +54,11 @@ type Input struct {
 	// PlanResolvedAt is when the plan was resolved: the time of every piece of
 	// evidence quoting the manifest. Zero means Now.
 	PlanResolvedAt time.Time
+	// Plan is the planned run — its directory, configuration hashes and `up`
+	// options decide what happens to the containers already there. Nil in tests
+	// that do not need it: every container of the project then counts as this
+	// deployment's previous version.
+	Plan *model.LaunchPlan
 }
 
 // RulesVersion identifies the rule set a report was produced with. It changes
@@ -98,14 +103,17 @@ func rules() []rule {
 		{"container-name-conflict", "witness.container_name_conflict", "Fixed container names",
 			"container_name of each service; the engine's container list",
 			containerNameConflicts, assessContainerNames},
-		{"volume-name-conflict", "witness.volume_name_conflict", "External volumes",
-			"the external volumes of the plan; the engine's volume list",
+		{"project-ownership", "witness.project_ownership", "Ownership of the existing containers",
+			"the engine's containers with their Compose labels; the plan's project, directory and services",
+			projectOwnership, assessProjectOwnership},
+		{"volume-name-conflict", "witness.volume_name_conflict", "Named volumes",
+			"the named volumes the plan mounts, by their engine names; the engine's volume list, read in full",
 			volumeNameConflicts, assessExternalVolumes},
 		{"bind-path-conflict", "witness.bind_path_conflict", "Bind mount sources",
 			"the bind mounts of the plan",
 			bindPathConflicts, assessBindPaths},
-		{"network-name-conflict", "witness.network_name_conflict", "External networks",
-			"the external networks of the plan; the engine's network list",
+		{"network-name-conflict", "witness.network_name_conflict", "Networks",
+			"the plan's networks, by their engine names; the engine's network list, read in full, with scope and attachability",
 			networkNameConflicts, assessExternalNetworks},
 		{"subnet-overlap", "witness.subnet_overlap", "Subnet overlaps",
 			"the explicit IPAM subnets of the plan; every engine network's subnets",

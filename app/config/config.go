@@ -57,6 +57,11 @@ type Config struct {
 	ProjectName      string
 	ProjectDirectory string
 	ComposeServices  []string
+	// The `docker compose up` options of the planned run that decide what happens
+	// to the containers already there.
+	RemoveOrphans bool
+	ForceRecreate bool
+	NoRecreate    bool
 	// Egress permits the one outbound check in the witness section: whether the
 	// registries the manifest pulls from are reachable. Off by default, like every
 	// other network path in this tool.
@@ -155,6 +160,12 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 		"the project name the planned run uses, as docker compose -p (default: what Compose derives)")
 	fs.StringVar(&cfg.ProjectDirectory, "project-directory", env("AUDIT_PROJECT_DIRECTORY", ""),
 		"the project directory of the planned run, as docker compose --project-directory (default: the first file's directory)")
+	fs.BoolVar(&cfg.RemoveOrphans, "remove-orphans", envBool("AUDIT_REMOVE_ORPHANS", false),
+		"the planned run uses docker compose up --remove-orphans")
+	fs.BoolVar(&cfg.ForceRecreate, "force-recreate", envBool("AUDIT_FORCE_RECREATE", false),
+		"the planned run uses docker compose up --force-recreate")
+	fs.BoolVar(&cfg.NoRecreate, "no-recreate", envBool("AUDIT_NO_RECREATE", false),
+		"the planned run uses docker compose up --no-recreate")
 	fs.Var(&services, "compose-service",
 		"a service the planned run starts, as in docker compose up <service>; repeatable (default: every service)")
 	fs.StringVar(&mode, "mode", env("AUDIT_MODE", ""),
@@ -314,9 +325,14 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 			}
 		}
 	} else if len(cfg.EnvFiles) > 0 || len(cfg.Profiles) > 0 || cfg.ProjectName != "" ||
-		cfg.ProjectDirectory != "" || len(cfg.ComposeServices) > 0 {
-		return nil, fmt.Errorf("--env-file, --profile, --project-name, --project-directory and --compose-service " +
-			"describe a planned Compose run and need --compose; a host audit has none")
+		cfg.ProjectDirectory != "" || len(cfg.ComposeServices) > 0 || cfg.RemoveOrphans || cfg.ForceRecreate ||
+		cfg.NoRecreate {
+		return nil, fmt.Errorf("--env-file, --profile, --project-name, --project-directory, --compose-service, " +
+			"--remove-orphans, --force-recreate and --no-recreate describe a planned Compose run and need --compose; " +
+			"a host audit has none")
+	}
+	if cfg.ForceRecreate && cfg.NoRecreate {
+		return nil, fmt.Errorf("--force-recreate and --no-recreate are incompatible, as they are for docker compose up")
 	}
 
 	// The two upload flags are useless apart, and a partially configured upload that

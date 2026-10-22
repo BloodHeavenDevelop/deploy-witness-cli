@@ -1,0 +1,14 @@
+id: network_name_conflict/unknown-unprivileged
+rule: witness.network_name_conflict
+situation: unknown
+description: >-
+  The external network is missing, and the audit cannot reach the engine.
+project: bench
+audit:
+  user: unprivileged
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: unknown
+docker:
+  outcome: fails
+  pattern: "could not be found"

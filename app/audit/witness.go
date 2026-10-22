@@ -73,6 +73,7 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 	certs.Collect(a.runner, caps, result)
 	backup.Collect(a.runner, caps, result)
 	caps.Databases = host.Databases(caps, result)
+	host.BindSources(parsed, caps, result)
 
 	report.Capabilities = caps
 	if a.plan != nil && caps.Runtime != nil {
@@ -90,6 +91,7 @@ func (a *Auditor) witnessSection(report *model.Report, result *model.SectionResu
 		PortsUnchecked: !a.cfg.Wants(model.SectionPorts),
 	}
 	if a.plan != nil {
+		in.Plan = a.plan
 		if at, err := time.Parse(time.RFC3339, a.plan.ResolvedAt); err == nil {
 			in.PlanResolvedAt = at
 		}
@@ -257,7 +259,9 @@ func findingCounts(findings []model.Finding) (blockers, warnings int) {
 
 // LaunchSummary is the one line the witness notes give the plan: what was checked,
 // how it was resolved, and against which engine. It reaches summary.csv and the
-// upload's witness collector.
+// upload's witness collector. Since DW-94 the upload also carries the plan as a
+// LaunchPlan message (report.Contract), so this line is for the reader, no longer
+// the only carrier.
 func LaunchSummary(plan *model.LaunchPlan) string {
 	engine := "the local engine"
 	if plan.Engine.Context != "" {

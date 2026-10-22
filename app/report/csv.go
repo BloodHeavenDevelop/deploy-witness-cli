@@ -54,8 +54,8 @@ func tables(r *model.Report) []table {
 		},
 		{
 			name:    string(model.SectionPorts),
-			headers: []string{"Protocol", "Address", "Port", "Exposure", "State", "PID", "Process", "User", "Command"},
-			paths:   []string{"protocol", "address", "port", "exposure", "state", "pid", "process", "user", "command"},
+			headers: []string{"Protocol", "Address", "Port", "Exposure", "State", "PID", "Process", "User", "Command", "V6 only"},
+			paths:   []string{"protocol", "address", "port", "exposure", "state", "pid", "process", "user", "command", "v6Only"},
 			rows:    anySlice(r.Ports),
 		},
 		{
@@ -363,6 +363,7 @@ func provenanceRows(p *model.Provenance, caps *model.Capabilities) []planRow {
 		{"server-fingerprint", p.ServerFingerprint},
 		{"engine", p.Engine},
 		{"engine-id", p.EngineID},
+		{"engine-fingerprint", p.EngineFingerprint},
 		{"compose", p.Compose},
 		{"plan-source", p.PlanSource},
 		{"plan-digest", p.PlanDigest},

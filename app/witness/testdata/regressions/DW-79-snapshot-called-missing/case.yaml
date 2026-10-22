@@ -1,0 +1,14 @@
+id: DW-79-snapshot-called-missing
+task: DW-79
+kind: false-alarm
+found: review
+summary: >-
+  The rollback plan called a provider snapshot "not available" — a claim the host cannot support.
+cause: >-
+  Rollback items had two states; "could not be seen from inside the host" was rendered as "missing".
+recheck_minutes: 0
+fixed_in: 1.4.0
+expect:
+  rules:
+    witness.no_rollback_plan: manual-check
+  no_blocker: true
