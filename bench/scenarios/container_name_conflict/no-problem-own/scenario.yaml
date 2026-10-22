@@ -1,0 +1,14 @@
+id: container_name_conflict/no-problem-own
+rule: witness.container_name_conflict
+situation: no-problem
+description: >-
+  The plan is already deployed; its own container is named web.
+critical: true
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

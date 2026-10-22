@@ -141,6 +141,10 @@ type Port struct {
 	Process  string `json:"process"`
 	User     string `json:"user"`
 	Command  string `json:"command"`
+	// V6Only says, for a socket on the IPv6 wildcard, whether it is IPv6 only
+	// ("yes") or also answers IPv4 ("no", dual-stack) — read from `ss`, which shows
+	// the two apart. "" when not established.
+	V6Only string `json:"v6Only"`
 }
 
 // Socket exposure classes, in ascending order of reach.
@@ -264,7 +268,11 @@ type Report struct {
 	// The witness section's output. Manifest and Capabilities are the two sides
 	// it compared; keeping them in the report is what lets a reader check a finding
 	// rather than take it on faith.
-	Manifest     *Manifest     `json:"manifest,omitempty"`
+	Manifest *Manifest `json:"manifest,omitempty"`
+	// Plan is the exact run the preflight checked; nil in a host audit.
+	Plan *LaunchPlan `json:"plan,omitempty"`
+	// Provenance is what every conclusion of this report rests on.
+	Provenance   *Provenance   `json:"provenance,omitempty"`
 	Capabilities *Capabilities `json:"capabilities,omitempty"`
 	Findings     []Finding     `json:"findings"`
 	// Rules is one outcome per witness rule, including the rules that published no

@@ -1,0 +1,8 @@
+services:
+  web:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    volumes: ["data:/data"]
+
+volumes:
+  data: {}

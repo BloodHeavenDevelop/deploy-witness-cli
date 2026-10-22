@@ -1,0 +1,13 @@
+id: privileged_container/no-problem
+rule: witness.privileged_container
+situation: no-problem
+description: >-
+  The same service without host authority.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: advisory

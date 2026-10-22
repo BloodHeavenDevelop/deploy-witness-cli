@@ -1,0 +1,15 @@
+id: port_conflict/problem-orphan-left-running
+rule: witness.port_conflict
+situation: problem
+description: >-
+  An earlier version of the project ran service "legacy" on 18080; the plan replaces it with service "web" on the same port, without --remove-orphans.
+critical: true
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: fails
+  pattern: "port is already allocated"

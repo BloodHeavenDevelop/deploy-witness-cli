@@ -4,9 +4,9 @@ package audit
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/manifest"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/ports"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/services"
 	"github.com/BloodHeavenDevelop/deploy-witness-cli/app/collect/system"
@@ -39,6 +39,14 @@ type Auditor struct {
 	// section to carry.
 	manifest   *model.Manifest
 	parseNotes model.SectionResult
+	// plan is the exact run the preflight checks, resolved by Prepare.
+	plan *model.LaunchPlan
+	// portsAt is when the ports section read the sockets; comparedAt when the
+	// witness rules ran. Both feed the report's provenance.
+	portsAt, comparedAt time.Time
+	// startedAt is when the run began: Prepare, which resolves the plan, is part of
+	// it, so the report's start is not later than the plan resolution.
+	startedAt time.Time
 
 	// What the network paths actually did, for network.csv: requests sent to the
 	// OSV API, and the host:port of every registry --egress dialled.
@@ -68,16 +76,12 @@ func New(cfg *config.Config, log *logging.Logger, version string) *Auditor {
 // is the one shape a missing preflight must never take. A host audit has no input,
 // and Prepare does nothing.
 func (a *Auditor) Prepare() error {
+	a.startedAt = time.Now().UTC()
 	if a.cfg.Mode != model.ModeComposePreflight {
 		return nil
 	}
 	a.parseNotes = model.SectionResult{Section: model.SectionWitness, Status: model.StatusOk}
-	parsed, err := manifest.Parse(a.cfg.Compose, &a.parseNotes)
-	if err != nil {
-		return fmt.Errorf("the Compose preflight cannot start, the Compose file could not be parsed: %w", err)
-	}
-	a.manifest = parsed
-	return nil
+	return a.preparePlan()
 }
 
 // Run executes every selected section. It returns a report even when sections
@@ -86,8 +90,11 @@ func (a *Auditor) Prepare() error {
 func (a *Auditor) Run() *model.Report {
 	hostname, _ := os.Hostname()
 
+	if a.startedAt.IsZero() {
+		a.startedAt = time.Now().UTC()
+	}
 	report := &model.Report{
-		GeneratedAt: time.Now().UTC(),
+		GeneratedAt: a.startedAt,
 		Hostname:    hostname,
 		Tool:        "deploy-witness",
 		Version:     a.version,
@@ -96,8 +103,13 @@ func (a *Auditor) Run() *model.Report {
 
 	switch a.cfg.Mode {
 	case model.ModeComposePreflight:
-		a.log.Info(fmt.Sprintf("mode: %s of %s", a.cfg.Mode.Label(), a.cfg.Compose))
+		a.log.Info(fmt.Sprintf("mode: %s of %s", a.cfg.Mode.Label(), strings.Join(a.cfg.ComposeFiles, " + ")))
+		if a.plan != nil {
+			a.log.Info(fmt.Sprintf("plan: project %q (from %s), resolved by %s, starting %s",
+				a.plan.ProjectName, a.plan.ProjectNameSource, a.plan.Resolver, strings.Join(a.plan.Started, ", ")))
+		}
 	default:
+		a.pinLocalEngine()
 		a.log.Info(fmt.Sprintf("mode: %s — no --compose was given; comparing a planned deployment with "+
 			"this host (the witness section) is outside the scope of this run", a.cfg.Mode.Label()))
 	}
@@ -132,6 +144,7 @@ func (a *Auditor) Run() *model.Report {
 			result.Records = len(report.Vulnerabilities)
 			result.Critical, result.High = gradeCounts(report.Vulnerabilities)
 		case model.SectionPorts:
+			a.portsAt = time.Now().UTC()
 			report.Ports = ports.Collect(a.runner, &result)
 			result.Records = len(report.Ports)
 			a.noteExposure(report.Ports, &result)
@@ -161,6 +174,16 @@ func (a *Auditor) Run() *model.Report {
 
 	report.Commands = journal(a.runner)
 	report.Network = a.networkRecord(report.Commands)
+
+	report.Provenance = a.provenance(report, time.Now().UTC())
+	for i := range report.Sections {
+		if report.Sections[i].Section == model.SectionWitness && report.Sections[i].Status != model.StatusNotApplicable {
+			report.Sections[i].Note(ProvenanceSummary(report.Provenance))
+			for _, check := range report.Provenance.TimeChecks {
+				report.Sections[i].Note("time: " + check)
+			}
+		}
+	}
 	if refused := refusedCommands(report.Commands); refused > 0 {
 		// A refusal means a collector asked for something the published allowlist
 		// does not cover: a defect in this tool. It is stated at error level and in

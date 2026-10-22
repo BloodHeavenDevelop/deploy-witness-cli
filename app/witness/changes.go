@@ -41,6 +41,25 @@ func Changes(in Input) []model.ChangeItem {
 		out = append(out, model.ChangeItem{Kind: "container", Target: name, Detail: containerChange(in, svc, name, existing)})
 	}
 
+	// The containers already there that the plan does not name but does affect: the
+	// orphans of this project, another checkout's containers it takes over, and this
+	// directory's containers under an older project name, which it leaves running.
+	planned := map[string]bool{}
+	for _, item := range out {
+		planned[item.Target] = true
+	}
+	for _, c := range in.Caps.Containers {
+		if planned[c.Name] {
+			continue
+		}
+		owner := ownerOf(in, c)
+		switch owner.kind {
+		case ownOrphan, otherCheckout, renamedProject, ownOneOff:
+			out = append(out, model.ChangeItem{Kind: "container", Target: c.Name, Detail: fmt.Sprintf(
+				"%s — %s, currently %s (see witness.project_ownership)", owner.action, describeOwner(in, c), c.State)})
+		}
+	}
+
 	// Images that have to be pulled. Naming them is the difference between "images
 	// will be downloaded" and a list somebody can check against a registry.
 	present := map[string]bool{}
@@ -68,7 +87,58 @@ func Changes(in Input) []model.ChangeItem {
 	// published without a host IP is on every interface, which is the part people
 	// do not expect.
 	for _, svc := range in.Manifest.Services {
+		if svc.NetworkMode == "host" {
+			for _, mapping := range svc.Ports {
+				out = append(out, model.ChangeItem{
+					Kind:   "firewall-port",
+					Target: fmt.Sprintf("%d/%s", mapping.ContainerPort, protocolOf(mapping)),
+					Detail: fmt.Sprintf("bound directly by %s on the host network (network_mode: host) — the engine "+
+						"discards the published port, and the application chooses the address", svc.Name),
+				})
+			}
+			continue
+		}
 		for _, mapping := range svc.Ports {
+			reach := "all interfaces"
+			if mapping.HostIP != "" {
+				reach = mapping.HostIP
+			}
+			switch {
+			case mapping.Ephemeral():
+				out = append(out, model.ChangeItem{
+					Kind:   "firewall-port",
+					Target: fmt.Sprintf("ephemeral/%s", protocolOf(mapping)),
+					Detail: fmt.Sprintf("a port the engine picks from the kernel's ephemeral range, opened by %s on %s → "+
+						"container port %d; it cannot collide, and it changes on every recreate", svc.Name, reach,
+						mapping.ContainerPort),
+				})
+				continue
+			case mapping.Dynamic():
+				free, held, unknown := 0, 0, 0
+				for _, port := range mapping.HostPorts() {
+					switch state, _ := portState(in, mapping, port); state {
+					case portFree:
+						free++
+					case portTaken:
+						held++
+					default:
+						unknown++
+					}
+				}
+				detail := fmt.Sprintf("one port of %d-%d, the first the engine finds free, opened by %s on %s → container "+
+					"port %d (%d free, %d held, %d undecided)", mapping.HostPort, mapping.HostPortEnd, svc.Name, reach,
+					mapping.ContainerPort, free, held, unknown)
+				if free == 0 && unknown == 0 {
+					detail = fmt.Sprintf("not opened: every port of %d-%d is already held, so %s cannot start (see "+
+						"witness.port_conflict)", mapping.HostPort, mapping.HostPortEnd, svc.Name)
+				}
+				out = append(out, model.ChangeItem{
+					Kind:   "firewall-port",
+					Target: fmt.Sprintf("%d-%d/%s", mapping.HostPort, mapping.HostPortEnd, protocolOf(mapping)),
+					Detail: detail,
+				})
+				continue
+			}
 			for _, port := range mapping.HostPorts() {
 				reach := "all interfaces"
 				if mapping.HostIP != "" {
@@ -100,37 +170,52 @@ func Changes(in Input) []model.ChangeItem {
 		for _, mount := range svc.Volumes {
 			switch mount.Kind {
 			case model.MountBind:
-				access := "read/write"
-				if mount.ReadOnly {
-					access = "read only"
-				}
 				out = append(out, model.ChangeItem{
 					Kind:   "file",
 					Target: mount.Source,
-					Detail: fmt.Sprintf("bind-mounted into %s at %s (%s)", svc.Name, mount.Target, access),
+					Detail: bindChange(in, svc, mount),
 				})
 			case model.MountVolume:
+				name, state := volumeState(in, mount.Source)
 				out = append(out, model.ChangeItem{
 					Kind:   "file",
-					Target: "volume " + mount.Source,
-					Detail: fmt.Sprintf("mounted into %s at %s", svc.Name, mount.Target),
+					Target: "volume " + name,
+					Detail: fmt.Sprintf("%s; mounted into %s at %s", state, svc.Name, mount.Target),
 				})
 			}
 		}
 	}
 
-	// Networks.
+	// Networks, by their names in the engine: created, reused, or joined.
+	existingNets := map[string]model.ContainerNetwork{}
+	for _, n := range in.Caps.ContainerNetworks {
+		existingNets[n.Name] = n
+	}
+	netsListed, _ := engineList(in, model.SourceNetworks)
 	for _, network := range in.Manifest.Networks {
-		if network.External {
-			continue
-		}
-		detail := "created"
-		if len(network.Subnets) > 0 {
-			detail = "created with subnet " + strings.Join(network.Subnets, ", ")
+		name := engineNameOf(network.EngineName, network.Name)
+		found, exists := existingNets[name]
+		var detail string
+		switch {
+		case !exists && !netsListed:
+			detail = "created if it does not exist yet — the engine's networks could not be listed"
+		case network.External && exists:
+			detail = "joined (external, exists)"
+		case network.External:
+			detail = "not joined: external and missing, so docker compose up fails (see witness.network_name_conflict)"
+		case exists && sameProject(in, found.Project):
+			detail = "reused: it exists and was created by this project"
+		case exists:
+			detail = "reused although it was not created by Compose for this project (see witness.network_name_conflict)"
+		default:
+			detail = "created"
+			if len(network.Subnets) > 0 {
+				detail = "created with subnet " + strings.Join(network.Subnets, ", ")
+			}
 		}
 		out = append(out, model.ChangeItem{
 			Kind:   "container",
-			Target: "network " + network.Name,
+			Target: "network " + name,
 			Detail: detail,
 		})
 	}
@@ -158,6 +243,42 @@ func Changes(in Input) []model.ChangeItem {
 	return out
 }
 
+// volumeState is what `up` does to one named volume a service mounts, by its name
+// in the engine.
+func volumeState(in Input, key string) (string, string) {
+	var declared *model.ManifestVolume
+	for i := range in.Manifest.Volumes {
+		if in.Manifest.Volumes[i].Name == key {
+			declared = &in.Manifest.Volumes[i]
+		}
+	}
+	if declared == nil {
+		return key, "an undeclared volume, created by the engine"
+	}
+	name := engineNameOf(declared.EngineName, key)
+	listed, _ := engineList(in, model.SourceVolumes)
+	var found *model.ContainerVolume
+	for i := range in.Caps.ContainerVolumes {
+		if in.Caps.ContainerVolumes[i].Name == name {
+			found = &in.Caps.ContainerVolumes[i]
+		}
+	}
+	switch {
+	case found == nil && !listed:
+		return name, "created if it does not exist yet — the engine's volumes could not be listed"
+	case declared.External && found != nil:
+		return name, "external, exists"
+	case declared.External:
+		return name, "external and missing, so docker compose up fails (see witness.volume_name_conflict)"
+	case found != nil && sameProject(in, found.Project):
+		return name, "reused: it exists and was created by this project, with its data"
+	case found != nil:
+		return name, "reused with its data although it was not created by Compose for this project (see witness.volume_name_conflict)"
+	default:
+		return name, "created empty by Compose"
+	}
+}
+
 // containerChange is the change-list line for one service's container.
 func containerChange(in Input, svc model.ManifestService, name string, existing map[string]model.Container) string {
 	image := imageOrBuild(svc)
@@ -166,16 +287,27 @@ func containerChange(in Input, svc model.ManifestService, name string, existing 
 			"did not answer, so that could not be checked", image, name)
 	}
 	if found, ok := existing[name]; ok {
-		if sameProject(in, found.Project) {
-			return fmt.Sprintf("replaced (currently %s, image %s) with %s", found.State, found.Image, image)
-		}
-		owner := "no Compose project"
-		if found.Project != "" {
-			owner = fmt.Sprintf("Compose project %q", found.Project)
+		owner := ownerOf(in, found)
+		switch {
+		case owner.kind == ownService && (found.Service == "" || found.Service == svc.Name):
+			if strings.HasPrefix(owner.action, "kept") {
+				return fmt.Sprintf("%s (currently %s, image %s)", owner.action, found.State, found.Image)
+			}
+			detail := fmt.Sprintf("replaced (currently %s, image %s) with %s", found.State, found.Image, image)
+			if in.Plan != nil {
+				detail += " — " + owner.action
+			}
+			return detail
+		case owner.kind == otherCheckout && found.Service == svc.Name:
+			return fmt.Sprintf("%s (currently %s, image %s), replaced with %s (see witness.project_ownership)",
+				owner.action, found.State, found.Image, image)
+		case owner.kind == unlabelled:
+			return fmt.Sprintf("created from %s only if the existing container named %s is this deployment's — "+
+				"the engine reported no labels for it, so that could not be established", image, name)
 		}
 		return fmt.Sprintf("not created: a container named %s already exists (state %s, image %s, %s) and does "+
 			"not belong to this deployment, so docker compose up fails on the name and leaves it as it is "+
-			"(see witness.container_name_conflict)", name, found.State, found.Image, owner)
+			"(see witness.container_name_conflict)", name, found.State, found.Image, describeOwner(in, found))
 	}
 
 	detail := "created from " + image
@@ -223,14 +355,14 @@ func portState(in Input, mapping model.PortMapping, port int) (portAvailability,
 	certain := certainHolders(holders)
 	switch {
 	case len(certain) > 0 && (own == nil || foreignContainer(in, certain)) && !ownershipKnown(in, certain):
-		return portMaybeTaken, describeHolders(certain) + " — which may be this deployment's own container: the " +
+		return portMaybeTaken, describeHolders(in, certain) + " — which may be this deployment's own container: the " +
 			"engine's containers were not listed"
 	case len(certain) > 0 && (own == nil || foreignContainer(in, certain)):
-		return portTaken, describeHolders(certain)
+		return portTaken, describeHolders(in, certain)
 	case own != nil:
 		return portFree, ""
 	default:
-		return portMaybeTaken, describeHolders(holders)
+		return portMaybeTaken, describeHolders(in, holders)
 	}
 }
 
@@ -284,7 +416,7 @@ func Rollback(in Input) []model.RollbackItem {
 	// digest — a tag is not enough, because the tag is what moved.
 	running := map[string]model.Container{}
 	for _, c := range in.Caps.Containers {
-		if sameProject(in, c.Project) {
+		if ownerOf(in, c).kind == ownService {
 			running[c.Service] = c
 		}
 	}

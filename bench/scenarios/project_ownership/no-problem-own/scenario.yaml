@@ -1,0 +1,13 @@
+id: project_ownership/no-problem-own
+rule: witness.project_ownership
+situation: no-problem
+description: >-
+  This directory is already deployed under the same project name.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

@@ -63,8 +63,29 @@ systemd-fsck@dev-disk-by\x2duuid-F9EA\x2dEBDF.service
 числом юнитов. Плейсхолдер с несуществующим видом — опечатка в `commands.go`, и он
 отклоняет, а не превращается в шаблон «что угодно».
 
-На 0.2.0 записями реально используются только `unit`, `suite`, `container`, `image`
-и `user`; `path` и `name` определены и не используются.
+`path` и `name` используют пары опций Compose ниже; `unit`, `suite`, `container`,
+`image` и `user` — записи с одним значением.
+
+Одна запись устроена иначе: `docker compose <options> config …`, которая разрешает
+планируемый запуск (см. [04 — Планируемый запуск](04-cli-reference.md#планируемый-запуск)).
+Флаги проекта Compose принимает до подкоманды, повторяющимися и в значимом порядке
+(`-f a -f b` — не то же, что `-f b -f a`), а фиксированный вектор этого не выразит.
+Поэтому у записи есть явная таблица **пар опций** — буквальный флаг и одно значение
+фиксированного вида, — а `<options>` означает ноль или больше таких пар, не более 64:
+
+| Флаг | Вид значения |
+|---|---|
+| `--file` | `path` |
+| `--env-file` | `path` |
+| `--project-directory` | `path` |
+| `--profile` | `name` |
+| `--project-name` | `name` |
+
+Ничто другое встать на их место не может: флаг не из таблицы (`--host`),
+относительный путь или флаг без значения отклоняют всю команду, а буквальная
+подкоманда с аргументами после опций (`config --format json [--no-env-resolution]`)
+сравнивается точно — `docker compose -f … up` в списке нет. `--commands` печатает
+пары: `docker compose [--env-file <path> | --file <path> | …]... config --format json`.
 
 ### Аргументы, которые делают чтение чтением
 
@@ -115,8 +136,8 @@ deploy-witness --commands
 ```
 
 Он печатает применяемый список, сгруппированный по разделу, которому команда нужна,
-с указанием, ради чего она читается. Ниже — этот вывод на версии 0.2.0,
-**68 команд**. Вывод программы приводится как есть, по-английски; где две записи
+с указанием, ради чего она читается. Ниже — этот вывод на релизе после 1.4.0,
+**73 команды**. Вывод программы приводится как есть, по-английски; где две записи
 делят строку назначения вида «the same, …», описывается запись выше.
 
 ```
@@ -125,9 +146,10 @@ deploy-witness --commands
 
 [ports]
   ss -lntupH                        listening sockets with the owning process, when /proc/net
-                                    alone cannot attribute them
+                                    alone cannot attribute them, and whether each IPv6 wildcard
+                                    socket is IPv6-only ([::]:port) or dual-stack (*:port)
 
-[witness]                         33 записи
+[witness]                         38 записей
   nginx -T                          the effective nginx configuration — server names, ports and
                                     certificate paths already in use, with includes resolved
   nginx -v                          the nginx version
@@ -137,10 +159,21 @@ deploy-witness --commands
   docker version --format {{json .}}
   docker info --format {{json .}}
   docker compose version --short
+  docker compose [--env-file <path> | --file <path> | --profile <name> |
+                  --project-directory <path> | --project-name <name>]...
+                 config --format json [--no-env-resolution]
+                                    the final model of the planned run, exactly as Compose
+                                    resolves it (two entries: with and without the flag)
+  docker compose [<options>]... config --hash *
+                                    each service's configuration hash, which Compose compares with a
+                                    container's label to keep or recreate it
+  docker context show               the name of the active docker context
+  docker context inspect --format {{json .Endpoints.docker.Host}}
+                                    its endpoint, to refuse a preflight of a remote engine
   docker-compose version --short
   docker ps -a --format {{json .}}
   docker network ls --format {{json .}}
-  docker network inspect <container> --format {{json .IPAM}}
+  docker network inspect <container> --format {{json .}}
   docker volume ls --format {{json .}}
   docker image ls --all --digests --format {{json .}}
   docker image inspect <image> --format {{json .}}
@@ -186,7 +219,7 @@ deploy-witness --commands
 ```
 
 Группировка выше сворачивает почти одинаковые записи podman и yum ради читаемости;
-`--commands` печатает каждую из 68 отдельно, и применяется именно она. **Если эта
+`--commands` печатает каждую из 73 отдельно, и применяется именно она. **Если эта
 страница и `--commands` когда-нибудь расходятся, прав `--commands`.**
 
 ## Журнал

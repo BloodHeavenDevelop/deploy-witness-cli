@@ -1,0 +1,13 @@
+id: DW-87-hand-made-external-volume
+task: DW-87
+kind: false-alarm
+found: review
+summary: >-
+  An external volume created with `docker volume create` was reported as holding somebody else's data.
+cause: >-
+  A volume without a project label was treated as another project's.
+recheck_minutes: 0
+fixed_in: unreleased
+expect:
+  rules:
+    witness.volume_name_conflict: no-problem

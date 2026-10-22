@@ -40,7 +40,7 @@ func completeObservations() []model.Observation {
 	for _, source := range []string{
 		model.SourceContainers, model.SourceNetworks, model.SourceNetworkSubnets, model.SourceVolumes,
 		model.SourceImages, model.SourceSockets, model.SourceArch, model.SourceMemory,
-		model.SourceFilesystems, model.SourceProxy,
+		model.SourceFilesystems, model.SourceProxy, model.SourceBindSources,
 	} {
 		out = append(out, model.Observation{Source: source, State: model.ObservedComplete})
 	}
@@ -203,7 +203,7 @@ func TestPortConflict(t *testing.T) {
 		in := baseInput()
 		in.Manifest.Services = []model.ManifestService{{
 			Name:  "media",
-			Ports: []model.PortMapping{{HostPort: 3000, HostPortEnd: 3002, ContainerPort: 3000}},
+			Ports: []model.PortMapping{{HostPort: 3000, HostPortEnd: 3002, ContainerPort: 3000, ContainerPortEnd: 3002}},
 		}}
 		in.Caps.Ports = []model.Port{
 			{Protocol: "tcp", Address: "0.0.0.0", Port: 3001, State: "LISTEN", Process: "node"},
@@ -526,6 +526,8 @@ func TestProxyPortConflictProtocol(t *testing.T) {
 
 func TestExternalResourcesMustExist(t *testing.T) {
 	in := baseInput()
+	in.Manifest.Services = []model.ManifestService{{Name: "app",
+		Volumes: []model.VolumeMount{{Kind: model.MountVolume, Source: "shared-data", Target: "/d"}}}}
 	in.Manifest.Volumes = []model.ManifestVolume{{Name: "shared-data", External: true}}
 	in.Manifest.Networks = []model.ManifestNetwork{{Name: "shared-net", External: true}}
 

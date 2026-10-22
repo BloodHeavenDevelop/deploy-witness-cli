@@ -1,0 +1,14 @@
+id: volume_name_conflict/no-problem-external-present
+rule: witness.volume_name_conflict
+situation: no-problem
+description: >-
+  The external volume shared-data exists.
+regression: DW-87
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

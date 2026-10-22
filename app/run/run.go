@@ -30,8 +30,18 @@ type Runner struct {
 	// Off unless the run was given --online; see AllowNetwork.
 	network bool
 
+	// extraEnv is added to every child's environment after the tool's own. The
+	// audit uses it to pin the docker CLI to the local engine (DOCKER_CONTEXT) when
+	// the active context points elsewhere.
+	extraEnv []string
+
 	mu      sync.Mutex
 	journal []JournalEntry
+}
+
+// SetEnv adds NAME=value to the environment of every command run from now on.
+func (r *Runner) SetEnv(name, value string) {
+	r.extraEnv = append(r.extraEnv, name+"="+value)
 }
 
 // JournalEntry is one command this run executed, or tried to.
@@ -164,7 +174,7 @@ func (r *Runner) OutputAllowExit(allowed []int, name string, args ...string) (st
 	// Deterministic, parseable output regardless of the operator's locale: a
 	// Russian or German LC_MESSAGES rewrites every table header these parsers
 	// depend on.
-	cmd.Env = append(childEnv(cmd.Environ()), "LC_ALL=C", "LANG=C", "LANGUAGE=C")
+	cmd.Env = append(append(childEnv(cmd.Environ()), r.extraEnv...), "LC_ALL=C", "LANG=C", "LANGUAGE=C")
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

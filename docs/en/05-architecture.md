@@ -7,7 +7,9 @@ main.go
   └─ config.Load(argv, env)          flags → Config, or an error before anything runs
   └─ --commands? print run.Commands() and exit         (the enforced allowlist itself)
   └─ logging.New(stderr, level)      diagnostics never touch stdout
-  └─ audit.New(cfg, log).Prepare()   Compose preflight only: parse --compose, or exit 2, no report
+  └─ audit.New(cfg, log).Prepare()   Compose preflight only: resolve the planned run (plan.go: engine, docker compose config), or exit 2, no report
+  └─ --recheck? auditor.Recheck()    resolve the plan again, ask the engine its ID, compare with
+                                     the report (recheck.go); print ok/re-run, exit 0 or 4, write nothing
   └─ auditor.Run()
        ├─ model.ReadOSRelease()      /etc/os-release → distribution identity
        ├─ pkgmgr.Detect(os, runner)  which package manager this host actually has
@@ -21,10 +23,11 @@ main.go
                  ├─ the manifest Prepare parsed      the requirements side
                  ├─ host/docker/proxy/panels/          the capabilities side,
                  │  scheduler/certs/backup + databases in dependency order
-                 └─ witness.Evaluate()              24 rules: findings, one outcome per rule, changes, rollback
+                 └─ witness.Evaluate()              25 rules: findings, one outcome per rule, changes, rollback
             each producing a model.SectionResult: status, counts, duration, notes
        └─ host audit: a `not-applicable` `witness` row labelled host-audit (out of scope, not a gap)
        └─ report.Commands = runner.Journal()   every command, including refusals
+       └─ report.Provenance = provenance()     build, rules, plan digest, engine, timeline + time checks
   └─ redact.Report(result)           the last thing before anything is written
   └─ report.WriteDir() | WriteCombined() | WriteJSONFile() | WriteJSON()
   └─ report.Upload()                 only with --upload and --upload-token
@@ -66,7 +69,7 @@ process command line, a proxy directive — and this report may be uploaded.
 | `app/collect/system` | Host inventory and hardening posture. |
 | `app/collect/ports` | Listening sockets from `/proc/net`. |
 | `app/collect/services` | Service units from systemd, OpenRC, SysV or the process table. |
-| `app/collect/manifest` | The compose-file parser: the *requirements* side of witness. Reads one user-supplied file and the `.env` beside it. Observes nothing about the host. |
+| `app/collect/manifest` | The requirements side of witness: `resolved.go` reads the model `docker compose config` printed for the planned run (names only of environment variables); the built-in parser reads one user-supplied file and the `.env` beside it when Compose is not installed. Observes nothing about the host. |
 | `app/collect/host` | Architecture, memory, filesystems with inodes, and the databases already installed — as numbers, not prose. |
 | `app/collect/docker` | The container runtime: engine, compose implementation, containers, networks, volumes, images. |
 | `app/collect/proxy` | nginx / Apache: the effective configuration, server names with file and line, listen ports, certificate paths. |
@@ -74,9 +77,10 @@ process command line, a proxy directive — and this report may be uploaded.
 | `app/collect/certs` | TLS certificates on disk, parsed with `crypto/x509`, and whether anything actually renews them. |
 | `app/collect/scheduler` | Scheduled work: cron in every form, plus systemd timers. |
 | `app/collect/backup` | Backup tools, backup jobs, and the date of the newest file in each backup directory. |
-| `app/witness` | The 24 rules, the change list and the rollback plan. Pure functions of manifest + capabilities; observes nothing. `outcomes.go` gives every rule exactly one outcome (problem, no-problem, unknown, manual-check, not-applicable) and enforces the severity/outcome invariants. |
+| `app/witness` | The 25 rules, the change list and the rollback plan. Pure functions of manifest + capabilities; observes nothing. `outcomes.go` gives every rule exactly one outcome (problem, no-problem, unknown, manual-check, not-applicable) and enforces the severity/outcome invariants. `testdata/regressions` holds the pilot regression cases ([13](13-pilot-regressions.md)). |
 | `app/report` | CSV rendering through `app/csv`, the JSON document, the shared audit contract and the upload. |
 | `app/audit` | Section orchestration, the shared inventory cache, and the network plan/record (`network.go`) printed before the run and written as `network.csv`. |
+| `bench/` | Not part of the binary. `bench/dwbench` is the test bench harness (`make bench`, [11](11-test-bench.md)), `bench/result` the shape of its results, `bench/scenarios` the staged situations, `bench/score` + `bench/dwscore` the quality figures and the release gate ([12](12-quality-and-release.md)), `bench/baseline` and `bench/history` the committed runs they compare with. It drives a disposable Docker-in-Docker engine with the docker CLI and imports nothing from `app/`. |
 
 Dependencies point one way: `audit` → collectors → `pkgmgr`/`run` → `model`.
 Nothing in `model` imports anything above it, which is why the comparators, the
