@@ -170,14 +170,10 @@ func Changes(in Input) []model.ChangeItem {
 		for _, mount := range svc.Volumes {
 			switch mount.Kind {
 			case model.MountBind:
-				access := "read/write"
-				if mount.ReadOnly {
-					access = "read only"
-				}
 				out = append(out, model.ChangeItem{
 					Kind:   "file",
 					Target: mount.Source,
-					Detail: fmt.Sprintf("bind-mounted into %s at %s (%s)", svc.Name, mount.Target, access),
+					Detail: bindChange(in, svc, mount),
 				})
 			case model.MountVolume:
 				name, state := volumeState(in, mount.Source)

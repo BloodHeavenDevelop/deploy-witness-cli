@@ -106,9 +106,41 @@ func Parse(path string, result *model.SectionResult) (*model.Manifest, error) {
 
 	manifest.Networks = w.networks(field(root, "networks"))
 	manifest.Volumes = w.volumes(field(root, "volumes"))
+	w.resolveBindSources(manifest, dir)
 	manifest.Warnings = w.warnings
 
 	return manifest, nil
+}
+
+// resolveBindSources makes every bind source absolute, the way Compose does:
+// relative to the project directory, and `~` to the home directory. Compose expands
+// `~` for the account that deploys, this audit can only expand it for the account
+// it runs as, and the report says so. Declared keeps what the plan wrote.
+func (w *warner) resolveBindSources(m *model.Manifest, dir string) {
+	home, homeErr := os.UserHomeDir()
+	for i := range m.Services {
+		for j := range m.Services[i].Volumes {
+			mount := &m.Services[i].Volumes[j]
+			if mount.Kind != model.MountBind || mount.Source == "" || filepath.IsAbs(mount.Source) {
+				continue
+			}
+			declared := mount.Source
+			switch {
+			case declared == "~" || strings.HasPrefix(declared, "~/"):
+				if homeErr != nil {
+					w.add("services.%s.volumes: %s: the home directory could not be determined, so the path was not "+
+						"resolved", m.Services[i].Name, declared)
+					continue
+				}
+				mount.Source = filepath.Join(home, strings.TrimPrefix(declared, "~"))
+				w.add("services.%s.volumes: %s was resolved against the home directory of the account running this "+
+					"audit (%s); Compose resolves it for the account that deploys", m.Services[i].Name, declared, home)
+			default:
+				mount.Source = filepath.Join(dir, declared)
+			}
+			mount.Declared = declared
+		}
+	}
 }
 
 // networks reads the top-level `networks:` block.
@@ -289,6 +321,9 @@ type warner struct {
 	result   *model.SectionResult
 	warnings []string
 	seen     map[string]bool
+	// composeMajor is the major version of the Compose that resolved the model
+	// being decoded, or 0 for the built-in parser.
+	composeMajor int
 }
 
 func (w *warner) add(format string, args ...any) {

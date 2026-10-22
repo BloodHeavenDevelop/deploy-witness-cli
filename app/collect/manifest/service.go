@@ -42,6 +42,7 @@ func (w *warner) parseService(name string, node *yaml.Node, dir string) model.Ma
 	service.Platform = w.scalar(node, where, "platform")
 	service.Restart = w.scalar(node, where, "restart")
 	service.NetworkMode = w.scalar(node, where, "network_mode")
+	service.User = w.scalar(node, where, "user")
 
 	service.Ports = w.ports(field(node, "ports"), where+".ports")
 	service.Expose = w.expose(field(node, "expose"), where+".expose")

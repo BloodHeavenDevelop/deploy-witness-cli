@@ -1,0 +1,15 @@
+id: subnet_overlap/problem
+rule: witness.subnet_overlap
+situation: problem
+description: >-
+  The plan asks for 10.77.1.0/24; an existing network uses 10.77.0.0/16.
+critical: true
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: fails
+  pattern: "overlap"

@@ -138,8 +138,34 @@ var situations = map[string][]situation{
 			in.Manifest.Services[0].Volumes = []model.VolumeMount{{Kind: model.MountBind, Source: "/etc", Target: "/x"}}
 		}, model.OutcomeProblem},
 		{"binds a data directory", func(in *Input) {
-			in.Manifest.Services[0].Volumes = []model.VolumeMount{{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"}}
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"},
+				model.PathInfo{Path: "/srv/app/data", State: "exists", Type: "directory", Mode: "0755", UID: 0, GID: 0})
 		}, model.OutcomeNoProblem},
+		{"missing, and the engine creates it", func(in *Input) {
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x", CreateHostPath: boolp(true)},
+				model.PathInfo{Path: "/srv/app/data", State: "missing"})
+		}, model.OutcomeNoProblem},
+		{"missing, create_host_path: false", func(in *Input) {
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x", CreateHostPath: boolp(false)},
+				model.PathInfo{Path: "/srv/app/data", State: "missing"})
+		}, model.OutcomeProblem},
+		{"read/write on a read-only filesystem", func(in *Input) {
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"},
+				model.PathInfo{Path: "/srv/app/data", State: "exists", Type: "directory", Mode: "0755", ReadOnlyFS: true})
+		}, model.OutcomeProblem},
+		{"this account could not stat it", func(in *Input) {
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/root/secret", Target: "/x"},
+				model.PathInfo{Path: "/root/secret", State: "unknown", Error: "permission denied"})
+		}, model.OutcomeUnknown},
+		{"mode bits deny the container user", func(in *Input) {
+			in.Manifest.Services[0].User = "1000:1000"
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"},
+				model.PathInfo{Path: "/srv/app/data", State: "exists", Type: "directory", Mode: "0700", UID: 0, GID: 0})
+		}, model.OutcomeUnknown},
+		{"sources not examined", func(in *Input) {
+			in.Manifest.Services[0].Volumes = []model.VolumeMount{{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"}}
+			in.Caps.Observe(model.SourceBindSources, model.ObservedNotCollected, "")
+		}, model.OutcomeUnknown},
 		{"no bind mount", nil, model.OutcomeNotApplicable},
 	},
 	"witness.network_name_conflict": {
@@ -533,4 +559,46 @@ func mountShared(in *Input) {
 	in.Manifest.Volumes = []model.ManifestVolume{{Name: "shared", External: true}}
 	in.Manifest.Services[0].Volumes = append(in.Manifest.Services[0].Volumes,
 		model.VolumeMount{Kind: model.MountVolume, Source: "shared", Target: "/shared"})
+}
+
+func bindAt(in *Input, mount model.VolumeMount, info model.PathInfo) {
+	in.Manifest.Services[0].Volumes = []model.VolumeMount{mount}
+	in.Caps.BindSources = []model.PathInfo{info}
+}
+
+func boolp(b bool) *bool { return &b }
+
+func TestDeniedByMode(t *testing.T) {
+	dir := model.PathInfo{Type: "directory", Mode: "0750", UID: 1000, GID: 1000}
+	for _, tc := range []struct {
+		uid, gid int
+		write    bool
+		want     string
+	}{
+		{0, 0, true, ""}, {1000, 1000, true, ""}, {1001, 1000, false, ""}, {1001, 1000, true, "write"},
+		{1001, 1001, false, "read"},
+	} {
+		if got := deniedByMode(dir, tc.uid, tc.gid, tc.write); got != tc.want {
+			t.Errorf("uid %d gid %d write %v: %q, want %q", tc.uid, tc.gid, tc.write, got, tc.want)
+		}
+	}
+	noEnter := model.PathInfo{Type: "directory", Mode: "0744", UID: 0, GID: 0}
+	if got := deniedByMode(noEnter, 1000, -1, false); got != "enter" {
+		t.Errorf("r-- on a directory cannot be entered: %q", got)
+	}
+}
+
+// DW-88: the change list never presents access as proven, and says which options
+// were not evaluated.
+func TestBindChangeAdmitsWhatIsNotVerified(t *testing.T) {
+	in := cleanInput()
+	bindAt(&in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x", Options: []string{"z"}},
+		model.PathInfo{Path: "/srv/app/data", State: "missing"})
+	in.Manifest.Services[0].Volumes[0].CreateHostPath = boolp(true)
+	row, _ := changeFor(Changes(in), "file", "/srv/app/data")
+	for _, want := range []string{"creates it as an empty directory owned by root", "not verified", "options not evaluated: z"} {
+		if !strings.Contains(row.Detail, want) {
+			t.Errorf("missing %q in %q", want, row.Detail)
+		}
+	}
 }

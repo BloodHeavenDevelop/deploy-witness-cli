@@ -40,7 +40,7 @@ func completeObservations() []model.Observation {
 	for _, source := range []string{
 		model.SourceContainers, model.SourceNetworks, model.SourceNetworkSubnets, model.SourceVolumes,
 		model.SourceImages, model.SourceSockets, model.SourceArch, model.SourceMemory,
-		model.SourceFilesystems, model.SourceProxy,
+		model.SourceFilesystems, model.SourceProxy, model.SourceBindSources,
 	} {
 		out = append(out, model.Observation{Source: source, State: model.ObservedComplete})
 	}

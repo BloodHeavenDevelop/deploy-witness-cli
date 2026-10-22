@@ -118,7 +118,11 @@ type Provenance struct {
 	Host              string `json:"host"`
 	ServerFingerprint string `json:"serverFingerprint"`
 	Engine            string `json:"engine"`
+	// EngineID is the engine's own ID from `docker info`, for matching against the
+	// engine by hand; EngineFingerprint its salted hash (see EngineFingerprint),
+	// which is all the upload carries.
 	EngineID          string `json:"engineId"`
+	EngineFingerprint string `json:"engineFingerprint"`
 	Compose           string `json:"compose"`
 	// PlanSource and PlanDigest are the plan's resolver and digest (empty in a
 	// host audit).
@@ -206,9 +210,12 @@ type ManifestService struct {
 	Devices    []string `json:"devices"`
 	// MountsContainerSocket is true when the service bind-mounts the Docker or
 	// Podman socket, which is equivalent to giving it root on the host.
-	MountsContainerSocket bool     `json:"mountsContainerSocket"`
-	ExtraHosts            []string `json:"extraHosts"`
-	DNS                   []string `json:"dns"`
+	MountsContainerSocket bool `json:"mountsContainerSocket"`
+	// User is the service's `user:` — who the container runs as; "" means the
+	// image's default.
+	User       string   `json:"user"`
+	ExtraHosts []string `json:"extraHosts"`
+	DNS        []string `json:"dns"`
 	// Labels are the service's `labels:`. They are configuration rather than
 	// secrets, and they are the only place a compose file states which domain a
 	// service expects to be reached at — a Traefik router rule or a proxy label. A
@@ -280,10 +287,41 @@ const (
 // VolumeMount is one entry from a service's `volumes:`.
 type VolumeMount struct {
 	Kind string `json:"kind"`
-	// Source is a host path for a bind mount and a volume name for a volume.
+	// Source is a host path for a bind mount — absolute, resolved against the
+	// project directory — and a volume name for a volume. Declared is the source as
+	// the plan wrote it, when that differs.
 	Source   string `json:"source"`
+	Declared string `json:"declared,omitempty"`
 	Target   string `json:"target"`
 	ReadOnly bool   `json:"readOnly"`
+	// CreateHostPath is whether the engine creates a missing bind source (as an
+	// empty directory owned by root): true for the short syntax and for Compose's
+	// resolved model unless it says false; nil when it could not be established.
+	CreateHostPath *bool `json:"createHostPath,omitempty"`
+	// Options are the mount options this audit does not evaluate — SELinux
+	// relabelling (z, Z), propagation, consistency — reported as not checked.
+	Options []string `json:"options,omitempty"`
+}
+
+// PathInfo is what the host shows about one bind mount source, by stat alone:
+// nothing is created, opened or read.
+type PathInfo struct {
+	Path string `json:"path"`
+	// State is "exists", "missing" or "unknown" (the stat itself failed).
+	State string `json:"state"`
+	// Type is "directory", "file", "socket", "device", "fifo" or "other" — of the
+	// symlink's target when Path is one.
+	Type string `json:"type"`
+	// SymlinkTarget is where Path points when it is a symlink; Dangling is set
+	// when that target does not exist.
+	SymlinkTarget string `json:"symlinkTarget,omitempty"`
+	Dangling      bool   `json:"dangling,omitempty"`
+	Mode          string `json:"mode"`
+	UID           int    `json:"uid"`
+	GID           int    `json:"gid"`
+	// ReadOnlyFS is true when the filesystem holding Path is mounted read-only.
+	ReadOnlyFS bool   `json:"readOnlyFs"`
+	Error      string `json:"error,omitempty"`
 }
 
 // EnvFileRef is a referenced env_file and whether it is actually there. The
@@ -304,8 +342,8 @@ type ManifestNetwork struct {
 	// external network — which is what an existing network is matched by.
 	Name       string `json:"name"`
 	EngineName string `json:"engineName"`
-	Driver   string `json:"driver"`
-	External bool   `json:"external"`
+	Driver     string `json:"driver"`
+	External   bool   `json:"external"`
 	// Subnets are the explicit IPAM subnets, in CIDR form. They are what a
 	// subnet-overlap check needs.
 	Subnets []string `json:"subnets"`
@@ -317,8 +355,8 @@ type ManifestVolume struct {
 	// networks.
 	Name       string `json:"name"`
 	EngineName string `json:"engineName"`
-	Driver   string `json:"driver"`
-	External bool   `json:"external"`
+	Driver     string `json:"driver"`
+	External   bool   `json:"external"`
 }
 
 // ─────────────────────────────────────────────────────── the host's capabilities
@@ -350,6 +388,9 @@ type Capabilities struct {
 	Jobs         []ScheduledJob `json:"jobs"`
 	Backup       BackupPosture  `json:"backup"`
 	Databases    []Database     `json:"databases"`
+	// BindSources is what the host shows about every bind mount source of the
+	// plan, from stat alone.
+	BindSources []PathInfo `json:"bindSources"`
 	// IPv6 is "enabled" when the host has IPv6 (the engine then publishes on [::]
 	// as well as 0.0.0.0), "disabled", or "" when it could not be read.
 	// BindV6Only is the net.ipv6.bindv6only default ("0" or "1"), which a socket
@@ -498,6 +539,9 @@ type ContainerImage struct {
 	Architecture string `json:"architecture"`
 	OS           string `json:"os"`
 	SizeBytes    int64  `json:"sizeBytes"`
+	// User is the image's default user (Config.User), "" for root. It is who a
+	// container runs as when the service sets no `user:`.
+	User string `json:"user"`
 }
 
 // Proxy is the host's web front end, if it has one.
@@ -739,6 +783,7 @@ const (
 	SourceMemory         = "memory"
 	SourceFilesystems    = "filesystems"
 	SourceProxy          = "proxy"
+	SourceBindSources    = "bind-sources"
 )
 
 // Observation is one source of host data and how completely it was read.

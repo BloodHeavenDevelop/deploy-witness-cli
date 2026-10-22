@@ -31,3 +31,53 @@ func TestIPv6Posture(t *testing.T) {
 		t.Errorf("disabled: %q", ipv6)
 	}
 }
+
+// DW-88: a bind source is examined by stat alone — and never created.
+func TestStatPathNeverCreates(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "app.conf")
+	if err := os.WriteFile(file, []byte("x"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "current")
+	dangling := filepath.Join(dir, "broken")
+	if err := os.Symlink(file, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "nowhere"), dangling); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(dir, "data", "pg")
+
+	for path, want := range map[string]string{
+		dir: "exists/directory", file: "exists/file", link: "exists/file", dangling: "exists/symlink", missing: "missing/",
+	} {
+		info := StatPath(path)
+		if got := info.State + "/" + info.Type; got != want {
+			t.Errorf("%s: %s, want %s", path, got, want)
+		}
+	}
+	if info := StatPath(file); info.Mode != "0640" || info.UID != os.Getuid() {
+		t.Errorf("mode/owner: %+v", info)
+	}
+	if info := StatPath(link); info.SymlinkTarget != file {
+		t.Errorf("symlink target: %+v", info)
+	}
+	if !StatPath(dangling).Dangling {
+		t.Error("a dangling symlink must say so")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "data")); !os.IsNotExist(err) {
+		t.Fatal("examining a missing source created it")
+	}
+
+	if os.Geteuid() != 0 {
+		locked := filepath.Join(dir, "locked")
+		if err := os.Mkdir(locked, 0o000); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = os.Chmod(locked, 0o700) }()
+		if info := StatPath(filepath.Join(locked, "inside")); info.State != "unknown" || info.Error == "" {
+			t.Errorf("a path this account cannot reach is unknown, not missing: %+v", info)
+		}
+	}
+}

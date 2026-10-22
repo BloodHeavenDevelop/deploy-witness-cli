@@ -284,6 +284,9 @@ services:
 			want: []model.VolumeMount{
 				{Kind: model.MountBind, Source: "~/certs", Target: "/certs", ReadOnly: true},
 			},
+			// Compose expands ~ for the account that deploys; the audit can only do
+			// it for its own, and says so.
+			warning: "home directory of the account running this audit",
 		},
 		{
 			name: "long bind with read_only",
@@ -371,6 +374,14 @@ services:
 		t.Run(tc.name, func(t *testing.T) {
 			manifest, _ := parseFixture(t, fmt.Sprintf(template, tc.entries), nil)
 			service := onlyService(t, manifest)
+			// The cases compare what was declared; resolution of relative sources and
+			// create_host_path are tested on their own (TestBindSourceResolution).
+			for i := range service.Volumes {
+				if service.Volumes[i].Declared != "" {
+					service.Volumes[i].Source, service.Volumes[i].Declared = service.Volumes[i].Declared, ""
+				}
+				service.Volumes[i].CreateHostPath = nil
+			}
 
 			if !reflect.DeepEqual(service.Volumes, tc.want) {
 				t.Errorf("volumes:\n got %+v\nwant %+v", service.Volumes, tc.want)
@@ -1273,4 +1284,37 @@ func TestParseErrors(t *testing.T) {
 			t.Errorf("status: got %q, want partial", result.Status)
 		}
 	})
+}
+
+// DW-88: bind sources are resolved as Compose resolves them, the short syntax lets
+// the engine create a missing source, and options this audit does not evaluate are
+// kept so the report can say so.
+func TestBindSourceResolution(t *testing.T) {
+	manifest, _ := parseFixture(t, `services:
+  app:
+    image: nginx
+    user: "1000:1000"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro,z
+      - type: bind
+        source: ./conf
+        target: /etc/app
+        bind:
+          create_host_path: false
+          propagation: rslave
+`, nil)
+	svc := onlyService(t, manifest)
+	dir := filepath.Dir(manifest.Path)
+	if len(svc.Volumes) != 2 || svc.User != "1000:1000" {
+		t.Fatalf("service = %+v", svc)
+	}
+	short, long := svc.Volumes[0], svc.Volumes[1]
+	if short.Source != filepath.Join(dir, "html") || short.Declared != "./html" || !short.ReadOnly ||
+		short.CreateHostPath == nil || !*short.CreateHostPath || strings.Join(short.Options, ",") != "z" {
+		t.Errorf("short = %+v", short)
+	}
+	if long.Source != filepath.Join(dir, "conf") || long.CreateHostPath == nil || *long.CreateHostPath ||
+		strings.Join(long.Options, ",") != "propagation=rslave" {
+		t.Errorf("long = %+v", long)
+	}
 }

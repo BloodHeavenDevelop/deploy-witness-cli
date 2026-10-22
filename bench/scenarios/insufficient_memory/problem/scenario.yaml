@@ -1,0 +1,13 @@
+id: insufficient_memory/problem
+rule: witness.insufficient_memory
+situation: problem
+description: >-
+  The plan reserves 100000 GiB. Docker does not refuse a reservation — the rule is about the kernel killing processes later.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: advisory

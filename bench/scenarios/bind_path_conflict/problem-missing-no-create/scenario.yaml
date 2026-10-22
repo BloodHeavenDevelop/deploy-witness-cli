@@ -1,0 +1,15 @@
+id: bind_path_conflict/problem-missing-no-create
+rule: witness.bind_path_conflict
+situation: problem
+description: >-
+  The plan bind-mounts ./nodir with create_host_path: false, and ./nodir does not exist.
+critical: true
+regression: DW-83
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: fails

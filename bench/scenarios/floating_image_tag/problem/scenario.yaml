@@ -1,0 +1,13 @@
+id: floating_image_tag/problem
+rule: witness.floating_image_tag
+situation: problem
+description: >-
+  The image is referenced by a version tag, not a digest. Docker does not refuse it — the rule is about reproducibility.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: advisory

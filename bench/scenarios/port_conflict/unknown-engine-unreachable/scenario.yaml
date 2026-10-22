@@ -1,0 +1,14 @@
+id: port_conflict/unknown-engine-unreachable
+rule: witness.port_conflict
+situation: unknown
+description: >-
+  An unrelated container holds 18080, and the audit runs as a user who cannot reach the engine, so the holder cannot be told from this deployment's own docker-proxy.
+project: bench
+audit:
+  user: unprivileged
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: unknown
+docker:
+  outcome: fails
+  pattern: "port is already allocated"

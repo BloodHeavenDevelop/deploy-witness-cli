@@ -1,0 +1,13 @@
+id: DW-83-hand-made-external-network
+task: DW-83
+kind: false-alarm
+found: bench
+summary: >-
+  An external network created with `docker network create` was reported as shared with another stack.
+cause: >-
+  A network without a project label was treated as another project's.
+recheck_minutes: 0
+fixed_in: unreleased
+expect:
+  rules:
+    witness.network_name_conflict: no-problem

@@ -1,0 +1,14 @@
+id: env_file_missing/no-problem-optional
+rule: witness.env_file_missing
+situation: no-problem
+description: >-
+  The same env file, declared required: false. A Compose without --no-env-resolution merges env files into the model and drops the key, so the rule has nothing to check (not-applicable) — equally correct.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+  also: [not-applicable]
+docker:
+  outcome: succeeds

@@ -1,0 +1,30 @@
+# A pilot defect, reproduced on artificial data. Copy this directory to
+# <TASK>-<short-slug>/ (make regression NAME=<TASK>-<short-slug>), fill both files,
+# watch the test fail on the version that had the defect, then fix the CLI.
+#
+# Nothing from the client goes in here: no report, no host name, no public IP, no
+# domain outside example/test/invalid, no engine or machine id, no secret — the
+# regression test refuses a case that contains one.
+id: TASK-short-slug
+task: TASK
+# false-alarm (a problem reported that is not there), miss (a problem not reported),
+# or unjustified-unknown (unknown where the data was there to decide).
+kind: false-alarm
+# pilot, bench or review: where the defect was observed.
+found: pilot
+summary: >-
+  What the client saw, in one sentence, without naming the client.
+cause: >-
+  Why the CLI got it wrong.
+# Minutes spent re-checking the finding by hand on the pilot. Required for a pilot.
+recheck_minutes: 30
+# The release the fix ships in, or "unreleased".
+fixed_in: unreleased
+expect:
+  # The outcome each rule must reach on this input.
+  rules:
+    witness.port_conflict: no-problem
+  # Optional: no blocker at all, no blocker from these rules, phrases changes.csv must contain.
+  no_blocker: false
+  no_blocker_for: []
+  changes_contain: []
