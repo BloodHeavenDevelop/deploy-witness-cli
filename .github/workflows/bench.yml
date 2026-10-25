@@ -1,0 +1,35 @@
+# The test bench and the release gate (DW-83, DW-84): every scenario staged in a
+# disposable Docker-in-Docker environment, the CLI's prediction checked against what
+# Docker does, then scored against bench/baseline. A blocked gate fails the job.
+name: bench
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["dist/**", "docs/**"]
+  pull_request:
+    paths-ignore: ["docs/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # The bench loads its images from this machine's engine and pulls nothing
+      # inside the environment (--network none).
+      - run: docker pull -q alpine:3.21 && docker pull -q docker:27.5.1-dind
+      - run: make release-gate
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench/out/
+          if-no-files-found: ignore

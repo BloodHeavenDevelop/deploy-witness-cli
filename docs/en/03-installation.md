@@ -79,8 +79,12 @@ ssh server 'sudo deploy-witness --out /var/log/deploy-witness'
 
 ## Prebuilt binaries
 
-`dist/` holds a binary for every supported target, built with `make dist` from the
-release they are committed with, plus `dist/checksums.txt` (sha256):
+`dist/` holds a binary for every supported target, built with `make dist`, plus
+`dist/checksums.txt` (sha256). They are rebuilt by the `dist` workflow
+(`.github/workflows/dist.yml`) on every push to `main` that changes the source — after
+`make test` passes — and committed back as `chore(dist): rebuild binaries …`, so the
+binaries beside a commit of `main` are built from it and carry the version of the
+first numbered heading of `CHANGELOG.md`:
 
 | File | Target |
 |---|---|

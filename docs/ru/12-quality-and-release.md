@@ -76,6 +76,11 @@ make bench-baseline  # сделать последний прогон базов
 
 Перед выпуском: `make release-gate`. Если он прошёл, а сценарии менялись, —
 `make bench-baseline` и строка в CHANGELOG о том, почему сдвинут базовый прогон.
+
+Тот же шлюз работает в CI: workflow `bench` (`.github/workflows/bench.yml`) запускает
+`make release-gate` на каждый пуш в `main` и каждый pull request и падает, если шлюз
+блокирует; `bench/out/` прогона сохраняется артефактом `bench-results`. Юнит-тесты и
+регрессии пилотов идут в workflow `test`.
 Базовый прогон, закоммиченный в этом изменении, — прогон 2026-10-19 на
 `docker:27.5.1-dind` (Docker 27.5.1, Compose 2.33.0): 46 сценариев, все по
 спецификации, шлюз PASS.

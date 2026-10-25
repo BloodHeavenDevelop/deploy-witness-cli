@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-25
+
+### Changed
+
+- **`dist/` is rebuilt by CI from every push to `main`**
+  ([.github/workflows/dist.yml](.github/workflows/dist.yml),
+  `docs/<lang>/03-installation.md`). The committed binaries had stopped at 1.2.0 while
+  the source moved on to 1.6.0, so `install.sh` and every download link served a tool
+  without DW-80…DW-94. The `dist` workflow runs `make test` and `make dist` and commits
+  the result back (`chore(dist): rebuild binaries <version> from <sha>`); a push made
+  with `GITHUB_TOKEN` starts no workflow, so it does not loop.
+- **The tests and the release gate run in CI**
+  ([.github/workflows/test.yml](.github/workflows/test.yml),
+  [.github/workflows/bench.yml](.github/workflows/bench.yml),
+  `docs/<lang>/12-quality-and-release.md`): `test` runs `make vet` and `make test`
+  (the pilot regressions included) on every push and pull request; `bench` runs
+  `make release-gate` on every push to `main` and every pull request, and keeps
+  `bench/out/` as the `bench-results` artifact.
+
 ## [1.6.0] - 2026-10-20
 
 ### Added

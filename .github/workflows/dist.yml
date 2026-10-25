@@ -1,0 +1,43 @@
+# Rebuilds dist/ — the binaries install.sh and the docs download — from every push
+# to main, so what is committed beside the source is always built from it. The
+# version comes from the first numbered heading of CHANGELOG.md (see Makefile).
+# A push made with GITHUB_TOKEN starts no workflow, so the commit below does not
+# loop back here.
+name: dist
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["dist/**", "docs/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dist
+  cancel-in-progress: false
+
+jobs:
+  dist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make test
+      - run: make dist
+      - name: Commit the rebuilt binaries
+        run: |
+          if [ -z "$(git status --porcelain -- dist)" ]; then
+            echo "dist/ already matches this commit"
+            exit 0
+          fi
+          version=$(sed -n 's/^## \[\([0-9][^]]*\)\].*/\1/p' CHANGELOG.md | head -1)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist
+          git commit -m "chore(dist): rebuild binaries ${version} from $(git rev-parse --short HEAD)"
+          git pull --rebase origin main
+          git push origin HEAD:main

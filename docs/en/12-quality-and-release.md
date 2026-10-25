@@ -78,6 +78,11 @@ correctly in the baseline and is `unknown` now is a regression of that scenario.
 
 Before cutting a release: `make release-gate`. When it passes and the scenarios
 changed, `make bench-baseline` and a CHANGELOG line saying why the baseline moved.
+
+The same gate runs in CI: the `bench` workflow (`.github/workflows/bench.yml`) runs
+`make release-gate` on every push to `main` and every pull request and fails when the
+gate blocks; the run's `bench/out/` is kept as the `bench-results` artifact. The unit
+tests and the pilot regressions run in the `test` workflow.
 The baseline committed with this change is the run of 2026-10-19 on
 `docker:27.5.1-dind` (Docker 27.5.1, Compose 2.33.0): 46 scenarios, all as
 specified, gate PASS.
