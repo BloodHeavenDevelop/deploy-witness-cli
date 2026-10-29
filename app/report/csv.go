@@ -103,7 +103,7 @@ func tables(r *model.Report) []table {
 			name:    "provenance",
 			headers: []string{"Key", "Value"},
 			paths:   []string{"key", "value"},
-			rows:    anySlice(provenanceRows(r.Provenance, r.Capabilities)),
+			rows:    anySlice(provenanceRows(r.Provenance)),
 		},
 		{
 			name:    "changes",
@@ -352,7 +352,7 @@ func planRows(plan *model.LaunchPlan) []planRow {
 
 // provenanceRows renders the provenance as key/value rows, with one row per
 // observation source and one per time check.
-func provenanceRows(p *model.Provenance, caps *model.Capabilities) []planRow {
+func provenanceRows(p *model.Provenance) []planRow {
 	if p == nil {
 		return nil
 	}
@@ -378,11 +378,9 @@ func provenanceRows(p *model.Provenance, caps *model.Capabilities) []planRow {
 		{"completeness", p.Completeness},
 		{"recheck-after", p.RecheckAfter},
 	}
-	if caps != nil {
-		for _, o := range caps.Observations {
-			rows = append(rows, planRow{"observation", fmt.Sprintf("%s: %s at %s — %s", o.Source, o.State,
-				o.ObservedAt, o.Note)})
-		}
+	for _, o := range p.Observations {
+		rows = append(rows, planRow{"observation", fmt.Sprintf("%s: %s at %s — %s", o.Source, o.State,
+			o.ObservedAt, o.Note)})
 	}
 	if len(p.TimeChecks) == 0 {
 		rows = append(rows, planRow{"time-check", "consistent"})

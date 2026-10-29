@@ -129,6 +129,8 @@ func TestReportSweepsEveryFreeFormField(t *testing.T) {
 		Capabilities: &model.Capabilities{
 			Jobs: []model.ScheduledJob{{Command: "restic --password=hunter2 backup /srv"}},
 		},
+		Provenance: &model.Provenance{Observations: []model.Observation{{Source: "services:systemctl",
+			Note: "1 run(s): `mysqldump -pobssecret` ok"}}},
 	}
 
 	changed := Report(report)
@@ -143,9 +145,10 @@ func TestReportSweepsEveryFreeFormField(t *testing.T) {
 		report.Findings[0].Description,
 		report.Findings[0].Evidence[0].Output,
 		report.Capabilities.Jobs[0].Command,
+		report.Provenance.Observations[0].Note,
 	}, "\n")
 
-	for _, secret := range []string{"hunter2", "abcdef123456", "psecret", "letmein", "sig12345"} {
+	for _, secret := range []string{"hunter2", "abcdef123456", "psecret", "letmein", "sig12345", "obssecret"} {
 		if strings.Contains(rendered, secret) {
 			t.Errorf("%q survived the report sweep:\n%s", secret, rendered)
 		}

@@ -97,7 +97,7 @@ func Contract(r *model.Report) *auditv1.Report {
 		})
 	}
 	out.Plan = contractPlan(r.Plan)
-	out.Provenance = contractProvenance(r.Provenance, r.Capabilities)
+	out.Provenance = contractProvenance(r.Provenance)
 
 	// The engine's own ID is not ours to publish, any more than /etc/machine-id is:
 	// the upload names the engine by its fingerprint alone. The rules write the raw
@@ -147,10 +147,13 @@ func contractPlan(plan *model.LaunchPlan) *auditv1.LaunchPlan {
 	return out
 }
 
-// contractProvenance maps the provenance and the observations it rests on. The
-// engine goes out as its fingerprint, never as the ID `docker info` reports; the
-// host name and the server fingerprint already have fields of their own on Report.
-func contractProvenance(p *model.Provenance, caps *model.Capabilities) *auditv1.Provenance {
+// contractProvenance maps the provenance and the observations it rests on — every
+// section's (`<section>` / `<section>:<detail>`, DW-82) and, in a preflight, the
+// witness section's host sources. A host audit therefore arrives with observations
+// too, and a host check that found nothing carries what proves it. The engine goes
+// out as its fingerprint, never as the ID `docker info` reports; the host name and
+// the server fingerprint already have fields of their own on Report.
+func contractProvenance(p *model.Provenance) *auditv1.Provenance {
 	if p == nil {
 		return nil
 	}
@@ -175,12 +178,10 @@ func contractProvenance(p *model.Provenance, caps *model.Capabilities) *auditv1.
 		Completeness:      p.Completeness,
 		RecheckAfter:      p.RecheckAfter,
 	}
-	if caps != nil {
-		for _, o := range caps.Observations {
-			out.Observations = append(out.Observations, &auditv1.Observation{
-				Source: o.Source, State: contractObservationState(o.State), Note: o.Note, ObservedAt: o.ObservedAt,
-			})
-		}
+	for _, o := range p.Observations {
+		out.Observations = append(out.Observations, &auditv1.Observation{
+			Source: o.Source, State: contractObservationState(o.State), Note: o.Note, ObservedAt: o.ObservedAt,
+		})
 	}
 	return out
 }

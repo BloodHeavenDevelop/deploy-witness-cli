@@ -25,9 +25,12 @@ main.go
                  │  scheduler/certs/backup + databases in dependency order
                  └─ witness.Evaluate()              25 rules: findings, one outcome per rule, changes, rollback
             each producing a model.SectionResult: status, counts, duration, notes
+            and observations (observations.go): `<section>` with the counts it read,
+            `system:<category>`, `<section>:<program>` — time, state, values
        └─ host audit: a `not-applicable` `witness` row labelled host-audit (out of scope, not a gap)
        └─ report.Commands = runner.Journal()   every command, including refusals
-       └─ report.Provenance = provenance()     build, rules, plan digest, engine, timeline + time checks
+       └─ report.Provenance = provenance()     build, rules, plan digest, engine, timeline + time checks,
+                                               every observation of the run
   └─ redact.Report(result)           the last thing before anything is written
   └─ report.WriteDir() | WriteCombined() | WriteJSONFile() | WriteJSON()
   └─ report.Upload()                 only with --upload and --upload-token

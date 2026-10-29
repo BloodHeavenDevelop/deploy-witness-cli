@@ -144,6 +144,12 @@ type Provenance struct {
 	TimeChecks []string `json:"timeChecks"`
 	// Completeness summarises the observations: how many sources were read in full.
 	Completeness string `json:"completeness"`
+	// Observations is every source the run read, in the order it was read: one
+	// per section (`<section>`), one per source within a section
+	// (`<section>:<detail>` — a fact category, a command) and, in a preflight, the
+	// witness section's host sources under their own names. A section that found
+	// nothing proves it here.
+	Observations []Observation `json:"observations"`
 	// RecheckAfter is when this report stops confirming the plan: past it, re-run
 	// `deploy-witness --recheck` (or the audit) before deploying.
 	RecheckAfter string `json:"recheckAfter"`

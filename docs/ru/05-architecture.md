@@ -25,9 +25,12 @@ main.go
                  │  scheduler/certs/backup + databases в порядке зависимостей
                  └─ witness.Evaluate()              25 правил: находки, итог каждого правила, изменения, откат
             каждый даёт model.SectionResult: статус, счётчики, длительность, замечания
+            и наблюдения (observations.go): `<раздел>` с прочитанными счётчиками,
+            `system:<категория>`, `<раздел>:<программа>` — время, состояние, значения
        └─ аудит хоста: строка `witness` not-applicable с пометкой host-audit (вне рамок, не пробел)
        └─ report.Commands = runner.Journal()   каждая команда, включая отклонённые
-       └─ report.Provenance = provenance()     сборка, правила, дайджест плана, движок, хронология + проверки времени
+       └─ report.Provenance = provenance()     сборка, правила, дайджест плана, движок, хронология + проверки времени,
+                                               все наблюдения прогона
   └─ redact.Report(result)           последнее действие перед любой записью
   └─ report.WriteDir() | WriteCombined() | WriteJSONFile() | WriteJSON()
   └─ report.Upload()                 только при --upload и --upload-token

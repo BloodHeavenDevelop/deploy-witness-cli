@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-29
+
+### Added
+
+- **Every section records observations, so a host check without findings carries
+  its proof** (DW-82 rework, [app/audit/observations.go](app/audit/observations.go),
+  `docs/<lang>/08-report-format.md`, `docs/<lang>/05-architecture.md`). Until now
+  `provenance.observations` held only the witness section's Docker sources, so a host
+  audit uploaded none and the service marked `system`, `updates`, `vulnerabilities`,
+  `ports` and `services` as finished with nothing to support the result. Each section
+  now records `<section>` — what it read and the counts it got (`pacman: 0 pending
+  update(s)`, `47 listening socket(s); by exposure: …`, `1537 installed package(s) …
+  0 advisory row(s)`), with the section's notes and a state from its status —
+  `system:<category>` per fact category, and `<section>:<program>` per program it ran
+  (every invocation with outcome, exit code and duration; not installed →
+  `not-collected`). Every observation is timed when its source was read (RFC 3339
+  UTC, inside the run) and swept by `app/redact`. Posture facts are quoted; the
+  inventory (addresses, account names, hardware, `/etc/machine-id`, package names,
+  CVE IDs, port numbers) is counted, never quoted, and stays in the CSV. The
+  preflight's Docker observations are unchanged and keep their names. The contract is
+  unchanged (`Provenance.observations` already existed).
+
+### Changed
+
+- `model.Provenance` gains `observations` (all of the run's, in read order);
+  `provenance.csv`, `report.json` and the upload read them from there.
+  `completeness` now counts every source — a host audit reads `N of M sources read
+  in full; …` instead of `no host source was compared (host audit)`.
+
 ## [1.6.1] - 2026-10-25
 
 ### Changed

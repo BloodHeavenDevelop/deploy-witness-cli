@@ -312,7 +312,7 @@ run; in a host audit the plan rows are empty.
 | `engine-clock-skew` | The engine's clock minus this host's, measured when `docker info` answered |
 | `completeness` | `N of M sources read in full; partial: …; failed: …` |
 | `recheck-after` | `finished-at` + 1 h: past it, `--recheck` (or a new audit) before deploying — see [04](04-cli-reference.md#recheck-before-deploying) |
-| `observation` | One row per source: `<source>: <state> at <time> — <how it was read>` |
+| `observation` | One row per source, in the order the host was read: `<source>: <state> at <time> — <what was read and what it answered>` — see [Observations](#observations) |
 | `time-check` | `consistent`, or one row per inconsistency: the clock going backwards, an observation or evidence timed outside the run, an unsynchronised clock, an engine clock more than 5 s off, observations more than 10 min apart |
 
 The `witness` notes carry it in one line (`provenance: deploy-witness 1.5.0, rules
@@ -320,6 +320,33 @@ The `witness` notes carry it in one line (`provenance: deploy-witness 1.5.0, rul
 for a person reading `summary.csv`. The upload carries it as a field of its own
 (`provenance`, with the observations); in the upload the engine ID in those notes is
 replaced by its fingerprint.
+
+### Observations
+
+An observation is one source the run read: what was checked, the values it
+answered, the moment it was read on this host (RFC 3339 UTC, inside
+`started-at` … `finished-at`) and how completely (`complete`, `partial`, `failed`,
+`not-collected`). Since 1.7.0 **every section** records them, in a host audit as in
+a preflight, so a check that finished without a finding carries what proves the
+"nothing found" — a list of commands that exited 0 is not that proof; a count is.
+
+| Source | Recorded | Note |
+|---|---|---|
+| `<section>` — `system`, `updates`, `vulnerabilities`, `ports`, `services`, `witness` | Once per section that ran, when its collector returned; state from the section's status | What it read and the counts it got — e.g. `pacman: 0 pending update(s), 0 from a security channel`, `/proc/net/{tcp,tcp6,udp,udp6}: 47 listening socket(s); by exposure: …`, `1537 installed package(s) via pacman checked, offline (no --online): 0 advisory row(s)` — followed by the section's notes |
+| `system:<category>` | One per fact category (`os`, `kernel`, `ssh`, `hardening`, `accounts`, …) | The keys read and their files/commands. Posture categories (`os`, `kernel`, `time`, `ssh`, `hardening`, `packages`) quote their values; the others name their keys and quote counts only (`total=49`, `uid-0: 1 entr(ies)`) — addresses, account names, hardware and `/etc/machine-id` stay in `system.csv` |
+| `<section>:<program>` | One per program the section ran, timed at its latest launch | Every invocation with outcome, exit code and duration. All `ok` → `complete`; not installed → `not-collected`; none `ok` → `failed`; mixed → `partial` |
+| `containers`, `networks`, `network-subnets`, `volumes`, `images`, `sockets`, `arch`, `memory`, `filesystems`, `proxy`, `bind-sources` | Preflight only: the host sources the witness section compared, as before | How each was read |
+
+The receiver matches an observation to its collector by the part of `source`
+before the colon. A note is cut at 600 characters, and says so; it is swept for
+credentials like every other free-form field. Package names, versions, CVE
+identifiers, port numbers and unit names are never in a note — counts are the
+values that prove a result, and the inventory stays in the CSV.
+
+`observed-from` … `observed-until` spans the sources a conclusion was drawn from:
+in a preflight the host sources the rules compared (the 10-minute time check is
+about them, so a slow `--online` section before them does not trip it), in a host
+audit every observation. `completeness` counts every observation.
 
 ## evidence.csv
 
@@ -525,7 +552,8 @@ Details worth knowing:
   checked no plan and leaves `plan` unset. No variable value is in it — the plan
   carries names only, and env files appear as paths and SHA-256 digests.
 - **`provenance` is `provenance.csv` with the observations**, each with its
-  `OBSERVATION_STATE_*` and time. Host name and server fingerprint are not repeated
+  `OBSERVATION_STATE_*` and time — every section's (see
+  [Observations](#observations)), so a host audit carries them too. Host name and server fingerprint are not repeated
   there (they are `server_hostname`/`server_fingerprint`).
 - **The engine is named by `engine_fingerprint`, never by its ID.** Like
   `server_fingerprint` it is a salted SHA-256 — of the `docker info` ID, the same

@@ -30,10 +30,11 @@ func preflightReport() *model.Report {
 		ResolvedAt: "2026-10-10T12:00:01Z", ConfigHashes: map[string]string{"api": "confighash-not-sent"},
 		RemoveOrphans: true, ForceRecreate: true, Notes: []string{"a note"},
 	}
-	r.Capabilities = &model.Capabilities{Observations: []model.Observation{
+	observations := []model.Observation{
 		{Source: model.SourceContainers, State: model.ObservedComplete, Note: "ok", ObservedAt: "2026-10-10T12:00:02Z"},
 		{Source: model.SourceVolumes, State: model.ObservedPartial, Note: "capped", ObservedAt: "2026-10-10T12:00:03Z"},
-	}}
+	}
+	r.Capabilities = &model.Capabilities{Observations: observations}
 	r.Provenance = &model.Provenance{
 		Tool: "deploy-witness", ToolVersion: "1.6.0", RulesVersion: "r1", Host: "h", ServerFingerprint: "srv",
 		Engine: "docker 29.0", EngineID: rawEngineID, EngineFingerprint: model.EngineFingerprint(rawEngineID),
@@ -43,6 +44,7 @@ func preflightReport() *model.Report {
 		ComparedAt: "2026-10-10T12:00:04Z", FinishedAt: "2026-10-10T12:00:05Z", ClockSynchronized: "yes",
 		EngineClockSkew: "+0.2s", TimeChecks: []string{"engine " + rawEngineID + " clock drifted"},
 		Completeness: "1 of 2 sources read in full; partial: volumes", RecheckAfter: "2026-10-10T13:00:05Z",
+		Observations: observations,
 	}
 	r.Rules = []model.RuleResult{
 		{Code: "witness.port_conflict", Rule: "port-conflict", Outcome: model.OutcomeProblem, Findings: 1,
@@ -192,18 +194,25 @@ func TestUploadNamesTheEngineByItsFingerprintOnly(t *testing.T) {
 }
 
 // A host audit checked no plan: the upload leaves plan unset, and its provenance has
-// no plan source or digest and no observations.
+// no plan source or digest — but it does carry what each section read (DW-82).
 func TestHostAuditUploadHasNoPlan(t *testing.T) {
 	r := reportWith(model.ModeHostAudit, &model.SectionResult{Section: model.SectionWitness,
 		Status: model.StatusNotApplicable})
 	r.Provenance = &model.Provenance{Tool: "deploy-witness", ToolVersion: "1.6.0", RulesVersion: "r1",
-		Completeness: "no host source was compared (host audit)"}
+		Completeness: "2 of 2 sources read in full", Observations: []model.Observation{
+			{Source: "ports", State: model.ObservedComplete, Note: "0 listening socket(s)",
+				ObservedAt: "2026-10-10T12:00:01Z"},
+			{Source: "updates:apt-get", State: model.ObservedComplete, Note: "1 run(s)",
+				ObservedAt: "2026-10-10T12:00:02Z"},
+		}}
 	c := Contract(r)
 	if c.Plan != nil {
 		t.Errorf("plan = %+v, want unset in a host audit", c.Plan)
 	}
 	if c.Provenance == nil || c.Provenance.PlanDigest != "" || c.Provenance.PlanSource != "" ||
-		len(c.Provenance.Observations) != 0 || c.Provenance.EngineFingerprint != "" {
+		len(c.Provenance.Observations) != 2 || c.Provenance.EngineFingerprint != "" ||
+		c.Provenance.Observations[0].Source != "ports" || c.Provenance.Observations[0].ObservedAt == "" ||
+		c.Provenance.Observations[1].Source != "updates:apt-get" {
 		t.Errorf("provenance = %+v", c.Provenance)
 	}
 	if len(c.RuleResults) != 0 {

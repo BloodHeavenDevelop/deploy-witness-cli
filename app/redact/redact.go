@@ -202,6 +202,9 @@ func Report(report *model.Report) int {
 		for i := range p.TimeChecks {
 			sweep(&p.TimeChecks[i])
 		}
+		for i := range p.Observations {
+			sweep(&p.Observations[i].Note)
+		}
 	}
 
 	if caps := report.Capabilities; caps != nil {

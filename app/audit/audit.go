@@ -52,6 +52,10 @@ type Auditor struct {
 	// OSV API, and the host:port of every registry --egress dialled.
 	osvRequests   int
 	egressTargets []string
+
+	// observations is what each section read, recorded as it finished (DW-82);
+	// the provenance carries them beside the witness section's host sources.
+	observations []model.Observation
 }
 
 // New prepares an audit.
@@ -131,6 +135,7 @@ func (a *Auditor) Run() *model.Report {
 	for _, section := range a.cfg.Sections {
 		result := model.SectionResult{Section: section, Status: model.StatusOk}
 		started := time.Now()
+		journalFrom := len(a.runner.Journal())
 
 		switch section {
 		case model.SectionSystem:
@@ -157,6 +162,7 @@ func (a *Auditor) Run() *model.Report {
 			result.Critical, result.High = findingCounts(report.Findings)
 		}
 
+		a.observeSection(report, &result, journalFrom, time.Now().UTC())
 		result.Duration = time.Since(started).Round(time.Millisecond).String()
 		report.Sections = append(report.Sections, result)
 		a.log.Info(fmt.Sprintf("section %s: %s, %d rows in %s",

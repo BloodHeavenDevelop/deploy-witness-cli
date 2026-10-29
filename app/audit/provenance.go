@@ -48,9 +48,11 @@ func (a *Auditor) provenance(report *model.Report, finished time.Time) *model.Pr
 		}
 	}
 
-	var observations []model.Observation
+	// Every source the run read: what each section read (DW-82) and, in a
+	// preflight, the host sources the witness section compared.
+	observations := allObservations(a.observations, report.Capabilities)
+	p.Observations = observations
 	if caps := report.Capabilities; caps != nil {
-		observations = caps.Observations
 		if rt := caps.Runtime; rt != nil {
 			p.Engine = strings.TrimSpace(rt.Kind + " " + rt.Version)
 			p.EngineID, p.EngineClockSkew = rt.EngineID, rt.ClockSkew
@@ -60,7 +62,15 @@ func (a *Auditor) provenance(report *model.Report, finished time.Time) *model.Pr
 			}
 		}
 	}
-	p.ObservedFrom, p.ObservedUntil = observationSpan(observations)
+	// The observed span is that of the sources a conclusion was drawn from: in a
+	// preflight, the host sources the rules compared (a slow --online
+	// vulnerability section before them does not stretch it, as it did not before
+	// DW-82); in a host audit, everything the sections read.
+	spanned := observations
+	if caps := report.Capabilities; caps != nil && len(caps.Observations) > 0 {
+		spanned = caps.Observations
+	}
+	p.ObservedFrom, p.ObservedUntil = observationSpan(spanned)
 	p.Completeness = completeness(observations)
 	p.TimeChecks = timeChecks(report, p, observations, finished)
 	return p
@@ -96,7 +106,7 @@ func observationSpan(observations []model.Observation) (from, until string) {
 // completeness summarises how fully the sources were read.
 func completeness(observations []model.Observation) string {
 	if len(observations) == 0 {
-		return "no host source was compared (host audit)"
+		return "no source was observed"
 	}
 	complete := 0
 	byState := map[model.ObservationState][]string{}
