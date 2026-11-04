@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `docs/<lang>/10-witness-rules.md`). The engine follows the link, finds no source
   and is told not to create one, so the container is never created — the same
   refusal as a missing source. Without `create_host_path: false` it stays `unknown`.
+- **`port_conflict/problem-variable-port` stages its `.env` in `setup.sh`**
+  (`bench/scenarios/port_conflict/problem-variable-port/setup.sh`). The repository
+  ignores every `.env`, so the committed scenario arrived without one and the port
+  fell back to the default — the bench in CI would have scored a different situation
+  than the one described.
 
 ## [1.8.0] - 2026-11-03
 
