@@ -128,7 +128,7 @@ are under each rule below; thresholds are in [Thresholds](#thresholds).
 | `container_name_conflict` | `container_name`; container list | a container of that name exists and is not this deployment's service | no container of that name, or it is this deployment's | the engine did not answer; its labels were not reported | n/a: no `container_name` |
 | `project_ownership` | containers with their Compose labels; the plan's project, directory, services | another checkout uses this project name | every container of the project is this deployment's previous version, or there is none | the engine did not answer; a container's labels were not reported | manual: this directory under another project name; orphans left running |
 | `volume_name_conflict` | mounted named volumes by engine name; volume list (complete) | an external volume is missing from a complete list or carries another project's label; a volume Compose would create exists without this project's label | every external volume exists; every created one is absent (a planned creation) or this project's | the volume list was not read in full | n/a: no named volume mounted |
-| `bind_path_conflict` | bind mounts, resolved; each source's stat on this host; the container user | a source is a sensitive host path; missing with `create_host_path: false`; mounted read/write on a read-only filesystem | no source is sensitive, each exists or is created by the engine, and no mode bits refuse the container user (access itself is never proven) | the sources were not examined; one could not be stat'ed; a dangling symlink; missing with the engine's behaviour unknown or a file-like name; mode bits deny the container user | n/a: no bind mount |
+| `bind_path_conflict` | bind mounts, resolved; each source's stat on this host; the container user | a source is a sensitive host path; missing, or a dangling symlink, with `create_host_path: false`; mounted read/write on a read-only filesystem | no source is sensitive, each exists or is created by the engine, and no mode bits refuse the container user (access itself is never proven) | the sources were not examined; one could not be stat'ed; a dangling symlink the engine may be allowed to resolve; missing with the engine's behaviour unknown or a file-like name; mode bits deny the container user | n/a: no bind mount |
 | `network_name_conflict` | networks by engine name; network list (complete) with scope and attachability | an external network is missing from a complete list, or is a non-attachable swarm network; a network Compose would create exists without this project's label | every external network exists and can be joined; every created one is absent or this project's | the network list was not read in full; a swarm network's attachability was not read | n/a: no network · manual: an external network shared with another stack |
 | `subnet_overlap` | explicit IPAM subnets; every network's subnets | a requested subnet overlaps another project's network | no overlap with any network | networks not listed, or the subnets of some were not read | n/a: no explicit subnet |
 | `insufficient_memory` | reservations/limits; `/proc/meminfo` | the declared amount exceeds what is available | it fits | `/proc/meminfo` unreadable | n/a: nothing declared |
@@ -325,7 +325,7 @@ same volume name on two servers is never one answer.
 
 | | |
 |---|---|
-| Severity | **warning** for a sensitive source or a read/write mount on a read-only filesystem; **blocker** for a missing source with `create_host_path: false`; **warning** (`unknown`) when the source could not be examined, is a dangling symlink, is missing with the engine's behaviour unknown or with a file-like name, or its mode bits deny the container user |
+| Severity | **warning** for a sensitive source or a read/write mount on a read-only filesystem; **blocker** for a missing source, or a dangling symlink, with `create_host_path: false`; **warning** (`unknown`) when the source could not be examined, is a dangling symlink without `create_host_path: false`, is missing with the engine's behaviour unknown or with a file-like name, or its mode bits deny the container user |
 | Fires when | A bind mount's source, resolved and examined on this host, is sensitive, missing in a way that breaks the start, unwritable, or possibly unreachable for the container's user |
 
 **The source is the path Compose mounts.** Relative sources resolve against the
@@ -350,7 +350,8 @@ a missing directory stays missing:
 | missing, `create_host_path: false` | `problem` (blocker): the container is not created |
 | missing, long syntax without `create_host_path`, resolved by the built-in parser | `unknown`: Compose 5.x creates it, older versions refuse |
 | could not be stat'ed by this account | `unknown` — never "missing" |
-| a dangling symlink | `unknown` |
+| a dangling symlink, `create_host_path: false` | `problem` (blocker): the engine follows the link, finds no source and does not create one |
+| a dangling symlink, otherwise | `unknown` |
 | on a read-only filesystem, mounted read/write | `problem` (warning): every write fails |
 
 **Access for the container's user is never claimed.** The user is the service's

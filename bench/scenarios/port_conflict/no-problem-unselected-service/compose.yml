@@ -1,0 +1,9 @@
+services:
+  web:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    ports: ["18081:80"]
+  admin:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    ports: ["18080:80"]

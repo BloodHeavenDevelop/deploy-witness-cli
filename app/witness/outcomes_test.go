@@ -158,6 +158,14 @@ var situations = map[string][]situation{
 			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x", CreateHostPath: boolp(false)},
 				model.PathInfo{Path: "/srv/app/data", State: "missing"})
 		}, model.OutcomeProblem},
+		{"dangling symlink, create_host_path: false", func(in *Input) {
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/link", Target: "/x", CreateHostPath: boolp(false)},
+				model.PathInfo{Path: "/srv/app/link", State: "exists", Type: "symlink", SymlinkTarget: "/srv/app/nodir", Dangling: true})
+		}, model.OutcomeProblem},
+		{"dangling symlink, the engine may create the target", func(in *Input) {
+			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/link", Target: "/x"},
+				model.PathInfo{Path: "/srv/app/link", State: "exists", Type: "symlink", SymlinkTarget: "/srv/app/nodir", Dangling: true})
+		}, model.OutcomeUnknown},
 		{"read/write on a read-only filesystem", func(in *Input) {
 			bindAt(in, model.VolumeMount{Kind: model.MountBind, Source: "/srv/app/data", Target: "/x"},
 				model.PathInfo{Path: "/srv/app/data", State: "exists", Type: "directory", Mode: "0755", ReadOnlyFS: true})

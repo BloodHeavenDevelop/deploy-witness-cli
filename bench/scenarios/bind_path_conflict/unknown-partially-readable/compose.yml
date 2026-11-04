@@ -1,0 +1,7 @@
+services:
+  web:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    volumes:
+      - ./public:/public
+      - /root/dwbench-private/data:/data

@@ -1,0 +1,4 @@
+services:
+  web:
+    image: alpine:3.21
+    command: ["sleep", "3600"]

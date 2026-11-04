@@ -99,6 +99,16 @@ func bindSourceFindings(in Input, svc model.ManifestService, mount model.VolumeM
 		// change (changes.csv), not a conflict.
 		return nil
 
+	case info.Dangling && mount.CreateHostPath != nil && !*mount.CreateHostPath:
+		// The engine follows the link to a path that does not exist, and is told not
+		// to create it: the same refusal as a missing source.
+		return []model.Finding{finding(model.OutcomeProblem, model.FindingBlocker,
+			fmt.Sprintf("Bind source %s is a symlink to a missing path, and the engine will not create it", mount.Source),
+			fmt.Sprintf("Service %q bind-mounts %s with create_host_path: false; it is a symlink to %s, which does "+
+				"not exist on this host.", svc.Name, mount.Source, info.SymlinkTarget),
+			"The container is not created: the engine follows the link, finds no source, and is told not to create it.",
+			fmt.Sprintf("Create %s before deploying, or point the mount at the real path.", info.SymlinkTarget))}
+
 	case info.Dangling:
 		return []model.Finding{finding(model.OutcomeUnknown, model.FindingWarning,
 			fmt.Sprintf("Bind source %s is a symlink to a path that does not exist", mount.Source),

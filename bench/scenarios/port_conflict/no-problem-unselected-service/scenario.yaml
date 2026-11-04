@@ -1,0 +1,14 @@
+id: port_conflict/no-problem-unselected-service
+rule: witness.port_conflict
+situation: no-problem
+description: >-
+  Port 18080 is held by an unrelated container and service "admin" publishes it, but the planned run starts service "web" alone (--compose-service web / up -d web).
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness", "--compose-service", "web"]
+expect:
+  outcome: no-problem
+docker:
+  up: ["up", "-d", "web"]
+  outcome: succeeds

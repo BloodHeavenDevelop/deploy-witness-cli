@@ -1,0 +1,10 @@
+services:
+  web:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    ports: ["18081:80"]
+    depends_on: [db]
+  db:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    ports: ["18080:80"]

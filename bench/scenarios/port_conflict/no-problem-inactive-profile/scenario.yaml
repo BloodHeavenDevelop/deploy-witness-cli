@@ -1,0 +1,13 @@
+id: port_conflict/no-problem-inactive-profile
+rule: witness.port_conflict
+situation: no-problem
+description: >-
+  Port 18080 is held by an unrelated container, but only service "debug" publishes it, and its profile is not enabled in the planned run, so it does not start.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

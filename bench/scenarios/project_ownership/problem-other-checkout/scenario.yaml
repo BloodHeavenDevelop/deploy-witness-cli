@@ -2,7 +2,7 @@ id: project_ownership/problem-other-checkout
 rule: witness.project_ownership
 situation: problem
 description: >-
-  Another checkout of the same plan, in another directory, is deployed under the same project name.
+  Another checkout of the same plan, in another directory, is deployed under the same project name; the planned up recreates that checkout's container as its own.
 project: bench
 audit:
   user: root
@@ -10,4 +10,5 @@ audit:
 expect:
   outcome: problem
 docker:
-  outcome: advisory
+  outcome: succeeds
+  pattern: "Recreate"

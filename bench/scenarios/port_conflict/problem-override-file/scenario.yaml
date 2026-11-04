@@ -1,0 +1,15 @@
+id: port_conflict/problem-override-file
+rule: witness.port_conflict
+situation: problem
+description: >-
+  The base file publishes nothing; the second Compose file, override.yml, publishes 18080, which an unrelated container holds. Only the merged plan shows the conflict.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness", "--compose", "override.yml"]
+expect:
+  outcome: problem
+docker:
+  up: ["-f", "override.yml", "up", "-d"]
+  outcome: fails
+  pattern: "port is already allocated"

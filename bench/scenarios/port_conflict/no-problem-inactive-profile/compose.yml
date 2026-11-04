@@ -1,0 +1,10 @@
+services:
+  web:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    ports: ["18081:80"]
+  debug:
+    image: alpine:3.21
+    command: ["sleep", "3600"]
+    ports: ["18080:80"]
+    profiles: ["debug"]

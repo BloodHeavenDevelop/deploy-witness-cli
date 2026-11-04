@@ -62,13 +62,13 @@ detection — [12 — Quality](12-quality-and-release.md) counts it that way.
 
 | Rule | Scenarios | Situations staged |
 |---|---|---|
-| `port_conflict` | 9 | foreign container; other protocol; other address; own update; engine unreachable; orphan left running; orphan removed (`--remove-orphans`); dynamic range exhausted / with a free port |
+| `port_conflict` | 17 | foreign container; other protocol; other address; IPv6 loopback vs. 127.0.0.1; own update; engine unreachable; orphan left running; orphan removed (`--remove-orphans`); dynamic range exhausted / with a free port; a one-off `compose run` container; the port in a second Compose file; the port from `${VAR}` set in `.env`; an inactive profile; an unselected service (`--compose-service`); a `depends_on` dependency started with the selected service |
 | `container_name_conflict` | 3 | foreign; own; engine unreachable |
-| `project_ownership` | 3 | another checkout; this directory under another project name; own |
-| `volume_name_conflict` | 4 | external missing / present; engine unreachable; existing without this project's label |
+| `project_ownership` | 3 | another checkout (its container recreated by the planned run); this directory under another project name; own |
+| `volume_name_conflict` | 6 | external missing / present; engine unreachable; existing without this project's label; the same under `name:`/`--project-name`; volume and network the plan creates itself |
 | `network_name_conflict` | 3 | external missing / present; engine unreachable |
 | `subnet_overlap` | 3 | overlap; disjoint; engine unreachable |
-| `bind_path_conflict` | 4 | missing with `create_host_path: false`; existing; created by the engine; unreadable for the auditing account |
+| `bind_path_conflict` | 6 | missing with `create_host_path: false`; a dangling symlink with `create_host_path: false`; existing; created by the engine; unreadable for the auditing account; one source readable, another not |
 | `env_file_missing` | 2 | missing; `required: false` |
 | `architecture_mismatch` | 3 | pinned foreign platform; image absent; matching |
 | `registry_unreachable` | 2 | not checked (no `--egress`); refused connection (`--egress`) |
@@ -85,7 +85,7 @@ pilot regressions ([13](13-pilot-regressions.md)), not by Docker's behaviour.
 
 ## What the bench found
 
-Its first runs found four defects, fixed in the same change and now held by
+Its first runs found four defects, and the DW-95 coverage scenarios a fifth, fixed in the same change and now held by
 scenarios:
 
 - a hand-made external network (`docker network create`, no project label) was
@@ -96,7 +96,9 @@ scenarios:
 - a container that starts and dies at once (an image for another platform) made
   `up -d` exit `0`: the bench now checks the containers are still running;
 - with the network open, Compose pulled a foreign-platform variant over a loaded image
-  and every later scenario ran on it: the environment now has no network.
+  and every later scenario ran on it: the environment now has no network;
+- a dangling symlink with `create_host_path: false` was `unknown`, while Docker
+  refuses the mount every time — `bind_path_conflict/problem-dangling-symlink`.
 
 ## Adding a scenario
 

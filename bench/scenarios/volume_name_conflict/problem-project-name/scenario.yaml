@@ -1,0 +1,14 @@
+id: volume_name_conflict/problem-project-name
+rule: witness.volume_name_conflict
+situation: problem
+description: >-
+  The plan is named "shop" (name: shop, --project-name shop), so its volume is shop_data — which exists, created by hand. bench_data exists too and is irrelevant: a volume name built from the wrong project name finds the wrong one.
+project: shop
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: succeeds
+  pattern: "already exists but was not created"

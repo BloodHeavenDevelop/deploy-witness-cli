@@ -1,0 +1,14 @@
+id: port_conflict/problem-one-off-holds-port
+rule: witness.port_conflict
+situation: problem
+description: >-
+  A one-off container of this very project (docker compose run --service-ports web) holds 18080. It belongs to the project but is not the service's container, so up does not replace it and cannot bind the port.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: fails
+  pattern: "port is already allocated"

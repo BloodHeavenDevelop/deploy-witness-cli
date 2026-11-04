@@ -1,0 +1,13 @@
+id: port_conflict/no-problem-ipv6-other-address
+rule: witness.port_conflict
+situation: no-problem
+description: >-
+  An unrelated container holds 18080 on the IPv6 loopback [::1]; the plan publishes 18080 on 127.0.0.1 — two different addresses.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: no-problem
+docker:
+  outcome: succeeds

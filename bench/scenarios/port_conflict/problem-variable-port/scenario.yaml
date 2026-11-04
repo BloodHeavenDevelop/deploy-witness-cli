@@ -1,0 +1,14 @@
+id: port_conflict/problem-variable-port
+rule: witness.port_conflict
+situation: problem
+description: >-
+  The published port is ${WEB_PORT:-18099}; the .env beside the plan sets WEB_PORT=18080, which an unrelated container holds. Reading the default instead of the .env value would miss it.
+project: bench
+audit:
+  user: root
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: problem
+docker:
+  outcome: fails
+  pattern: "port is already allocated"

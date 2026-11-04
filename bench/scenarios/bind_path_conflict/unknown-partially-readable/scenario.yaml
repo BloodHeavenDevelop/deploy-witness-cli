@@ -1,0 +1,13 @@
+id: bind_path_conflict/unknown-partially-readable
+rule: witness.bind_path_conflict
+situation: unknown
+description: >-
+  The bind sources are only partially readable: ./public is checked, /root/dwbench-private/data lies under a directory the auditing account cannot enter. One checked source does not make the rule clean.
+project: bench
+audit:
+  user: unprivileged
+  args: ["--sections", "ports,witness"]
+expect:
+  outcome: unknown
+docker:
+  outcome: succeeds

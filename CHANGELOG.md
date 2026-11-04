@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-11-04
+
+### Added
+
+- **Eleven bench scenarios for the acceptance cases the bench did not stage**
+  (DW-95, `bench/scenarios/`, `docs/<lang>/11-test-bench.md`): several Compose files,
+  `${VAR}` from `.env`, an inactive profile, `--compose-service`, a `depends_on`
+  dependency, `name:`/`--project-name`, a one-off `compose run` container, an IPv6
+  address, a volume and network the plan creates, a dangling symlink and partially
+  readable bind sources — each checked against what `docker compose up` actually does.
+  `project_ownership/problem-other-checkout` is now scored against Docker too (the
+  planned run recreates the other checkout's container). Bench: 57 scenarios, Docker
+  as expected 48/48.
+
+### Fixed
+
+- **A dangling symlink as a bind source with `create_host_path: false` is a
+  blocker, not `unknown`** (DW-95, [app/witness/binds.go](app/witness/binds.go),
+  `docs/<lang>/10-witness-rules.md`). The engine follows the link, finds no source
+  and is told not to create one, so the container is never created — the same
+  refusal as a missing source. Without `create_host_path: false` it stays `unknown`.
+
 ## [1.8.0] - 2026-11-03
 
 ### Changed
