@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-03
+
+### Changed
+
+- **No container engine client on the host no longer reads as an empty, complete
+  engine** (DW-95, [app/witness/outcomes.go](app/witness/outcomes.go),
+  `docs/<lang>/10-witness-rules.md`). `engineList` treated "neither docker nor podman
+  is on PATH" as proof that nothing exists in the engine, so a built-in-parser
+  preflight answered `container_name_conflict` and `project_ownership` with
+  `no-problem`, and `volume_name_conflict` / `network_name_conflict` with
+  `problem` ("does not exist in this engine's list") — conclusions drawn from lists
+  the same report marks `not-collected`. Those lists now prove absence only when read
+  in full: the rules that need them are `unknown` with the reason, and
+  `runtime_missing_or_old` still reports the missing engine as a blocker. Runs with a
+  reachable engine are unchanged (bench: 46 scenarios as specified, gate PASS).
+- **The release waits for the release gate of its own commit** (DW-95,
+  [.github/workflows/dist.yml](.github/workflows/dist.yml),
+  [.github/scripts/require-gate.sh](.github/scripts/require-gate.sh),
+  `docs/<lang>/12-quality-and-release.md`, `docs/<lang>/03-installation.md`).
+  `dist` ran on every push in parallel with `bench`, so 1.7.0 was committed to
+  `dist/` at 07:27:14 while its gate finished at 07:28:33, and a blocked gate would
+  not have stopped it. `dist` now starts on a completed `bench` run of a push to
+  `main`, does nothing unless it succeeded, re-checks with `require-gate.sh` that a
+  `bench` run of exactly that commit passed (another commit's gate never counts), and
+  publishes nothing when `main` has moved on to other source. The `dist/` commit
+  names the certifying bench run.
+
+### Added
+
+- **The built-in parser refuses a plan with an unset required variable** (DW-95,
+  [app/audit/plan.go](app/audit/plan.go),
+  [app/collect/manifest/interpolate.go](app/collect/manifest/interpolate.go),
+  `docs/<lang>/04-cli-reference.md`). Without Compose, `${VAR:?…}` / `${VAR?…}` with
+  the variable unset (or empty, for `:?`) was a warning and the literal stayed in
+  place, so the preflight reported on a plan Compose refuses outright — e.g. a
+  floating-tag finding about `?TAG must be set}`. It is now exit `2`, no report, the
+  variables named (the operator's message is not repeated: it is free text from the
+  file) — the same answer `docker compose config` gives where Compose is installed.
+- **Release rehearsal** (DW-95,
+  [.github/workflows/release-rehearsal.yml](.github/workflows/release-rehearsal.yml)):
+  on demand, weekly and on pull requests touching the gate, bench or release path, in
+  an isolated channel (an artifact, never `dist/`) — a clean candidate passes and is
+  published there; the same candidate with a seeded critical regression is blocked
+  for `container_name_conflict/problem-foreign` and publishes nothing; and the newest
+  `dist/` commit is refused by `require-gate.sh` although its source commit passed.
+
+### Removed
+
+- **Cyrillic outside `docs/ru/`** (DW-95). The Russian summary at the end of
+  [docs/site-materials/README.md](docs/site-materials/README.md) repeated the English
+  text above it and is dropped; the UTF-8 cut test in
+  [app/audit/observations_test.go](app/audit/observations_test.go) spells its
+  two-byte letter as `\u044f`, so it still checks that a cut never splits a sequence.
+
 ## [1.7.0] - 2026-10-29
 
 ### Added

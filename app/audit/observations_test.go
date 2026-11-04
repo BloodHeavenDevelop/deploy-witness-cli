@@ -114,9 +114,9 @@ func TestAllObservationsMergesInReadOrder(t *testing.T) {
 }
 
 func TestClipSaysItCut(t *testing.T) {
-	long := strings.Repeat("я", maxObservationNote)
+	long := strings.Repeat("\u044f", maxObservationNote) // a two-byte UTF-8 letter
 	got := clip(long)
-	if !strings.Contains(got, "cut at") || !strings.HasPrefix(got, "я") {
+	if !strings.Contains(got, "cut at") || !strings.HasPrefix(got, "\u044f") {
 		t.Errorf("clip = %q", got[len(got)-80:])
 	}
 	if strings.ContainsRune(got, '�') {

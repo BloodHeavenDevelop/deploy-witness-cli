@@ -1,0 +1,118 @@
+# Release rehearsal (DW-95): proves the release path refuses what it must, in an
+# isolated channel — the "release" here is a workflow artifact, never a commit to
+# dist/, so nothing a user installs is touched.
+#
+#   clean      the candidate as it is: the gate passes and the candidate reaches the channel.
+#   seeded     the same candidate with a critical regression seeded into the source
+#              (container_name_conflict stops reporting a taken name, which the critical
+#              scenario container_name_conflict/problem-foreign catches): the gate must
+#              block, and the channel must stay empty.
+#   stale      a gate that passed for an earlier commit must not certify a newer one:
+#              require-gate.sh, the check dist.yml runs before publishing, is asked about
+#              the newest dist/ commit on main — built from a source commit that passed
+#              the gate, and with no gate run of its own. It must refuse.
+#
+# Runs on demand, weekly, and on every pull request that touches the gate or the
+# release path.
+name: release-rehearsal
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+  pull_request:
+    paths:
+      - ".github/workflows/dist.yml"
+      - ".github/workflows/bench.yml"
+      - ".github/workflows/release-rehearsal.yml"
+      - ".github/scripts/**"
+      - "bench/**"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [clean, seeded]
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "CHANNEL=$RUNNER_TEMP/channel" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Seed a critical regression
+        if: matrix.case == 'seeded'
+        run: |
+          file=app/witness/conflicts.rules.go
+          anchor='func containerNameConflicts(in Input) []model.Finding {'
+          grep -qF "$anchor" "$file" || { echo "the seeding anchor is gone from $file — update this rehearsal"; exit 2; }
+          awk -v a="$anchor" '{ print } $0 == a && !done { print "\treturn nil // rehearsal: seeded critical regression"; done = 1 }' \
+            "$file" > "$file.seeded" && mv "$file.seeded" "$file"
+          git diff --stat
+          git diff | grep -q 'seeded critical regression' || { echo "the regression was not seeded"; exit 2; }
+      - run: docker pull -q alpine:3.21 && docker pull -q docker:27.5.1-dind
+      - name: Release gate
+        id: gate
+        continue-on-error: true
+        run: make release-gate
+      - name: Publish the candidate to the isolated channel
+        # The same condition dist.yml applies: nothing is published unless the gate passed.
+        if: steps.gate.outcome == 'success'
+        run: |
+          make dist
+          mkdir -p "$CHANNEL"
+          cp dist/* "$CHANNEL/"
+      - name: Check the outcome
+        run: |
+          published=$(ls -A "$CHANNEL" 2>/dev/null | wc -l)
+          echo "case ${{ matrix.case }}: gate ${{ steps.gate.outcome }}, ${published} file(s) in the channel"
+          case "${{ matrix.case }}" in
+            clean)
+              [ "${{ steps.gate.outcome }}" = success ] || { echo "the clean candidate was blocked by the gate"; exit 1; }
+              [ -s "$CHANNEL/checksums.txt" ] || { echo "the clean candidate passed the gate but was not published"; exit 1; }
+              ( cd "$CHANNEL" && sha256sum -c checksums.txt ) ;;
+            seeded)
+              [ "${{ steps.gate.outcome }}" = failure ] || { echo "the gate let a seeded critical regression through"; exit 1; }
+              latest=$(ls -1d bench/out/*/ | sort | tail -1)
+              go run ./bench/dwscore -gate -results "${latest}results.json" 2>&1 | tee gate.txt || true
+              grep -q 'critical scenario container_name_conflict/problem-foreign fails' gate.txt \
+                || { echo "the gate blocked, but not for the seeded regression"; exit 1; }
+              [ "$published" -eq 0 ] || { echo "a blocked candidate reached the channel"; exit 1; } ;;
+          esac
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rehearsal-${{ matrix.case }}
+          path: |
+            bench/out/
+            ${{ runner.temp }}/channel/
+          if-no-files-found: ignore
+
+  stale:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 50
+      - name: An earlier commit's gate does not certify a newer one
+        run: |
+          release=$(git log -1 --format=%H -- dist)
+          short=$(git log -1 --format=%s "$release" | sed -n 's/.* from \([0-9a-f]\{7,40\}\)$/\1/p')
+          [ -n "$short" ] || { echo "the dist/ commit ${release} does not name its source commit"; exit 1; }
+          source=$(git rev-parse "${short}^{commit}")
+          echo "newest dist/ commit ${release}, built from ${source}"
+          bash .github/scripts/require-gate.sh "$source" \
+            || { echo "the source commit has no passed gate either — nothing to compare against"; exit 1; }
+          if bash .github/scripts/require-gate.sh "$release"; then
+            echo "require-gate certified ${release} on the strength of another commit's gate"; exit 1
+          fi
+          echo "ok: the gate of ${source} does not certify ${release}"

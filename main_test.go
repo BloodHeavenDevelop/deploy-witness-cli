@@ -231,6 +231,34 @@ func TestPreflightOfAPlanComposeRejects(t *testing.T) {
 	noReport(t, out)
 }
 
+// DW-95: without Compose on the host, the built-in parser refuses a plan with an
+// unset required variable the way Compose does — exit 2, the variable named, no
+// report — instead of reporting on the literal left in place.
+func TestBuiltinParserRefusesAnUnsetRequiredVariable(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", t.TempDir()) // no docker, no podman: the built-in parser reads the plan
+	out := filepath.Join(dir, "report")
+	compose := writeFile(t, dir, "docker-compose.yml",
+		"services:\n  app:\n    image: \"nginx:${DW_TEST_TAG:?DW_TEST_TAG must be set}\"\n"+
+			"    environment:\n      DB_PASSWORD: ${DW_TEST_PW?}\n", 0o600)
+	os.Unsetenv("DW_TEST_TAG")
+	os.Unsetenv("DW_TEST_PW")
+	code, log := cli(t, "--compose", compose, "--sections", "witness", "--out", out)
+
+	if code != exitUsage || !strings.Contains(log, "variables DW_TEST_TAG, DW_TEST_PW as required") ||
+		!strings.Contains(log, "Compose would refuse this plan") {
+		t.Errorf("exit = %d, log = %q", code, log)
+	}
+	noReport(t, out)
+
+	// Set, the same plan is read — partial, by the built-in parser.
+	t.Setenv("DW_TEST_TAG", "1.27")
+	t.Setenv("DW_TEST_PW", "")
+	if code, log := cli(t, "--compose", compose, "--sections", "witness", "--out", out); code != exitOK && code != exitSectionFail {
+		t.Errorf("with the variables set: exit = %d, log = %q", code, log)
+	}
+}
+
 // DW-81: a plan that includes a remote file is refused rather than resolved,
 // because resolving it would fetch it.
 func TestPreflightRefusesARemoteInclude(t *testing.T) {

@@ -197,9 +197,12 @@ func expandBraced(body string, sourceLine int, env environment, w *warner) strin
 		return ""
 
 	case strings.HasPrefix(operator, ":?"), strings.HasPrefix(operator, "?"):
-		// Compose refuses to start at all in this case; the audit reports it and
-		// keeps reading, because the rest of the file is still worth checking.
+		// Compose refuses to start at all in this case. The parser keeps reading so
+		// the warning list is complete, and records the name: a Compose preflight
+		// refuses such a plan (Manifest.UnsetRequired). The operator's own message
+		// is never repeated — it is free text from the file.
 		if !set || (value == "" && strings.HasPrefix(operator, ":?")) {
+			w.require(name)
 			w.add("line %d: %s declares the variable as required and it is not set; the literal was left in place", sourceLine, literal)
 			return literal
 		}

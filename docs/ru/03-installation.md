@@ -80,8 +80,9 @@ ssh server 'sudo deploy-witness --out /var/log/deploy-witness'
 
 В `dist/` лежит бинарник под каждую поддерживаемую цель, собранный `make dist`, и
 `dist/checksums.txt` (sha256). Их пересобирает workflow `dist`
-(`.github/workflows/dist.yml`) при каждом пуше в `main`, меняющем исходники, — после
-того как прошёл `make test`, — и коммитит обратно как `chore(dist): rebuild binaries …`.
+(`.github/workflows/dist.yml`) для каждого пуша в `main`, меняющего исходники, — только
+после того, как этот коммит прошёл шлюз выпуска (см.
+[12](12-quality-and-release.md#шлюз-выпуска)) и `make test`, — и коммитит обратно как `chore(dist): rebuild binaries …`.
 Так бинарники рядом с коммитом `main` собраны именно из него и несут версию первого
 нумерованного заголовка `CHANGELOG.md`:
 

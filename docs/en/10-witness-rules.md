@@ -103,9 +103,14 @@ most a `warning`.
 records how completely it was read (`audit.capabilities.observations` in
 `report.json`: `complete`, `partial`, `failed`, `not-collected`). A rule that needs
 to conclude "it does not exist" from an engine list consults it first: a failed or
-partial list proves presence, never absence. A host with no container engine at all
-is the one case where an empty list is complete — nothing can exist in an engine
-that is not installed.
+partial list proves presence, never absence. That includes a host where neither
+`docker` nor `podman` is on `PATH`: the client's absence is not proof that no engine,
+container, volume or network exists, and the report already lists those sources as
+`not-collected`. `runtime_missing_or_old` reports the missing engine as a blocker;
+every rule that needs one of its lists (`container_name_conflict`,
+`project_ownership`, `volume_name_conflict`, `network_name_conflict`, …) is `unknown`
+(since 1.8.0; before, an empty list counted as complete and produced `no-problem` or
+`problem` with nothing read — DW-95).
 
 **A host audit has no rule outcomes.** Without `--compose` there is no plan to
 compare, the `witness` section is `not-applicable` (see

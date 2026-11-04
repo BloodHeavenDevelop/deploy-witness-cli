@@ -143,6 +143,7 @@ report written:
 | `DOCKER_HOST` or the active docker context points at a remote engine | The plan is for another machine |
 | `--compose-service` names a service that is not in the resolved plan | No such service, or its profile is not activated |
 | Compose is not installed and the plan has several files, `--env-file` or `--profile` | The built-in parser cannot reproduce it |
+| Compose is not installed and the file uses `${VAR:?}` / `${VAR?}` with the variable unset (empty, too, for `:?`) | Compose would refuse the file; the variables are named, the operator's message is not repeated |
 
 ## Witness
 

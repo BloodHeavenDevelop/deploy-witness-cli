@@ -108,6 +108,7 @@ func Parse(path string, result *model.SectionResult) (*model.Manifest, error) {
 	manifest.Volumes = w.volumes(field(root, "volumes"))
 	w.resolveBindSources(manifest, dir)
 	manifest.Warnings = w.warnings
+	manifest.UnsetRequired = w.required
 
 	return manifest, nil
 }
@@ -321,9 +322,22 @@ type warner struct {
 	result   *model.SectionResult
 	warnings []string
 	seen     map[string]bool
+	// required names the ${VAR:?} / ${VAR?} variables that were not set, in the
+	// order they were met: Compose refuses the whole file on any of them.
+	required []string
 	// composeMajor is the major version of the Compose that resolved the model
 	// being decoded, or 0 for the built-in parser.
 	composeMajor int
+}
+
+// require records a required variable that is not set, once.
+func (w *warner) require(name string) {
+	for _, seen := range w.required {
+		if seen == name {
+			return
+		}
+	}
+	w.required = append(w.required, name)
 }
 
 func (w *warner) add(format string, args ...any) {

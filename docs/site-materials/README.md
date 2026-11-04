@@ -183,37 +183,3 @@ writes them that way.
 Kept as produced: PIDs, timestamps, memory and disk figures, the filesystem device
 name, unit names in the `systemctl show` journal line, `/etc/httpd`.
 
----
-
-## Кратко по-русски
-
-Комплект подтверждённых материалов для сайта (DW-73): реальные прогоны CLI, из
-которых берутся примеры и публичные утверждения.
-
-- **Версия:** `deploy-witness 1.4.0` (вывод `--version`) — выпущенная версия,
-  коммит `364f143` (`chore(release): 1.4.0`, ветка `task/DW-79`). Бинарники в `dist/`
-  под 1.4.0 не пересобирались.
-- **Один прогон на сценарий:** `--format csv,json` пишет CSV и `report.json` из
-  одного аудита, поэтому лог, CSV и JSON относятся к одному прогону (раньше было два
-  прогона с разницей в ~3 с). `Checked at` — начало прогона, `Captured at` у
-  доказательств — момент сравнения после сбора, `wrote …` в логе — запись файлов.
-- **Хост:** Manjaro (Arch), без root (группа `docker`), Docker 29.7.2, Compose 5.5.0,
-  офлайн-режим.
-- **Воспроизвести:** `make build && docs/site-materials/run.sh`. Скрипт создаёт
-  слушатель на 8080, контейнер `orders-api`, том `dwkit-data` и сеть `dwkit-net`.
-  После прогона всё это удаляется. Чужие объекты скрипт не трогает и ничего не
-  скачивает.
-- **Сценарии:**
-  - `a`: конфликт порта и имени контейнера, оба blocker с evidence; в `changes.csv`
-    контейнер `not created`, порт `not opened`; в `rollback.csv` snapshot и
-    proxy-config — `unknown` («unable to verify»), `no_rollback_plan` — info
-    «2 of 4 unverified», а не вывод о невозможности отката;
-  - `b`: без конфликта;
-  - `c1`: Docker недоступен, проверка имени не выполнена — warning и пометка «unknown rather than empty», а не «чисто»;
-  - `c2`: секция ports не выбрана — пометка «could not be checked»;
-  - `d1`/`d2`: external volume — **известные дефекты DW-42/DW-43, не публиковать**;
-  - `e`: правила, которые определяются самим Compose-файлом.
-- **Санитизация:** путь, hostname, пользователь, IP, отпечаток машины, имена чужих
-  образов, сетей, томов и контейнеров заменены плейсхолдерами `<…>`. Инвентарь хоста,
-  не относящийся к сценарию, обрезан; что именно обрезано — в `TRIMMED.md`.
-- **Что можно заявлять, а что нет:** см. [MATRIX.md](MATRIX.md).

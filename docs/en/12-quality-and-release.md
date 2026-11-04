@@ -83,6 +83,25 @@ The same gate runs in CI: the `bench` workflow (`.github/workflows/bench.yml`) r
 `make release-gate` on every push to `main` and every pull request and fails when the
 gate blocks; the run's `bench/out/` is kept as the `bench-results` artifact. The unit
 tests and the pilot regressions run in the `test` workflow.
+
+**Nothing is published unless the gate passed for that very commit** (since 1.8.0,
+DW-95). The `dist` workflow is not started by the push: it starts when a `bench` run
+on a push to `main` completes, does nothing unless that run succeeded, and before it
+builds asks GitHub again — `.github/scripts/require-gate.sh <sha>` — whether a `bench`
+run of exactly that commit passed. A gate passed by the previous release, a parent or
+a pull request does not count. If `main` has meanwhile moved on to other source, the
+newer commit's own gate run releases it and the older one publishes nothing. The
+`dist/` commit names its source commit and the bench run that certified it.
+
+**The release path is rehearsed** by `.github/workflows/release-rehearsal.yml` —
+on demand, weekly, and on every pull request that touches the gate, the bench or the
+release workflows — in an isolated channel (a workflow artifact, never `dist/`):
+
+| Case | Must happen |
+|---|---|
+| `clean` — the candidate as it is | the gate passes and the candidate is published to the channel, checksums verified |
+| `seeded` — the same candidate with a critical regression seeded into the source (`container_name_conflict` stops reporting a taken name) | the gate blocks for `container_name_conflict/problem-foreign`, and the channel stays empty |
+| `stale` — the newest `dist/` commit, whose source commit passed the gate | `require-gate.sh` refuses it: another commit's gate does not certify it |
 The baseline committed with this change is the run of 2026-10-19 on
 `docker:27.5.1-dind` (Docker 27.5.1, Compose 2.33.0): 46 scenarios, all as
 specified, gate PASS.

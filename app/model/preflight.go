@@ -42,6 +42,11 @@ type Manifest struct {
 	// guess at. They surface in the report, because a requirement that was not
 	// understood is not a requirement that was met.
 	Warnings []string `json:"warnings"`
+	// UnsetRequired names the variables the file declares required (${VAR:?},
+	// ${VAR?}) that were not set when the built-in parser read it. Compose refuses
+	// such a file outright, so a preflight refuses the plan rather than reporting on
+	// the literal left in place. Not part of the report: the refusal says it.
+	UnsetRequired []string `json:"-"`
 }
 
 // LaunchPlan is the exact run a Compose preflight checks: the `docker compose`

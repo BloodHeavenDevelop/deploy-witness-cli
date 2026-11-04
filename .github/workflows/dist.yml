@@ -1,18 +1,22 @@
-# Rebuilds dist/ — the binaries install.sh and the docs download — from every push
-# to main, so what is committed beside the source is always built from it. The
-# version comes from the first numbered heading of CHANGELOG.md (see Makefile).
-# A push made with GITHUB_TOKEN starts no workflow, so the commit below does not
-# loop back here.
+# Publishes dist/ — the binaries install.sh and the docs download — and only after the
+# release gate passed for the very commit being built (DW-95). It is started by the
+# `bench` workflow finishing, never by the push itself, so a gate that blocks also
+# blocks the release; and before it commits anything it asks GitHub again whether
+# that exact commit passed (require-gate.sh) — a gate passed by an earlier commit
+# never certifies a newer one. The version comes from the first numbered heading of
+# CHANGELOG.md (see Makefile). A push made with GITHUB_TOKEN starts no workflow, so
+# the commit below does not loop back here.
 name: dist
 
 on:
-  push:
+  workflow_run:
+    workflows: [bench]
+    types: [completed]
     branches: [main]
-    paths-ignore: ["dist/**", "docs/**"]
-  workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: dist
@@ -20,15 +24,39 @@ concurrency:
 
 jobs:
   dist:
+    # Only a gate that passed, on a push to main — never a pull request's run.
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
+    env:
+      CANDIDATE: ${{ github.event.workflow_run.head_sha }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Require the release gate of this exact commit
+        run: bash .github/scripts/require-gate.sh "$CANDIDATE"
+      - name: Require that main still carries this source
+        # A newer push has a gate run of its own and releases itself; publishing an
+        # older commit's binaries over it would ship code main no longer has.
+        run: |
+          git fetch -q origin main
+          changed=$(git diff --name-only "$CANDIDATE" origin/main -- . ':!dist' ':!docs')
+          if [ -n "$changed" ]; then
+            echo "main has moved past ${CANDIDATE} (source changed: $(echo "$changed" | head -5 | tr '\n' ' ')); its own gate run releases it"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+      - if: env.SKIP != '1'
+        uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: make test
-      - run: make dist
+      - if: env.SKIP != '1'
+        run: make test
+      - if: env.SKIP != '1'
+        run: make dist
       - name: Commit the rebuilt binaries
+        if: env.SKIP != '1'
         run: |
           if [ -z "$(git status --porcelain -- dist)" ]; then
             echo "dist/ already matches this commit"
@@ -38,6 +66,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dist
-          git commit -m "chore(dist): rebuild binaries ${version} from $(git rev-parse --short HEAD)"
-          git pull --rebase origin main
+          git commit -m "chore(dist): rebuild binaries ${version} from $(git rev-parse --short "$CANDIDATE")" \
+            -m "Release gate: bench run ${{ github.event.workflow_run.id }} passed for ${CANDIDATE}."
+          git rebase -q origin/main
           git push origin HEAD:main

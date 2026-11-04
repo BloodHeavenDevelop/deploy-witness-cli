@@ -198,12 +198,16 @@ func OutcomeSummary(results []model.RuleResult) string {
 // ─────────────────────────────────────────────────────────── data requirements
 
 // engineList says whether one of the engine's lists can prove that something is
-// absent. It can when it was read in full, and when there is no engine at all —
-// nothing can exist in an engine that is not installed. A list that was not read,
-// or read in part, proves presence and never absence.
+// absent. It can only when it was read in full. A list that was not read, or read
+// in part, proves presence and never absence — and that includes the host where no
+// engine client was found: "docker and podman are not on PATH" is not proof that no
+// engine, container, volume or network exists, and the report already says those
+// lists were not collected. runtime_missing_or_old reports the missing engine; the
+// rules that need its lists answer unknown (DW-95).
 func engineList(in Input, source string) (bool, string) {
 	if in.Caps.Runtime == nil {
-		return true, "no container engine is installed"
+		return false, "no container engine client was found on this host (neither docker nor podman is on " +
+			"PATH), so the engine's " + source + " could not be listed"
 	}
 	o := in.Caps.Observed(source)
 	if o.State == model.ObservedComplete {

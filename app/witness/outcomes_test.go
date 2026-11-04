@@ -91,6 +91,10 @@ var situations = map[string][]situation{
 			in.Manifest.Services[0].ContainerName = "web"
 			unreachableEngine(in)
 		}, model.OutcomeUnknown},
+		{"no engine client on the host", func(in *Input) {
+			in.Manifest.Services[0].ContainerName = "web"
+			in.Caps.Runtime = nil
+		}, model.OutcomeUnknown},
 		{"no fixed name", nil, model.OutcomeNotApplicable},
 	},
 	"witness.project_ownership": {
@@ -105,6 +109,7 @@ var situations = map[string][]situation{
 				WorkingDir: "/srv/app", State: "running", Labelled: true}}
 		}, model.OutcomeNoProblem},
 		{"engine did not answer", func(in *Input) { unreachableEngine(in) }, model.OutcomeUnknown},
+		{"no engine client on the host", func(in *Input) { in.Caps.Runtime = nil }, model.OutcomeUnknown},
 		{"this directory under an older project name", func(in *Input) {
 			planAt(in, "/srv/app")
 			in.Caps.Containers = []model.Container{{Name: "shop-web-1", Project: "shop", Service: "web",
@@ -130,6 +135,10 @@ var situations = map[string][]situation{
 		{"engine did not answer", func(in *Input) {
 			mountShared(in)
 			unreachableEngine(in)
+		}, model.OutcomeUnknown},
+		{"no engine client on the host", func(in *Input) {
+			mountShared(in)
+			in.Caps.Runtime = nil
 		}, model.OutcomeUnknown},
 		{"no external volume", nil, model.OutcomeNotApplicable},
 	},
@@ -179,6 +188,10 @@ var situations = map[string][]situation{
 		{"engine did not answer", func(in *Input) {
 			in.Manifest.Networks = []model.ManifestNetwork{{Name: "edge", External: true}}
 			unreachableEngine(in)
+		}, model.OutcomeUnknown},
+		{"no engine client on the host", func(in *Input) {
+			in.Manifest.Networks = []model.ManifestNetwork{{Name: "edge", External: true}}
+			in.Caps.Runtime = nil
 		}, model.OutcomeUnknown},
 		{"shared with another stack", func(in *Input) {
 			in.Manifest.Networks = []model.ManifestNetwork{{Name: "edge", External: true}}

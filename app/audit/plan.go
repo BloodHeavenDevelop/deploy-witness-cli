@@ -140,6 +140,12 @@ func (a *Auditor) resolve(plan *model.LaunchPlan) (*model.Manifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the Compose preflight cannot start, the Compose file could not be parsed: %w", err)
 	}
+	if len(parsed.UnsetRequired) > 0 {
+		return nil, planError("%s declares %s as required (${VARIABLE:?} or ${VARIABLE?}) and it is not set, so "+
+			"Compose would refuse this plan before starting anything; set it in the environment of this audit or "+
+			"in the .env beside the Compose file, exactly as the deployment will", plan.Files[0],
+			requiredVariables(parsed.UnsetRequired))
+	}
 	plan.Resolver = model.ResolverBuiltin
 	note := reason + ", so the plan was read by the built-in parser — an approximation of what Compose " +
 		"resolves; this preflight is partial"
@@ -430,4 +436,13 @@ func (a *Auditor) configHashes(plan *model.LaunchPlan) map[string]string {
 		}
 	}
 	return hashes
+}
+
+// requiredVariables names the unset required variables for the refusal: "variable
+// X" or "variables X, Y".
+func requiredVariables(names []string) string {
+	if len(names) == 1 {
+		return "variable " + names[0]
+	}
+	return "variables " + strings.Join(names, ", ")
 }

@@ -691,6 +691,9 @@ services:
 		if got := onlyService(t, manifest).Image.Raw; got != "nginx:${SA_TEST_REQUIRED:?tag is mandatory}" {
 			t.Errorf("the literal must be left in place, got %q", got)
 		}
+		if !reflect.DeepEqual(manifest.UnsetRequired, []string{"SA_TEST_REQUIRED"}) {
+			t.Errorf("UnsetRequired: got %v", manifest.UnsetRequired)
+		}
 	})
 }
 
