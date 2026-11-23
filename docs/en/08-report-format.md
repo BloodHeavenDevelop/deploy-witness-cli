@@ -50,7 +50,8 @@ suffix, and evidence capture times are RFC 3339 (`2026-08-17T09:39:13Z`).
 
 **Credentials are masked before anything is written.** Every free-form field —
 cron lines, process command lines, notes, evidence output, manifest label values —
-goes through `app/redact` on its way out, and a masked value is replaced with the
+goes through `app/redact` on its way out (including long flags whose name contains a
+credential word, such as `--db-password VALUE`, `-u user:pass` and `sshpass -p VALUE`), and a masked value is replaced with the
 visible marker `***redacted***` rather than deleted: `password=***redacted***`
 tells the reader something was there, and silently dropping it would make the
 evidence a lie. The number of fields changed is logged, because a sweep that fires

@@ -182,9 +182,11 @@ func TestUploadNamesTheEngineByItsFingerprintOnly(t *testing.T) {
 	if !strings.Contains(decoded.Findings[0].Evidence[0].Output, fp) {
 		t.Errorf("evidence should name the engine by its fingerprint: %q", decoded.Findings[0].Evidence[0].Output)
 	}
+	// protojson varies the spacing after a colon from build to build on purpose.
+	normalized := strings.ReplaceAll(text, ":  ", ": ")
 	for _, field := range []string{`"outcome": "OUTCOME_PROBLEM"`, `"rule_results"`, `"plan"`, `"provenance"`,
 		`"state": "OBSERVATION_STATE_PARTIAL"`} {
-		if !strings.Contains(text, field) {
+		if !strings.Contains(normalized, field) {
 			t.Errorf("the upload lacks %s", field)
 		}
 	}

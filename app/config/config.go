@@ -38,6 +38,8 @@ type Config struct {
 	MaxOSVQuery int
 	LogLevel    logging.Level
 	ShowVersion bool
+	// OutDirGenerated is true when OutDir is the default name rather than --out.
+	OutDirGenerated bool
 	// Mode is host-audit or compose-preflight, resolved from --mode and --compose.
 	// A Compose preflight always has a Compose file and always runs the witness
 	// section; a host audit has neither. See resolveMode.
@@ -361,6 +363,7 @@ func Load(args []string, version string, out io.Writer) (*Config, error) {
 
 	if cfg.OutDir == "" {
 		cfg.OutDir = defaultOutDir()
+		cfg.OutDirGenerated = true
 	}
 	cfg.OutDir, err = filepath.Abs(cfg.OutDir)
 	if err != nil {

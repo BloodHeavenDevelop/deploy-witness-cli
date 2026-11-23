@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -415,9 +414,11 @@ func resultSummary(rules []model.RuleResult) string {
 // difference between "nothing listening" and "we did not look" is the whole
 // value of an audit.
 func WriteDir(dir string, r *model.Report) ([]string, error) {
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	root, err := openOutDir(dir)
+	if err != nil {
 		return nil, err
 	}
+	defer root.Close()
 
 	var written []string
 	for _, t := range tables(r) {
@@ -426,13 +427,12 @@ func WriteDir(dir string, r *model.Report) ([]string, error) {
 			return written, fmt.Errorf("%s.csv: %w", t.name, err)
 		}
 
-		path := filepath.Join(dir, t.name+".csv")
 		// 0600: the report names accounts, open ports and unpatched packages —
 		// a reconnaissance summary that should not be world-readable by default.
-		if err := os.WriteFile(path, data, 0o600); err != nil {
+		if err := writeReportFile(root, t.name+".csv", data); err != nil {
 			return written, err
 		}
-		written = append(written, path)
+		written = append(written, filepath.Join(dir, t.name+".csv"))
 	}
 	return written, nil
 }

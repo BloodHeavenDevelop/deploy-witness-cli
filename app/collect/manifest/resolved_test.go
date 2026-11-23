@@ -137,6 +137,58 @@ func TestRemoteIncludes(t *testing.T) {
 	}
 }
 
+func TestRemoteIncludesFollowsLocalReferences(t *testing.T) {
+	write := func(path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := map[string]map[string]string{
+		"oci://registry.example/x:1": {
+			"a.yml": "include: [./b.yml]\nservices: {}\n",
+			"b.yml": "include: [oci://registry.example/x:1]\n",
+		},
+		"https://example.com/base.yml": {
+			"a.yml": "services:\n  web:\n    extends:\n      file: ./b.yml\n      service: web\n",
+			"b.yml": "services:\n  web:\n    extends: {file: https://example.com/base.yml, service: x}\n",
+		},
+		"git@example.com:org/repo.git": {
+			"a.yml":           "include: [./sub]\n",
+			"sub/compose.yml": "services: {}\n---\ninclude: [git@example.com:org/repo.git]\n",
+		},
+		"${BASE}/c.yml": {"a.yml": "include:\n  - path: ${BASE}/c.yml\n"},
+		"oci://registry.example/o:1": {
+			"a.yml":          "include: [./b.yml]\n",
+			"b.yml":          "services: {}\n",
+			"b.override.yml": "include: [oci://registry.example/o:1]\n",
+		},
+	}
+	for want, files := range cases {
+		dir := t.TempDir()
+		for name, content := range files {
+			write(filepath.Join(dir, name), content)
+		}
+		got, err := RemoteIncludes(filepath.Join(dir, "a.yml"))
+		if err != nil || strings.Join(got, " ") != want {
+			t.Errorf("RemoteIncludes = %v, %v; want %s", got, err, want)
+		}
+	}
+
+	// A cycle ends, and a file that exists only under the project directory is read.
+	dir, project := t.TempDir(), t.TempDir()
+	write(filepath.Join(dir, "a.yml"), "include: [./b.yml, ./only-in-project.yml]\n")
+	write(filepath.Join(dir, "b.yml"), "include: [./a.yml]\n")
+	write(filepath.Join(project, "only-in-project.yml"), "include: [oci://registry.example/p:1]\n")
+	got, err := RemoteIncludes(filepath.Join(dir, "a.yml"), project)
+	if err != nil || strings.Join(got, " ") != "oci://registry.example/p:1" {
+		t.Errorf("RemoteIncludes = %v, %v", got, err)
+	}
+}
+
 // DW-87: Compose's naming — <project>_<key> for what it creates, the key (or
 // `name:`) for what is external.
 func TestResolveEngineNames(t *testing.T) {
@@ -165,7 +217,7 @@ func TestCreateHostPathByComposeVersion(t *testing.T) {
 	  {"type":"bind","source":"/f","target":"/f","bind":{"create_host_path":false}}]}}}`
 	for _, tc := range []struct {
 		version, raw string
-		want       []string
+		want         []string
 	}{
 		{"2.33.0", model2, []string{"true", "false", "false"}},
 		{"5.5.0", model5, []string{"true", "true", "false"}},

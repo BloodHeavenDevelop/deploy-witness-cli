@@ -107,6 +107,13 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		log.Error(err, "; no report was written")
 		return exitUsage
 	}
+	// A destination that will be refused is reported now, not after the whole audit.
+	if !cfg.ToStdout && !cfg.OutDirGenerated {
+		if err := report.CheckOutDir(cfg.OutDir); err != nil {
+			log.Error(err, "; no report was written")
+			return exitUsage
+		}
+	}
 	result := auditor.Run()
 
 	// The last thing before anything is written: sweep the free-form text for
@@ -161,6 +168,13 @@ func writeReport(cfg *config.Config, log *logging.Logger, result *model.Report, 
 		return contractPayload(cfg, result)
 	}
 
+	if cfg.OutDirGenerated {
+		dir, err := report.CreateOutDir(cfg.OutDir)
+		if err != nil {
+			return nil, err
+		}
+		cfg.OutDir, cfg.OutDirGenerated = dir, false
+	}
 	if cfg.WantsCSV() {
 		paths, err := report.WriteDir(cfg.OutDir, result)
 		if err != nil {

@@ -1,6 +1,6 @@
 module github.com/BloodHeavenDevelop/deploy-witness-cli
 
-go 1.25.0
+go 1.26.0
 
 require (
 	google.golang.org/protobuf v1.36.11

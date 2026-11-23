@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -80,9 +79,11 @@ func WriteJSON(w io.Writer, r *model.Report) ([]byte, error) {
 // WriteJSONFile writes report.json into a directory and returns its path plus the
 // contract payload.
 func WriteJSONFile(dir string, r *model.Report) (string, []byte, error) {
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	root, err := openOutDir(dir)
+	if err != nil {
 		return "", nil, err
 	}
+	defer root.Close()
 
 	document, payload, err := Build(r)
 	if err != nil {
@@ -93,11 +94,10 @@ func WriteJSONFile(dir string, r *model.Report) (string, []byte, error) {
 		return "", nil, err
 	}
 
-	path := filepath.Join(dir, "report.json")
 	// 0600, for the same reason as the CSV files: this names accounts, open ports
 	// and unpatched packages, which is a reconnaissance summary of the host.
-	if err := os.WriteFile(path, append(encoded, '\n'), 0o600); err != nil {
+	if err := writeReportFile(root, "report.json", append(encoded, '\n')); err != nil {
 		return "", nil, err
 	}
-	return path, payload, nil
+	return filepath.Join(dir, "report.json"), payload, nil
 }

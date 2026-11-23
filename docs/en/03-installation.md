@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Go 1.25 or newer, to build.
+- Go 1.26 or newer, to build.
 - Nothing at all, to run. The binary is static (`CGO_ENABLED=0`) and calls the
   distribution's own tooling only when it is present.
 - **Nothing private.** The two dependencies — `google.golang.org/protobuf` and

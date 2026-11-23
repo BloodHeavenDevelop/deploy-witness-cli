@@ -1,9 +1,13 @@
 package manifest
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -415,45 +419,153 @@ func rawScalar(raw json.RawMessage) string {
 	return strings.Trim(text, `"`)
 }
 
-// RemoteIncludes returns the `include:` entries of a Compose file that name a
-// remote source (a git URL, an OCI artifact, anything with a scheme). Resolving the
-// plan with one of them would fetch it, which an offline audit must not do. The
-// file is read with the same YAML parser as the built-in reading, and nothing but
-// the include entries is looked at.
-func RemoteIncludes(path string) ([]string, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
+// maxComposeRefs bounds the walk over local includes, so a file tree that keeps
+// referring to new files cannot keep the check busy.
+const maxComposeRefs = 256
+
+// composeDefaultNames are the files Compose looks for when an include names a
+// directory.
+var composeDefaultNames = []string{"compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml"}
+
+// RemoteIncludes returns the sources a Compose file pulls in that this audit cannot
+// keep local: an `include:` or `extends.file` naming a remote source (a git URL, an
+// OCI artifact, anything with a scheme), or one whose path depends on a variable and
+// so cannot be known before Compose interpolates it. Resolving the plan with one of
+// them could fetch it, which an offline audit must not do.
+//
+// Local includes and extends are followed, since a file they name can carry the same
+// references. A relative reference is tried against the directory of the file holding
+// it and against each of bases (the project directory). A local file that does not
+// exist is left for Compose to reject. Only these references are looked at.
+func RemoteIncludes(path string, bases ...string) ([]string, error) {
+	if _, err := os.Stat(path); err != nil {
 		return nil, err
 	}
-	var doc struct {
-		Include []any `yaml:"include"`
+	walk := &composeRefWalk{bases: bases, seen: make(map[string]bool)}
+	if err := walk.file(path); err != nil {
+		return nil, err
 	}
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+	return walk.remote, nil
+}
+
+type composeRefWalk struct {
+	bases  []string
+	seen   map[string]bool
+	remote []string
+}
+
+func (w *composeRefWalk) file(path string) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
 	}
-	var out []string
-	check := func(value any) {
-		text, ok := value.(string)
-		if ok && isRemoteSource(text) {
-			out = append(out, text)
+	if w.seen[abs] {
+		return nil
+	}
+	if len(w.seen) >= maxComposeRefs {
+		return fmt.Errorf("%s: more than %d files are included", path, maxComposeRefs)
+	}
+	w.seen[abs] = true
+
+	info, err := os.Stat(abs)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		for _, name := range composeDefaultNames {
+			if err := w.file(filepath.Join(abs, name)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	raw, err := os.ReadFile(abs)
+	if err != nil {
+		return err
+	}
+	decoder := yaml.NewDecoder(bytes.NewReader(raw))
+	for {
+		var doc map[string]any
+		err := decoder.Decode(&doc)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		if err := w.document(doc, filepath.Dir(abs)); err != nil {
+			return err
 		}
 	}
-	for _, item := range doc.Include {
+
+	// Compose applies <name>.override.<ext> beside an included file.
+	ext := filepath.Ext(abs)
+	return w.file(strings.TrimSuffix(abs, ext) + ".override" + ext)
+}
+
+func (w *composeRefWalk) document(doc map[string]any, dir string) error {
+	includes, ok := doc["include"].([]any)
+	if !ok && doc["include"] != nil {
+		includes = []any{doc["include"]}
+	}
+	for _, item := range includes {
 		switch entry := item.(type) {
 		case string:
-			check(entry)
+			if err := w.reference(entry, dir); err != nil {
+				return err
+			}
 		case map[string]any:
 			switch paths := entry["path"].(type) {
 			case string:
-				check(paths)
+				if err := w.reference(paths, dir); err != nil {
+					return err
+				}
 			case []any:
 				for _, p := range paths {
-					check(p)
+					if text, ok := p.(string); ok {
+						if err := w.reference(text, dir); err != nil {
+							return err
+						}
+					}
 				}
 			}
 		}
 	}
-	return out, nil
+
+	services, _ := doc["services"].(map[string]any)
+	for _, name := range sortedKeys(services) {
+		service, _ := services[name].(map[string]any)
+		extends, _ := service["extends"].(map[string]any)
+		if file, ok := extends["file"].(string); ok {
+			if err := w.reference(file, dir); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (w *composeRefWalk) reference(text, dir string) error {
+	text = strings.TrimSpace(text)
+	switch {
+	case text == "":
+		return nil
+	case isRemoteSource(text), strings.Contains(text, "$"):
+		w.remote = append(w.remote, text)
+		return nil
+	case filepath.IsAbs(text):
+		return w.file(text)
+	}
+	for _, base := range append([]string{dir}, w.bases...) {
+		if err := w.file(filepath.Join(base, text)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func isRemoteSource(text string) bool {

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-23
+
+### Changed
+
+- Build toolchain moved to Go 1.26 (`go.mod`, Docker images); `golang.org/x/*` modules updated.
+- The upload contract test no longer depends on protojson output spacing.
+- **`--out` is checked before use** ([app/report/outdir.go](app/report/outdir.go), `docs/<lang>/04-cli-reference.md`). An existing directory must be a real directory owned by the current account, root or the `sudo` caller, and not writable by group or others; otherwise the run stops before collecting. Report files are written to a new file and renamed into place. The default directory name is never reused: when it is taken, a new directory with a random suffix is created beside it.
+- **The Compose preflight follows local `include:` and `extends.file` references** ([app/collect/manifest/resolved.go](app/collect/manifest/resolved.go)), and treats a remote source found at any depth, or a reference whose path depends on a variable, like a remote include at the top level: the plan is refused before `docker compose config` runs.
+- **One credential sweep** ([app/redact/redact.go](app/redact/redact.go)): long flags whose name contains a credential word (`--db-password VALUE`, `--client-secret=VALUE`), `-u user:pass` and `sshpass -p VALUE` are masked in every free-form report field. Numeric `-u uid:gid`, switches (`--no-password`) and flags naming a location or lifetime (`--password-file`, `--token-ttl`) are left as they are.
+
 ## [1.8.1] - 2026-11-04
 
 ### Added

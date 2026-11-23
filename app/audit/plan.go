@@ -66,13 +66,14 @@ func (a *Auditor) preparePlan() error {
 		}
 	}
 	for _, file := range plan.Files {
-		remote, err := manifest.RemoteIncludes(file)
+		remote, err := manifest.RemoteIncludes(file, plan.ProjectDirectory)
 		if err != nil {
 			return fmt.Errorf("the Compose preflight cannot start, the Compose file could not be parsed: %w", err)
 		}
 		if len(remote) > 0 {
-			return planError("%s includes %s from a remote source; resolving the plan would fetch it, and this "+
-				"audit does not open connections — vendor the included file next to the plan and include it by path",
+			return planError("%s includes %s from a remote source or a path set by a variable; resolving the plan could "+
+				"fetch it, and this audit does not open connections — vendor the included file next to the plan "+
+				"and include it by a literal path",
 				file, strings.Join(remote, ", "))
 		}
 	}

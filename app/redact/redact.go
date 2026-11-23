@@ -35,6 +35,8 @@ type pattern struct {
 	re   *regexp.Regexp
 	// with is the replacement template, referring to the capture groups.
 	with string
+	// keep, when set, spares a match that has the shape but is not a credential.
+	keep func(groups []string) bool
 }
 
 // patterns is the sweep. Every entry is documented with what it is for, because a
@@ -73,11 +75,32 @@ var patterns = []pattern{
 		with: `${1}` + Marker,
 	},
 	{
-		// --password=SECRET, --token SECRET.
+		// --password=SECRET, --token SECRET, --db-password SECRET: any long flag whose
+		// name contains a credential word, with `=` or whitespace before the value.
 		name: "long credential flag",
 		re: regexp.MustCompile(
-			`(?i)(--(?:password|passwd|secret|token|api-key|access-key|auth)(?:[=\s]))("[^"]*"|'[^']*'|[^\s]+)`),
+			`(?i)(--(?:auth|[a-z0-9_-]*(?:pass(?:word|wd)|secret|token|api[_-]?key|access[_-]?key|` +
+				`private[_-]?key|credential)[a-z0-9_-]*)(?:=|\s+))("[^"]*"|'[^']*'|[^\s]+)`),
 		with: `$1` + Marker,
+		keep: func(groups []string) bool { return harmlessFlag(groups[1]) },
+	},
+	{
+		// `-u account:password`, how curl, wget and smbclient are told a password. The
+		// account survives; a numeric uid:gid, as in `docker run -u 1000:1000`, is not
+		// a credential.
+		name: "user:password argument",
+		re:   regexp.MustCompile(`(?i)(^|\s)(-u|--user)(\s+)([^\s:]+):(\S+)`),
+		with: `${1}${2}${3}${4}:` + Marker,
+		keep: func(groups []string) bool {
+			return numericID.MatchString(groups[4]) && numericID.MatchString(groups[5])
+		},
+	},
+	{
+		// `sshpass -p VALUE`, whose value is a separate argument. The pattern stays on
+		// one command by refusing to cross a pipe or a separator.
+		name: "sshpass password",
+		re:   regexp.MustCompile(`(?i)(\bsshpass\b[^|;&]*?\s-p)\s*("[^"]*"|'[^']*'|\S+)`),
+		with: `${1} ` + Marker,
 	},
 	{
 		// A URL with credentials in it: scheme://user:pass@host. The user is kept —
@@ -117,6 +140,33 @@ var harmlessValues = map[string]bool{
 	"\"\"": true, "''": true, "-": true,
 }
 
+// numericID is a uid or gid.
+var numericID = regexp.MustCompile(`^[0-9]+$`)
+
+// harmlessFlagPrefixes are switches: the word after them is the next argument, not
+// their value.
+var harmlessFlagPrefixes = []string{"--no-", "--disable-", "--enable-"}
+
+// harmlessFlagSuffixes name where a credential lives or how it behaves, not the
+// credential itself.
+var harmlessFlagSuffixes = []string{"-file", "-path", "-dir", "-ttl", "-timeout", "-expiry", "-lifetime", "-length", "-policy", "-env"}
+
+// harmlessFlag reports whether a matched `--flag=` or `--flag ` carries no secret.
+func harmlessFlag(flag string) bool {
+	name := strings.ToLower(strings.TrimRight(flag, "= \t\r\n"))
+	for _, prefix := range harmlessFlagPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	for _, suffix := range harmlessFlagSuffixes {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
 // String masks credentials in one piece of text.
 func String(text string) string {
 	if text == "" {
@@ -125,6 +175,9 @@ func String(text string) string {
 	for _, p := range patterns {
 		text = p.re.ReplaceAllStringFunc(text, func(match string) string {
 			groups := p.re.FindStringSubmatch(match)
+			if p.keep != nil && p.keep(groups) {
+				return match
+			}
 			// The last group is the value for every pattern that has one.
 			if len(groups) > 1 {
 				value := strings.Trim(strings.ToLower(strings.TrimSpace(groups[len(groups)-1])), `"'`)

@@ -154,3 +154,31 @@ func TestReportSweepsEveryFreeFormField(t *testing.T) {
 		}
 	}
 }
+
+func TestStringMasksProcessLineFlags(t *testing.T) {
+	cases := []struct{ in, gone, kept string }{
+		{"myapp --db-password abc123 --port 80", "abc123", "--port 80"},
+		{"myapp --api-token abc123", "abc123", "--api-token"},
+		{"myapp --client-secret=abc123", "abc123", "--client-secret"},
+		{"myapp --auth abc123", "abc123", "--auth"},
+		{"curl -u deploy:abc123 https://example.com", "abc123", "-u deploy:"},
+		{"sshpass -p abc123 ssh host", "abc123", "ssh host"},
+	}
+	for _, c := range cases {
+		got := String(c.in)
+		if strings.Contains(got, c.gone) || !strings.Contains(got, Marker) || !strings.Contains(got, c.kept) {
+			t.Errorf("String(%q) = %q", c.in, got)
+		}
+	}
+	for _, in := range []string{
+		"docker run -u 1000:1000 app",
+		"myapp --password-file /run/app/credential --port 80",
+		"myapp --no-password --port 80",
+		"myapp --token-ttl 3600",
+		"sshd --authorization-mode RBAC",
+	} {
+		if got := String(in); got != in {
+			t.Errorf("String(%q) = %q, want it unchanged", in, got)
+		}
+	}
+}

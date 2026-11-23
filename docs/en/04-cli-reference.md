@@ -28,7 +28,7 @@ only together with a typed `--upload`.
 
 | Flag | Environment | Default | Meaning |
 |---|---|---|---|
-| `--out <dir>` | `AUDIT_OUT` | `./audit-<host>-<UTC timestamp>` | Directory to write the report into. Created if missing. |
+| `--out <dir>` | `AUDIT_OUT` | `./audit-<host>-<UTC timestamp>` | Directory to write the report into. Created if missing. An existing one must be a real directory (not a symlink), owned by the current account, root or the account that invoked `sudo`, and not writable by group or others; otherwise the run stops before collecting. Report files are replaced atomically, and an entry of that name that is not a regular file is refused. The default name is never reused: if it exists, a new directory with a random suffix is created beside it. |
 | `--stdout` | `AUDIT_STDOUT` | `false` | Write the report to stdout instead of a directory. Diagnostics go to stderr, so the stream is pipeable. |
 | `--format <csv\|json\|csv,json>` | `AUDIT_FORMAT` | `csv` | `csv` is a directory of tables for a person; `json` is one `report.json` for a machine; `csv,json` writes both into `--out` from the same run. Anything else — and `csv,json` with `--stdout` — is rejected before the audit runs. |
 | `--sections <list>` | `AUDIT_SECTIONS` | all the mode runs | Comma-separated subset of `system,updates,vulnerabilities,ports,services,witness`. Order is normalised — see below. `witness` is accepted only in a Compose preflight, and a Compose preflight must include it — see [Modes](#modes). |
@@ -139,7 +139,7 @@ report written:
 | Plan | Why it is refused |
 |---|---|
 | `docker compose config` rejects it (a `${VAR:?}` with no value, an unknown key, a missing required `env_file`, an inactive profile's service named by a dependency) | Compose would reject the run too; its message is quoted, credentials masked |
-| A file `include:`s a remote source (`https://`, `git@`, `oci://`) | Resolving it would fetch it; vendor the file and include it by path |
+| A file, or a local file it reaches through `include:` or `extends.file`, names a remote source (`https://`, `git@`, `oci://`) or a path containing a `$` variable | Resolving it could fetch it; vendor the file and reference it by a literal path |
 | `DOCKER_HOST` or the active docker context points at a remote engine | The plan is for another machine |
 | `--compose-service` names a service that is not in the resolved plan | No such service, or its profile is not activated |
 | Compose is not installed and the plan has several files, `--env-file` or `--profile` | The built-in parser cannot reproduce it |

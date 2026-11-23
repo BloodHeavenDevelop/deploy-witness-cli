@@ -44,7 +44,7 @@ make build-linux-arm64    # ./bin/deploy-witness-linux-arm64
 The binaries are static (`CGO_ENABLED=0`) and depend on nothing at runtime, so a
 cross-compiled binary runs on any Linux host of that architecture.
 
-**Building needs nothing private.** Go 1.25 and the two public modules
+**Building needs nothing private.** Go 1.26 and the two public modules
 `google.golang.org/protobuf` and `gopkg.in/yaml.v3`, from the module proxy like any
 other — no credentials, no `GOPRIVATE`, no organisation membership. Somebody who is
 about to run this as root on their own production server can read the source and
