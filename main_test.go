@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -322,5 +325,35 @@ func TestRecheckConfirmsOnlyTheSamePlan(t *testing.T) {
 	writeFile(t, dir, "docker-compose.yml", "services:\n  app:\n    image: nginx:1.27\n    ports: [\"18081:80\"]\n", 0o600)
 	if code, _ := cli(t, "--recheck", saved, "--compose", compose); code != exitRecheck {
 		t.Errorf("changed plan: exit %d, want %d", code, exitRecheck)
+	}
+}
+
+// DW-108: with --stdout the report is the whole of stdout; the upload's answer goes
+// to stderr, so a pipe reading the JSON gets one document, not two.
+func TestUploadAnswerStaysOffTheStdoutStream(t *testing.T) {
+	const answer = `{"publicToken":"tok-108"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(answer))
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	runCLI([]string{"--format", "json", "--stdout", "--upload", srv.URL, "--upload-token", "t"}, &stdout, &stderr)
+
+	dec := json.NewDecoder(&stdout)
+	var doc map[string]any
+	if err := dec.Decode(&doc); err != nil {
+		t.Fatalf("stdout is not a JSON document: %v", err)
+	}
+	if dec.More() {
+		t.Fatal("stdout carries a second document after the report")
+	}
+	if strings.Contains(stdout.String(), "tok-108") {
+		t.Error("the upload answer landed on stdout")
+	}
+	if !strings.Contains(stderr.String(), answer) {
+		t.Errorf("the upload answer is missing from stderr:\n%s", stderr.String())
 	}
 }
