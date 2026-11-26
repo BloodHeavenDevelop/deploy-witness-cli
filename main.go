@@ -130,6 +130,14 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if cfg.WantsUpload() {
+		// Over one of the receiver's bounds the upload would be refused whole, after
+		// spending the one-time token. Say which bound here, before any connection;
+		// the local report is already written and complete.
+		if err := report.CheckUploadLimits(payload); err != nil {
+			log.Error("the report was not uploaded: ", err,
+				" — the local report is complete; nothing was sent and the upload token is still unused")
+			return exitUploadFail
+		}
 		if endpoint, err := report.UploadEndpoint(cfg.UploadURL); err == nil {
 			log.Infof("uploading %d bytes (the `upload` half of the report) and the one-time token to %s",
 				len(payload), netpath.Describe(endpoint))

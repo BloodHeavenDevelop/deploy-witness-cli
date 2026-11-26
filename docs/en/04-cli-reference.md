@@ -233,6 +233,13 @@ sudo --preserve-env=AUDIT_UPLOAD_TOKEN deploy-witness --compose /srv/app/docker-
 fails with exit `3` and the message names where the redirect pointed; neither the
 token nor the report is sent there. Give the final address instead.
 
+**A report over the receiver's bounds is not sent.** DeployWitness refuses an upload
+whole, never truncated, when it carries more than 2000 findings, 20 pieces of evidence
+on one finding, 5000 journal entries, 500 rule results or 200 items in one plan or
+provenance list, or a fingerprint over 128 / hostname over 253 characters. The tool
+checks these before connecting: over one of them it names the bound, exits `3`, and
+leaves the one-time token unused; the local report is written in full either way.
+
 **The recipient is printed before anything is sent**: the network plan at the start
 of the run, and `uploading <n> bytes … to <endpoint>` immediately before the request
 (both at info level, so `--quiet` hides them).
@@ -326,7 +333,7 @@ Child processes:
 | `0` | The report was written. Sections may still carry notes in `summary.csv`. |
 | `1` | The report was written, but at least one section failed outright. |
 | `2` | Bad arguments — including an `--upload`/`--osv-url` address that is not `https://`, a mode conflict, or a `--compose` file that is missing, unreadable or does not parse (no report is written) — or the report could not be written. |
-| `3` | The report was written, but `--upload` could not deliver it — including when the address answered with a redirect, which is never followed. |
+| `3` | The report was written, but `--upload` could not deliver it — including when the address answered with a redirect, which is never followed, and when the report is over one of the receiver's bounds (then nothing is sent). |
 | `4` | `--recheck`: the report does not confirm this plan on this engine now — re-run the preflight before deploying (see [Recheck before deploying](#recheck-before-deploying)). Nothing was written. |
 
 A `partial` section does not change the exit code — a partial section still

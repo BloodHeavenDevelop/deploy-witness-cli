@@ -228,3 +228,45 @@ func TestHostAuditUploadHasNoPlan(t *testing.T) {
 		t.Errorf("a host audit upload must not carry a plan:\n%s", payload)
 	}
 }
+
+// DW-104: a report over one of the receiver's bounds is caught before the upload, by
+// name, instead of being refused whole after the token is spent.
+func TestCheckUploadLimits(t *testing.T) {
+	marshal := func(r *auditv1.Report) []byte {
+		b, err := protojson.Marshal(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	evidence := func(n int) []*auditv1.Evidence {
+		out := make([]*auditv1.Evidence, n)
+		for i := range out {
+			out[i] = &auditv1.Evidence{Command: "true"}
+		}
+		return out
+	}
+
+	within := &auditv1.Report{
+		ServerFingerprint: strings.Repeat("f", maxUploadFingerprint),
+		Findings:          []*auditv1.Finding{{Code: "witness.x", Evidence: evidence(maxUploadEvidence)}},
+	}
+	if err := CheckUploadLimits(marshal(within)); err != nil {
+		t.Fatalf("a report at the limits is refused: %v", err)
+	}
+
+	cases := map[string]*auditv1.Report{
+		"evidence on finding witness.y": {Findings: []*auditv1.Finding{
+			{Code: "witness.y", Evidence: evidence(maxUploadEvidence + 1)}}},
+		"server fingerprint": {ServerFingerprint: strings.Repeat("f", maxUploadFingerprint+1)},
+		"hostname":           {ServerHostname: strings.Repeat("h", maxUploadHostname+1)},
+		"plan services": {Plan: &auditv1.LaunchPlan{
+			Services: make([]string, maxUploadSectionList+1)}},
+	}
+	for want, r := range cases {
+		err := CheckUploadLimits(marshal(r))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v", want, err)
+		}
+	}
+}

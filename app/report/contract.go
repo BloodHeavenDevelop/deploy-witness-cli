@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	auditv1 "github.com/BloodHeavenDevelop/deploy-witness-cli/app/contract/auditv1"
@@ -366,3 +368,78 @@ func contractStatus(status model.Status) auditv1.CollectorStatus {
 // fingerprint identifies this machine to the receiving service; see
 // model.MachineFingerprint. The provenance of the local report carries the same value.
 func fingerprint() string { return model.MachineFingerprint() }
+
+// The receiver's bounds on one upload, mirrored from deploy-witness
+// (backend/app/audit/service/upload.service.go and upload-outcomes.go). It refuses a
+// report over any of them whole, never truncated — so this build checks them before
+// it spends the one-time token, and says which one the report is over, instead of
+// learning it from a 400 after the audit already finished (DW-104).
+const (
+	maxUploadFindings       = 2000
+	maxUploadEvidence       = 20
+	maxUploadJournalEntries = 5000
+	maxUploadRuleResults    = 500
+	maxUploadSectionList    = 200
+	maxUploadFingerprint    = 128
+	maxUploadHostname       = 253
+)
+
+// CheckUploadLimits reports the first receiver bound the payload is over, or nil.
+func CheckUploadLimits(payload []byte) error {
+	var r auditv1.Report
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(payload, &r); err != nil {
+		return fmt.Errorf("the upload payload is not a valid report: %w", err)
+	}
+	over := func(what string, n, limit int) error {
+		return fmt.Errorf("the report carries %d %s, and the service accepts at most %d", n, what, limit)
+	}
+	if n := utf8.RuneCountInString(r.GetServerFingerprint()); n > maxUploadFingerprint {
+		return over("characters of server fingerprint", n, maxUploadFingerprint)
+	}
+	if n := utf8.RuneCountInString(r.GetServerHostname()); n > maxUploadHostname {
+		return over("characters of hostname", n, maxUploadHostname)
+	}
+	if n := len(r.GetFindings()); n > maxUploadFindings {
+		return over("findings", n, maxUploadFindings)
+	}
+	if n := len(r.GetCommandJournal()); n > maxUploadJournalEntries {
+		return over("command journal entries", n, maxUploadJournalEntries)
+	}
+	if n := len(r.GetRuleResults()); n > maxUploadRuleResults {
+		return over("rule results", n, maxUploadRuleResults)
+	}
+	for _, f := range r.GetFindings() {
+		if n := len(f.GetEvidence()); n > maxUploadEvidence {
+			return over("pieces of evidence on finding "+f.GetCode(), n, maxUploadEvidence)
+		}
+	}
+	type count struct {
+		what string
+		n    int
+	}
+	var lists []count
+	if plan := r.GetPlan(); plan != nil {
+		lists = append(lists,
+			count{"plan files", len(plan.GetFiles())},
+			count{"plan env files", len(plan.GetEnvFiles())},
+			count{"plan profiles", len(plan.GetProfiles())},
+			count{"plan services", len(plan.GetServices())},
+			count{"plan started services", len(plan.GetStarted())},
+			count{"plan environment names", len(plan.GetEnvironment())},
+			count{"plan file digests", len(plan.GetFileDigests())},
+			count{"plan notes", len(plan.GetNotes())},
+		)
+	}
+	if p := r.GetProvenance(); p != nil {
+		lists = append(lists,
+			count{"time checks", len(p.GetTimeChecks())},
+			count{"observations", len(p.GetObservations())},
+		)
+	}
+	for _, l := range lists {
+		if l.n > maxUploadSectionList {
+			return over(l.what, l.n, maxUploadSectionList)
+		}
+	}
+	return nil
+}
