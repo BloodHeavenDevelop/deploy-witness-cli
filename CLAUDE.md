@@ -68,7 +68,8 @@ Every change must preserve both. They are the product.
      443 or the one the image names). No TLS handshake, no HTTP request, no image
      fetched, nothing sent.
    - `--upload` — one POST of the finished report, only with a token alongside it.
-     No default endpoint, no retry, no telemetry, `https://` only, no redirects.
+     No default endpoint, no retry, no telemetry, `https://` only (plain `http://` for a
+     loopback host alone), no redirects.
 
    Network code lives only in the files listed in `app/netpath/static_test.go`,
    and every path has a row in `network.csv`.

@@ -153,7 +153,14 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		log.Infof("uploaded %d bytes to %s; anyone holding the report link in the answer below can read it",
 			len(payload), cfg.UploadURL)
 		if trimmed := strings.TrimSpace(url); trimmed != "" {
-			fmt.Fprintln(stdout, trimmed)
+			// With --stdout, stdout is the report stream: a second document after it
+			// would break every pipe reading it (DW-108). The answer then goes to
+			// stderr — still printed whatever the log level, like any result.
+			answer := stdout
+			if cfg.ToStdout {
+				answer = stderr
+			}
+			fmt.Fprintln(answer, trimmed)
 		}
 	}
 

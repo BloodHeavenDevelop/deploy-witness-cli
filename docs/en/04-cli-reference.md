@@ -254,7 +254,7 @@ identified by a salted SHA-256 of `/etc/machine-id`, never the id itself — see
 [08 — Report format](08-report-format.md#reportjson). Read it first with
 `--format json`.
 
-On success the service's response body is printed to stdout when it is non-empty.
+On success the service's response body is printed to stdout when it is non-empty — to stderr under `--stdout`, where stdout is the report stream and a second document after it would break a pipe reading it.
 For DeployWitness that is a small JSON document such as
 `{"publicToken":"…","level":2,"findings":8,"refused":0,"hostname":"…"}`; the public
 token is the report's link, and **anyone holding it can read the report** without
