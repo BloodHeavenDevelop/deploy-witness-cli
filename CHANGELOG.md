@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-11-26
+
+### Fixed
+
+- **A report over DeployWitness's bounds is no longer sent only to be refused** (DW-104; [app/report/contract.go](app/report/contract.go), [main.go](main.go)). The receiver refuses an upload whole when it carries more than 2000 findings, 20 pieces of evidence on one finding, 5000 journal entries, 500 rule results, 200 items in one plan or provenance list, or a fingerprint / hostname wider than its column. `--upload` now checks those bounds before connecting: over one it names it, exits `3`, and leaves the one-time token unused. The local report is written in full either way. `docs/<lang>/04-cli-reference.md` updated.
+
 ## [1.9.0] - 2026-11-23
 
 ### Changed
